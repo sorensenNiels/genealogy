@@ -5,6 +5,10 @@ coverage/
 .turbo/
 *.tsbuildinfo
 
+# pnpm's local content-addressable package store (see node-linker in .npmrc) —
+# fully reproducible from pnpm-lock.yaml, never something to version.
+.pnpm-store/
+
 # TanStack Router regenerates this from src/routes/** via the `routes` task.
 routeTree.gen.ts
 
