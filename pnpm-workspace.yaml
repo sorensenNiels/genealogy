@@ -1,0 +1,76 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# esbuild's postinstall links the platform binary; vitest and drizzle-kit are
+# unusable without it. Everything else stays blocked from running install scripts.
+allowBuilds:
+  esbuild: true
+
+# Single source of truth for third-party versions. Every package depends on
+# `catalog:` rather than a literal range, so React in apps/frontend can never
+# drift from React in packages/ui. Bump a version here and the whole monorepo moves.
+catalog:
+  # --- toolchain ---
+  # Not 7.x yet: TypeScript 7.0 ships the `tsc` executable only and drops the
+  # programmatic compiler API, which the Nest CLI (`nest build`, `nest start`)
+  # calls into. The API is expected back in 7.1 — bump this line then.
+  typescript: 6.0.3
+  turbo: 2.11.2
+  oxlint: 1.83.0
+  oxfmt: 0.68.0
+  vitest: 5.0.1
+  "@types/node": 24.10.1
+
+  # --- api ---
+  "@nestjs/common": 12.0.3
+  "@nestjs/core": 12.0.3
+  "@nestjs/platform-express": 12.0.3
+  "@nestjs/config": 12.0.0
+  "@nestjs/cli": 12.0.3
+  "@nestjs/testing": 12.0.3
+  reflect-metadata: 0.2.2
+  rxjs: 7.8.2
+  express: 5.2.0
+  "@types/express": 5.0.6
+  "@types/express-serve-static-core": 5.1.3
+  "@types/qs": 6.15.1
+
+  # --- trpc ---
+  "@trpc/server": 11.19.0
+  "@trpc/client": 11.19.0
+  "@trpc/tanstack-react-query": 11.19.0
+  superjson: 2.2.6
+  zod: 4.6.5
+
+  # --- database ---
+  drizzle-orm: 0.45.2
+  drizzle-kit: 0.31.10
+  pg: 8.23.0
+  "@types/pg": 8.23.1
+
+  # --- web ---
+  react: 19.3.0
+  react-dom: 19.3.0
+  "@types/react": 19.3.0
+  "@types/react-dom": 19.3.0
+  vite: 8.3.0
+  "@vitejs/plugin-react": 6.1.1
+  "@tanstack/react-router": 1.170.38
+  "@tanstack/router-plugin": 1.168.40
+  "@tanstack/router-cli": 1.167.38
+  "@tanstack/react-query": 5.103.1
+  "@tanstack/react-table": 9.2.4
+  "@tanstack/react-form": 1.33.5
+
+  # --- ui (shadcn/ui primitives) ---
+  tailwindcss: 4.3.3
+  "@tailwindcss/vite": 4.3.3
+  "@base-ui/react": 1.8.0
+  class-variance-authority: 0.7.1
+  clsx: 2.1.1
+  tailwind-merge: 3.7.0
+  lucide-react: 1.47.0
+
+  # --- auth ---
+  better-auth: 1.7.5

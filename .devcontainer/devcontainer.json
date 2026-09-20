@@ -1,0 +1,49 @@
+{
+  "name": "Genealogy",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "workspaceFolder": "/workspaces/genealogy",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/genealogy,type=bind,consistency=cached",
+  "remoteUser": "node",
+
+  // PostgreSQL runs as its own `docker compose` project (root docker-compose.yml,
+  // started with `make db-up`), reached from here over the host gateway.
+  "runArgs": ["--add-host=host.docker.internal:host-gateway"],
+  "containerEnv": {
+    "DATABASE_URL": "postgres://genealogy:genealogy@host.docker.internal:5432/genealogy",
+    "PGHOST": "host.docker.internal",
+    "PGUSER": "genealogy",
+    "PGPASSWORD": "genealogy",
+    "PGDATABASE": "genealogy"
+  },
+
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:3": { "moby": false },
+    "ghcr.io/jungaretti/features/make:1": {}
+  },
+
+  "forwardPorts": [3000, 5173],
+  "portsAttributes": {
+    "3000": { "label": "backend (NestJS + tRPC)", "onAutoForward": "notify" },
+    "5173": { "label": "frontend (Vite)", "onAutoForward": "openBrowser" }
+  },
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "oxc.oxc-vscode",
+        "bradlc.vscode-tailwindcss",
+        "vitest.explorer",
+        "ms-azuretools.vscode-docker",
+        "anthropic.claude-code",
+        "ms-vscode.makefile-tools",
+        "eamodio.gitlens"
+      ]
+    }
+  }
+}

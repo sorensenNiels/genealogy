@@ -1,0 +1,28 @@
+name: genealogy
+
+services:
+  db:
+    build:
+      context: postgres
+      dockerfile: Dockerfile
+    image: genealogy/postgres-age-postgis:18-1.8.0
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: genealogy
+      POSTGRES_PASSWORD: genealogy
+      POSTGRES_DB: genealogy
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U genealogy -d genealogy"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  postgres-data:

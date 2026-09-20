@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+
+    // NestJS is built on legacy parameter decorators and runtime metadata; it
+    // cannot use the TC39 decorators that `experimentalDecorators: false` implies.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
+    // Dependency injection assigns constructor properties that TypeScript
+    // cannot see being assigned.
+    "strictPropertyInitialization": false,
+
+    // Decorated constructor parameters look unused to the compiler.
+    "noUnusedParameters": false
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "ui": "stream",
+  "globalDependencies": [".oxlintrc.json", ".oxfmtrc.json", "tsconfig.base.json"],
+  "globalEnv": ["NODE_ENV"],
+  "globalPassThroughEnv": ["DATABASE_URL", "PGHOST", "PGUSER", "PGPASSWORD", "PGDATABASE", "PORT"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build", "routes"],
+      "outputs": ["dist/**"]
+    },
+    "routes": {
+      "inputs": ["src/routes/**"],
+      "outputs": ["src/routeTree.gen.ts"]
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "typecheck": {
+      "dependsOn": ["^build", "routes"],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}

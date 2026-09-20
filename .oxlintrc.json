@@ -1,0 +1,66 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "import", "promise", "oxc"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "warn",
+    "pedantic": "off",
+    "style": "off"
+  },
+  "env": {
+    "builtin": true,
+    "es2024": true,
+    "node": true
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/node_modules/**",
+    "**/.turbo/**",
+    "**/routeTree.gen.ts",
+    "**/drizzle/**"
+  ],
+  "rules": {
+    "typescript/consistent-type-imports": "error",
+    "typescript/no-explicit-any": "warn",
+    "unicorn/prefer-node-protocol": "error",
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    // Side-effect imports are the point for polyfills and CSS entry points.
+    "import/no-unassigned-import": "off"
+  },
+  "overrides": [
+    {
+      "files": ["apps/frontend/**", "packages/ui/**"],
+      // react-perf is deliberately absent: it flags every inline handler and
+      // prop object, which is idiomatic React and not a measured problem here.
+      "plugins": ["react", "jsx-a11y"],
+      "env": { "browser": true },
+      "rules": {
+        // The automatic JSX runtime ("jsx": "react-jsx") makes importing React
+        // to use JSX unnecessary.
+        "react/react-in-jsx-scope": "off"
+      }
+    },
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts"],
+      "plugins": ["vitest"],
+      "rules": { "typescript/no-explicit-any": "off" }
+    },
+    {
+      "files": ["packages/db/src/**", "apps/backend/src/**"],
+      "rules": { "no-console": "off" }
+    },
+    {
+      "files": ["apps/backend/**"],
+      "rules": {
+        // A NestJS module is an empty decorated class by design.
+        "typescript/no-extraneous-class": "off",
+        // Constructor-injected dependencies look like type-only imports, but
+        // `emitDecoratorMetadata` needs the runtime value to build
+        // design:paramtypes. Rewriting them to `import type` silently breaks DI.
+        "typescript/consistent-type-imports": "off"
+      }
+    }
+  ]
+}

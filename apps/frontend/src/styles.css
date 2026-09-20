@@ -1,0 +1,5 @@
+@import "@genealogy/ui/styles.css";
+
+/* The shared component package is symlinked into node_modules, which Tailwind
+   skips when scanning for class names, so point it there explicitly. */
+@source "../../../packages/ui/src/**/*.tsx";

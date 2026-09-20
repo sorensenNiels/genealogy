@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm .devcontainer/docker-compose.yml && ls .devcontainer/)",
+      "Bash(pnpm check)",
+      "Bash(pnpm test)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm format:check)",
+      "Bash(pnpm build)",
+      "Bash(make check)",
+      "Bash(make test)",
+      "Bash(make lint)",
+      "Bash(make typecheck)",
+      "Bash(make build)",
+      "Bash(make help)",
+      "Bash(make db-status)",
+      "Bash(make db-logs)",
+      "Bash(npm view *)",
+      "WebFetch(domain:www.npmjs.com)"
+    ],
+    "additionalDirectories": ["/workspaces/genealogy/.devcontainer"]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/stop-check-gate.sh",
+            "timeout": 300,
+            "statusMessage": "Running pnpm check && pnpm test (check gate)…"
+          }
+        ]
+      }
+    ]
+  }
+}
