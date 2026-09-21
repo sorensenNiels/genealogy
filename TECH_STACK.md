@@ -172,6 +172,27 @@ frontend joins it with the backend's own origin (`apiUrl` from
 `apps/frontend/src/lib/env.ts`) at render time, so nothing in the database is
 tied to a specific host or port.
 
+### A second, human-readable id per person
+
+`persons.id` (the UUID primary key) is what every foreign key and graph node
+uses, but it's not something a person would ever read aloud or write down.
+`persons.public_id` — `generatePublicId()` in
+`apps/backend/src/person/public-id.ts` — is a short id in the same spirit as
+FamilySearch's PID (`LZXY-ABC`): one letter, six more letters-or-digits,
+formatted `XXXX-XXX`. Always starts with a letter on purpose, so it never
+reads as a bare number. Generated once at creation and never changes;
+`PersonService.create` retries a few times on a unique-constraint collision
+(SQLSTATE 23505), which at ~56 billion combinations should never actually
+fire. The DB enforces the shape with a `CHECK` constraint added directly in
+the migration SQL (`persons_public_id_format`) rather than through Drizzle's
+schema builder, since the column is never user-editable and Drizzle doesn't
+need to know about it to do its job.
+
+Existing rows (from before this column existed) were backfilled in the same
+migration that added the column — a per-row `random()`-driven `UPDATE`
+mirroring `generatePublicId()`'s own alphabet and shape, not a separate
+script, since it only ever needed to run once.
+
 ### shadcn/ui on React Aria Components, not Radix or Base UI
 
 New components are pulled from Adobe's React Aria Components
@@ -472,16 +493,21 @@ These are open, and nothing in the code presumes an answer:
   attributes.
 - **GEDCOM import and export.** The domain model is shaped for it —
   `HistoricalDate` keeps the source's own wording, and `sex` uses the GEDCOM
-  vocabulary — but no importer/exporter exists. `parseHistoricalDate` in
-  `packages/core` (used by `PersonService.create`/`update` to fill in
-  `earliest`/`latest` whenever a caller sends only `original`, which is all
-  the person edit form ever sends) is a first pass at the wordings this app's
-  own fields produce — exact day/month/year, month/year, bare year, and
-  abt/bef/aft qualifiers — not the full GEDCOM date grammar (no `BET ... AND
-...` ranges, no double-dating, no calendar escapes). A caller that already
-  resolved bounds itself is trusted and left alone, so a future GEDCOM
-  importer reading the fuller grammar can supply its own without this parser
-  overriding it.
+  vocabulary — but no importer/exporter exists. Date parsing/display
+  (`packages/core/src/historical-date.ts`) is a first pass at the wordings
+  this app's own fields produce — exact day/month/year, month/year, bare
+  year, ISO `YYYY-MM-DD`/`YYYY-MM`, abt/bef/aft qualifiers, and `BET ... AND
+...`/`FROM ... TO ...` ranges — not the full GEDCOM date grammar (no
+  double-dating, no calendar escapes). `resolveDate` in `PersonService`
+  unconditionally recomputes `earliest`/`latest` from `original` on every
+  write (person birth/death, event dates, union start/end dates) as an
+  idempotent backstop, since the frontend now sends its own freshly-computed
+  bounds on every save too — both sides call the same parser, so they can't
+  disagree. `packages/db/scripts/backfill-historical-dates.ts` is a one-off,
+  not-wired-into-`db:migrate` script for re-resolving already-stored rows
+  after a parser change; not something a future GEDCOM importer needs to
+  care about, since it would supply its own bounds from the fuller grammar
+  it reads.
 - **Media and document storage.** No object store is wired up.
 - **Deployment target and CI.** `pnpm check && pnpm test` is the intended gate;
   no pipeline is defined.

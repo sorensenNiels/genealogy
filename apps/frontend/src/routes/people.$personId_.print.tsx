@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
 
+import { formatDisplayDate } from "../lib/format-date";
 import { useTRPC } from "../lib/trpc";
 
 export const Route = createFileRoute("/people/$personId_/print")({
@@ -78,12 +79,12 @@ function PrintRoute() {
             <dd>{record.sex}</dd>
             <dt className="text-muted-foreground">Born</dt>
             <dd>
-              {record.birth?.original ?? "—"}
+              {formatDisplayDate(record.birth) ?? "—"}
               {record.birthPlace ? ` in ${record.birthPlace}` : ""}
             </dd>
             <dt className="text-muted-foreground">Died</dt>
             <dd>
-              {record.isLiving ? "Living" : (record.death?.original ?? "—")}
+              {record.isLiving ? "Living" : (formatDisplayDate(record.death) ?? "—")}
               {record.deathPlace ? ` in ${record.deathPlace}` : ""}
             </dd>
             {record.notes && (
@@ -129,7 +130,7 @@ function PrintRoute() {
                     {event.eventType}
                     {event.label ? ` (${event.label})` : ""}:
                   </span>{" "}
-                  {event.date?.original}
+                  {formatDisplayDate(event.date)}
                   {event.place ? ` in ${event.place}` : ""}
                   {event.description ? ` — ${event.description}` : ""}
                 </li>

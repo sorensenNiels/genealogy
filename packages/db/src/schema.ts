@@ -12,6 +12,17 @@ export const persons = pgTable(
   "persons",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+
+    // A short, memorable identifier distinct from `id` above — meant to be
+    // read aloud, written down, or shared, which the UUID isn't. Generated
+    // once at creation (see generatePublicId in the backend) and never
+    // changes; the backend retries on a collision, which `unique()` here is
+    // what makes detectable. The DB also enforces the "starts with a letter,
+    // rest is A-Z0-9" shape via a CHECK constraint added directly in the
+    // migration (not expressible in the Drizzle schema builder), since this
+    // column is never user-editable and Drizzle doesn't need to know about it.
+    publicId: text("public_id").notNull().unique(),
+
     given: text("given").notNull().default(""),
     middleName: text("middle_name"),
     surname: text("surname").notNull().default(""),

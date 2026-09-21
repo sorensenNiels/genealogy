@@ -43,6 +43,10 @@ export class PersonRouter {
     return router({
       list: protectedProcedure.input(listInput).query(({ input }) => this.persons.list(input)),
 
+      listTitlePrefixes: protectedProcedure.query(() => this.persons.listTitlePrefixes()),
+
+      listSuffixes: protectedProcedure.query(() => this.persons.listSuffixes()),
+
       byId: protectedProcedure
         .input(z.object({ id: personIdSchema }))
         .query(({ input }) => this.persons.byId(input.id)),

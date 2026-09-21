@@ -1,3 +1,4 @@
+import { resolveHistoricalDate } from "@genealogy/core";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -8,6 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@genealogy/ui/components/alert-dialog";
+import { Autocomplete } from "@genealogy/ui/components/autocomplete";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button } from "@genealogy/ui/components/button";
@@ -26,6 +28,7 @@ import {
   ComboboxInput,
   ComboboxItem,
 } from "@genealogy/ui/components/combobox";
+import { CopyableText } from "@genealogy/ui/components/copyable-text";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@genealogy/ui/components/dialog";
+import { HistoricalDateInput } from "@genealogy/ui/components/historical-date-input";
 import { Input } from "@genealogy/ui/components/input";
 import { Popover, PopoverContent } from "@genealogy/ui/components/popover";
 import {
@@ -86,10 +90,30 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+function HistoricalDateDemo({ label, initialValue }: { label: string; initialValue: string }) {
+  const [value, setValue] = useState(initialValue);
+  const trimmed = value.trim();
+  const resolved = trimmed === "" ? null : resolveHistoricalDate(trimmed);
+  const preview =
+    resolved === null
+      ? null
+      : resolved.display
+        ? { text: resolved.display, status: "parsed" as const }
+        : { text: value, status: "unparsed" as const };
+
+  return (
+    <div className="w-56 space-y-1">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <HistoricalDateInput value={value} onChange={setValue} preview={preview} />
+    </div>
+  );
+}
+
 function ComponentsShowcase() {
   const [query, setQuery] = useState("");
   const [switchOn, setSwitchOn] = useState(true);
   const [checked, setChecked] = useState(true);
+  const [titlePrefix, setTitlePrefix] = useState("");
 
   const options = SAMPLE_PEOPLE.filter((person) =>
     person.name.toLowerCase().includes(query.toLowerCase()),
@@ -140,6 +164,30 @@ function ComponentsShowcase() {
 
       <Section title="Input">
         <Input placeholder="Given names" className="max-w-56" />
+      </Section>
+
+      <Section title="Copyable Text">
+        <CopyableText value="LZ4Y-9K2" />
+      </Section>
+
+      <Section title="Historical Date Input">
+        <HistoricalDateDemo label="Exact" initialValue="12 MAR 1901" />
+        <HistoricalDateDemo label="Approximate" initialValue="abt 1854" />
+        <HistoricalDateDemo label="Before" initialValue="bef 1920" />
+        <HistoricalDateDemo label="Range" initialValue="BET 1850 AND 1860" />
+        <HistoricalDateDemo label="Unreadable" initialValue="sometime in the war" />
+      </Section>
+
+      <Section title="Autocomplete">
+        <div className="w-56 space-y-1">
+          <p className="text-xs text-muted-foreground">Title / prefix</p>
+          <Autocomplete
+            placeholder="e.g. Dr., Rev."
+            value={titlePrefix}
+            onChange={setTitlePrefix}
+            options={["Mr.", "Mrs.", "Miss", "Ms.", "Dr.", "Rev.", "Prof.", "Sir"]}
+          />
+        </div>
       </Section>
 
       <Section title="Switch">

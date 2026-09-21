@@ -52,6 +52,15 @@
       "rules": { "no-console": "off" }
     },
     {
+      "files": ["packages/db/scripts/**"],
+      "rules": {
+        "no-console": "off",
+        // A one-off migration script processing a handful of rows — sequential
+        // awaits keep it simple and predictable, not a throughput concern.
+        "no-await-in-loop": "off"
+      }
+    },
+    {
       "files": ["apps/backend/**"],
       "rules": {
         // A NestJS module is an empty decorated class by design.

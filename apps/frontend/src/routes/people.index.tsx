@@ -11,6 +11,7 @@ import {
   AlertDialogTitle,
 } from "@genealogy/ui/components/alert-dialog";
 import { Button } from "@genealogy/ui/components/button";
+import { CopyableText } from "@genealogy/ui/components/copyable-text";
 import { Input } from "@genealogy/ui/components/input";
 import {
   Table,
@@ -53,6 +54,11 @@ const columns = helper.columns([
         {context.getValue()}
       </Link>
     ),
+  }),
+  helper.accessor("publicId", {
+    id: "publicId",
+    header: "ID",
+    cell: (context) => <CopyableText value={context.getValue()} />,
   }),
   helper.accessor("sex", { id: "sex", header: "Sex" }),
   helper.accessor((row) => formatLifespan(row) ?? "—", { id: "lifespan", header: "Lifespan" }),

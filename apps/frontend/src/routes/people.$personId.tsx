@@ -8,6 +8,8 @@ import {
   formatPersonName,
   nameVariantTypeSchema,
   parentageSchema,
+  parseHistoricalDate,
+  resolveHistoricalDate,
   sexSchema,
   unionStatusSchema,
   type CitationFactType,
@@ -28,6 +30,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@genealogy/ui/components/alert-dialog";
+import { Autocomplete } from "@genealogy/ui/components/autocomplete";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button } from "@genealogy/ui/components/button";
@@ -45,6 +48,7 @@ import {
   ComboboxInput,
   ComboboxItem,
 } from "@genealogy/ui/components/combobox";
+import { CopyableText } from "@genealogy/ui/components/copyable-text";
 import {
   Dialog,
   DialogContent,
@@ -52,6 +56,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@genealogy/ui/components/dialog";
+import {
+  HistoricalDateInput,
+  type HistoricalDatePreview,
+} from "@genealogy/ui/components/historical-date-input";
 import { Input } from "@genealogy/ui/components/input";
 import { Popover, PopoverContent } from "@genealogy/ui/components/popover";
 import {
@@ -82,6 +90,7 @@ import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 
 import { apiUrl } from "../lib/env";
+import { formatDisplayDate } from "../lib/format-date";
 import { useTRPC } from "../lib/trpc";
 
 export const Route = createFileRoute("/people/$personId")({
@@ -107,6 +116,45 @@ const SEX_LABELS: Record<(typeof sexSchema.options)[number], string> = {
   F: "Female",
   U: "Unknown",
 };
+
+// A starting point, not a closed vocabulary — PersonFields' Title/prefix and
+// Suffix fields merge these with whatever's already been typed for other
+// people (see the listTitlePrefixes/listSuffixes queries), so the
+// autocomplete favors values already in use once there are any.
+const STANDARD_TITLE_PREFIXES = [
+  "Mr.",
+  "Mrs.",
+  "Miss",
+  "Ms.",
+  "Dr.",
+  "Rev.",
+  "Fr.",
+  "Prof.",
+  "Sir",
+  "Lady",
+  "Lord",
+  "Capt.",
+  "Col.",
+  "Maj.",
+  "Gen.",
+  "Lt.",
+  "Sgt.",
+  "Hon.",
+];
+const STANDARD_SUFFIXES = [
+  "Jr.",
+  "Sr.",
+  "II",
+  "III",
+  "IV",
+  "V",
+  "Esq.",
+  "PhD",
+  "MD",
+  "DDS",
+  "DVM",
+  "RN",
+];
 
 /**
  * Suggested keys for the `details` bag on `EventForm`, per event type — the
@@ -164,6 +212,8 @@ function PersonDetailRoute() {
         queryKey: trpc.person.relatives.queryKey({ id: personId }),
       }),
       queryClient.invalidateQueries({ queryKey: trpc.person.list.queryKey() }),
+      queryClient.invalidateQueries({ queryKey: trpc.person.listTitlePrefixes.queryKey() }),
+      queryClient.invalidateQueries({ queryKey: trpc.person.listSuffixes.queryKey() }),
       queryClient.invalidateQueries({ queryKey: trpc.person.listNames.queryKey({ personId }) }),
       queryClient.invalidateQueries({ queryKey: trpc.person.listEvents.queryKey({ personId }) }),
       queryClient.invalidateQueries({ queryKey: trpc.person.listUnions.queryKey({ personId }) }),
@@ -272,6 +322,10 @@ function PersonFields({
   const trpc = useTRPC();
   const update = useMutation(trpc.person.update.mutationOptions({ onSuccess: onSaved }));
   const removePerson = useMutation(trpc.person.remove.mutationOptions({ onSuccess: onDeleted }));
+  const titlePrefixesQuery = useQuery(trpc.person.listTitlePrefixes.queryOptions());
+  const suffixesQuery = useQuery(trpc.person.listSuffixes.queryOptions());
+  const titlePrefixOptions = mergeOptions(STANDARD_TITLE_PREFIXES, titlePrefixesQuery.data);
+  const suffixOptions = mergeOptions(STANDARD_SUFFIXES, suffixesQuery.data);
 
   const form = useForm({
     defaultValues: {
@@ -299,15 +353,16 @@ function PersonFields({
         titlePrefix: value.titlePrefix.trim() === "" ? null : value.titlePrefix,
         suffix: value.suffix.trim() === "" ? null : value.suffix,
         nickname: value.nickname.map((name) => name.trim()).filter((name) => name !== ""),
-        // Only the free-text wording is editable here; earliest/latest bounds
-        // are set by parsing (GEDCOM import, later) and kept as-is otherwise.
+        // Bounds are recomputed from the current wording on every save, not
+        // carried over from what was previously stored — otherwise editing
+        // the text alone (without it happening to still parse to the same
+        // bounds) would leave a stale earliest/latest attached to new words.
         birth:
           value.birthOriginal.trim() === ""
             ? null
             : {
                 original: value.birthOriginal.trim(),
-                earliest: person.birth?.earliest ?? null,
-                latest: person.birth?.latest ?? null,
+                ...parseHistoricalDate(value.birthOriginal.trim()),
               },
         birthPlace: value.birthPlace.trim() === "" ? null : value.birthPlace,
         death:
@@ -315,8 +370,7 @@ function PersonFields({
             ? null
             : {
                 original: value.deathOriginal.trim(),
-                earliest: person.death?.earliest ?? null,
-                latest: person.death?.latest ?? null,
+                ...parseHistoricalDate(value.deathOriginal.trim()),
               },
         deathPlace: value.deathPlace.trim() === "" ? null : value.deathPlace,
         notes: value.notes.trim() === "" ? null : value.notes,
@@ -332,11 +386,13 @@ function PersonFields({
   const isDirty = useStore(form.store, (state) => state.isDirty);
 
   const age = calculateAge(person);
-  const birthLine = person.birth?.original
-    ? `Born ${person.birth.original}${person.isLiving && age !== null ? ` (${age})` : ""}`
+  const birthDisplay = formatDisplayDate(person.birth);
+  const deathDisplay = formatDisplayDate(person.death);
+  const birthLine = birthDisplay
+    ? `Born ${birthDisplay}${person.isLiving && age !== null ? ` (${age})` : ""}`
     : null;
   const deathLine = !person.isLiving
-    ? `${person.death?.original ? `Died ${person.death.original}` : "Died"}${age !== null ? ` (${age})` : ""}`
+    ? `${deathDisplay ? `Died ${deathDisplay}` : "Died"}${age !== null ? ` (${age})` : ""}`
     : null;
 
   return (
@@ -346,6 +402,7 @@ function PersonFields({
           <CardTitle className="flex items-center gap-2">
             <GenderIcon sex={person.sex} />
             {formatFullPersonName(person)}
+            <CopyableText value={person.publicId} className="font-normal" />
           </CardTitle>
           {birthLine && (
             <CardDescription className="flex items-center gap-1.5">
@@ -444,11 +501,12 @@ function PersonFields({
           <form.Field name="titlePrefix">
             {(field) => (
               <LabeledField label="Title / prefix">
-                <Input
+                <Autocomplete
                   placeholder="e.g. Dr., Rev."
                   value={field.state.value}
                   onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
+                  onChange={field.handleChange}
+                  options={titlePrefixOptions}
                 />
               </LabeledField>
             )}
@@ -456,11 +514,12 @@ function PersonFields({
           <form.Field name="suffix">
             {(field) => (
               <LabeledField label="Suffix">
-                <Input
+                <Autocomplete
                   placeholder="e.g. Jr., III"
                   value={field.state.value}
                   onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
+                  onChange={field.handleChange}
+                  options={suffixOptions}
                 />
               </LabeledField>
             )}
@@ -516,11 +575,12 @@ function PersonFields({
             <form.Field name="birthOriginal">
               {(field) => (
                 <LabeledField label="Date of Birth">
-                  <Input
+                  <HistoricalDateInput
                     placeholder="e.g. abt 1854"
                     value={field.state.value}
                     onBlur={field.handleBlur}
-                    onChange={(event) => field.handleChange(event.target.value)}
+                    onChange={field.handleChange}
+                    preview={historicalDatePreview(field.state.value)}
                   />
                 </LabeledField>
               )}
@@ -542,11 +602,12 @@ function PersonFields({
               <form.Field name="deathOriginal">
                 {(field) => (
                   <LabeledField label="Date of Death">
-                    <Input
+                    <HistoricalDateInput
                       placeholder="e.g. 12 MAR 1901"
                       value={field.state.value}
                       onBlur={field.handleBlur}
-                      onChange={(event) => field.handleChange(event.target.value)}
+                      onChange={field.handleChange}
+                      preview={historicalDatePreview(field.state.value)}
                     />
                   </LabeledField>
                 )}
@@ -622,6 +683,30 @@ function PersonFields({
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * Standard values first (recognizable, always offered), then whatever's
+ * already recorded for other people that isn't already in that list —
+ * de-duplicated and alphabetized, so a value someone already used shows up
+ * without drowning out the common ones.
+ */
+function mergeOptions(
+  standard: readonly string[],
+  recorded: readonly string[] | undefined,
+): string[] {
+  const extra = (recorded ?? [])
+    .filter((value) => !standard.includes(value))
+    .toSorted((a, b) => a.localeCompare(b));
+  return [...standard, ...extra];
+}
+
+/** Shared by every date field in this file — see HistoricalDateInput. */
+function historicalDatePreview(text: string): HistoricalDatePreview | null {
+  const trimmed = text.trim();
+  if (trimmed === "") return null;
+  const { display } = resolveHistoricalDate(trimmed);
+  return display ? { text: display, status: "parsed" } : { text: trimmed, status: "unparsed" };
 }
 
 function GenderIcon({ sex }: { sex: Sex }) {
@@ -815,7 +900,7 @@ function RelativesSection({
                 {union && (
                   <p className="text-xs text-muted-foreground">
                     {union.status}
-                    {union.startDate ? ` · ${union.startDate.original}` : ""}
+                    {union.startDate ? ` · ${formatDisplayDate(union.startDate)}` : ""}
                     {union.startPlace ? ` in ${union.startPlace}` : ""}
                   </p>
                 )}
@@ -875,7 +960,7 @@ function AddRelative({
         startDate:
           unionDate.trim() === ""
             ? null
-            : { original: unionDate.trim(), earliest: null, latest: null },
+            : { original: unionDate.trim(), ...parseHistoricalDate(unionDate.trim()) },
         startPlace: unionPlace.trim() === "" ? null : unionPlace,
       });
     } else if (kind === "parent") {
@@ -934,10 +1019,11 @@ function AddRelative({
                 ))}
               </SelectContent>
             </Select>
-            <Input
+            <HistoricalDateInput
               placeholder="Marriage date, e.g. 12 JUN 1920"
               value={unionDate}
-              onChange={(event) => setUnionDate(event.target.value)}
+              onChange={setUnionDate}
+              preview={historicalDatePreview(unionDate)}
             />
             <Input
               placeholder="Marriage place"
@@ -1030,7 +1116,7 @@ function CreateAndLinkForm({
           startDate:
             unionDate.trim() === ""
               ? null
-              : { original: unionDate.trim(), earliest: null, latest: null },
+              : { original: unionDate.trim(), ...parseHistoricalDate(unionDate.trim()) },
           startPlace: unionPlace.trim() === "" ? null : unionPlace,
         });
       } else if (kind === "parent") {
@@ -1364,7 +1450,7 @@ function EventRow({
         {event.eventType === "other" && event.label && (
           <span className="mr-1 font-medium">{event.label}</span>
         )}
-        {event.date?.original}
+        {formatDisplayDate(event.date)}
         {event.place ? ` in ${event.place}` : ""}
         {event.details && Object.keys(event.details).length > 0 && (
           <p className="text-xs text-muted-foreground">
@@ -1438,7 +1524,10 @@ function EventForm({
         date:
           value.dateOriginal.trim() === ""
             ? null
-            : { original: value.dateOriginal.trim(), earliest: null, latest: null },
+            : {
+                original: value.dateOriginal.trim(),
+                ...parseHistoricalDate(value.dateOriginal.trim()),
+              },
         place: value.place.trim() === "" ? null : value.place,
         details: detailEntries.length > 0 ? Object.fromEntries(detailEntries) : null,
         description: value.description.trim() === "" ? null : value.description,
@@ -1495,10 +1584,11 @@ function EventForm({
       )}
       <form.Field name="dateOriginal">
         {(field) => (
-          <Input
+          <HistoricalDateInput
             placeholder="Date, e.g. 1902 or abt 1902"
             value={field.state.value}
-            onChange={(inputEvent) => field.handleChange(inputEvent.target.value)}
+            onChange={field.handleChange}
+            preview={historicalDatePreview(field.state.value)}
           />
         )}
       </form.Field>

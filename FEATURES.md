@@ -13,6 +13,8 @@ A living backlog for the genealogy app. Status markers: ✅ done, 🚧 planned, 
 - ✅ Sources & citations: attach evidence to a person, or to a specific fact about them (birth, death, an alternate name, a life event, a union), with a confidence level (low/medium/high/proven), page/volume/entry ID/certificate number, and a note
 - 🚧 Media attachments: scanned documents (certificates, deeds, census pages) attached to a person or a citation — see "Photos & albums via Immich" under Ideas for the separate plan covering photos specifically
 - ✅ Search people by name
+- ✅ A short, human-readable public id per person (FamilySearch-style, e.g. `LZ4Y-9K2`) — always starts with a letter, distinct from the internal database id, shown as a subtle click-to-copy indicator in the people list and on a person's own page
+- ✅ Autocomplete on Title/prefix and Suffix, suggesting a fixed list of common values plus whatever's already been typed for other people — encourages reusing the same wording ("Dr." rather than a mix of "Dr.", "Dr", "Doctor") without forcing a closed vocabulary
 
 ### Person record & UI — gaps found in a review of the current implementation
 
@@ -27,6 +29,7 @@ A living backlog for the genealogy app. Status markers: ✅ done, 🚧 planned, 
 - ✅ Single-person printable report ("family group sheet"): a print-optimized page (`/people/$personId/print`) summarizing a person's vitals, alternate names, immediate family, life events, and sources
 - ✅ Computed age shown on the person page (current age if living, age at death otherwise)
 - ✅ Delete a person outright (relational row, alternate names, life events, unions, citations, and their uploaded photo), only while they have no recorded parent, spouse, or child — from the people list and from the person's own page
+- ✅ Unified date entry across every date field (birth/death, life events, union start dates): a live preview shows how free text like "abt 1854", "1970-11-18", or "BET 1900 AND 1905" was understood, with a warning icon for text that couldn't be read. Every date is displayed the same normalized way everywhere (person header, lists, print report, event and union rows) rather than the raw typed wording
 
 ## Tree & visualization
 

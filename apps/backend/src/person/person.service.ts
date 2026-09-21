@@ -42,10 +42,11 @@ import {
 } from "@genealogy/db";
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { and, asc, count, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, eq, ilike, inArray, isNotNull, or, sql, type SQL } from "drizzle-orm";
 import type { Pool } from "pg";
 
 import { DRIZZLE, PG_POOL } from "../database/database.module.js";
+import { generatePublicId } from "./public-id.js";
 
 const MIME_EXTENSIONS: Record<string, string> = {
   "image/jpeg": ".jpg",
@@ -55,16 +56,29 @@ const MIME_EXTENSIONS: Record<string, string> = {
 };
 
 /**
- * Fills in `earliest`/`latest` from the free-text wording when the caller
- * hasn't already resolved them — the person edit form only ever sends
- * `original` (see PersonFields in the frontend), so this is what turns
- * "12 MAR 1901" into bounds `calculateAge` can use. A caller that already
- * resolved bounds itself (a future GEDCOM importer, say, which may read a
- * grammar this parser doesn't) is trusted and left alone.
+ * Recomputes `earliest`/`latest` from the free-text wording, unconditionally,
+ * for every date field a person/event/union can carry. Unconditional rather
+ * than "only if both bounds are still null" on purpose: every frontend form
+ * that sets a date now recomputes its own bounds client-side too (see
+ * PersonFields/EventForm/AddRelative), so server and client should always
+ * agree — this exists as an idempotent backstop against a caller sending
+ * stale bounds alongside changed text, which is exactly the bug class that
+ * motivated this function existing at all. It's cheap (a single regex pass)
+ * and safe to run on every write.
  */
 function resolveDate(date: HistoricalDate | null | undefined): HistoricalDate | null | undefined {
-  if (!date || date.earliest !== null || date.latest !== null) return date;
+  if (!date) return date;
   return { ...date, ...parseHistoricalDate(date.original) };
+}
+
+/** Postgres SQLSTATE 23505 — a `UNIQUE`/primary-key constraint was violated. */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "23505"
+  );
 }
 
 export interface UploadedPhoto {
@@ -134,6 +148,32 @@ export class PersonService {
     };
   }
 
+  /**
+   * Every distinct, non-blank `titlePrefix`/`suffix` already recorded across
+   * all persons, sorted — feeds the autocomplete on those two fields in
+   * PersonFields alongside a fixed list of common values, so a title or
+   * suffix already used once is easy to reuse verbatim instead of being
+   * retyped slightly differently ("Dr." vs "Dr" vs "Doctor").
+   */
+  async listTitlePrefixes(): Promise<string[]> {
+    return this.distinctNonBlank(persons.titlePrefix);
+  }
+
+  async listSuffixes(): Promise<string[]> {
+    return this.distinctNonBlank(persons.suffix);
+  }
+
+  private async distinctNonBlank(column: typeof persons.titlePrefix | typeof persons.suffix) {
+    const rows = await this.db
+      .selectDistinct({ value: column })
+      .from(persons)
+      .where(isNotNull(column))
+      .orderBy(asc(column));
+    return rows
+      .map((row) => row.value)
+      .filter((value): value is string => value !== null && value.trim() !== "");
+  }
+
   async byId(id: string): Promise<PersonRow> {
     const [row] = await this.db.select().from(persons).where(eq(persons.id, id)).limit(1);
     if (!row) {
@@ -146,18 +186,37 @@ export class PersonService {
    * Writes the relational row and its graph node in one transaction. If either
    * half fails the other is rolled back, which is the only thing keeping the
    * two stores from drifting apart.
+   *
+   * Retries a handful of times on a `publicId` collision (Postgres unique
+   * violation, SQLSTATE 23505) — at ~56 billion combinations this should
+   * essentially never fire, but the collision is cheap to detect and cheap
+   * to retry, so there's no reason not to handle it.
    */
   async create(input: CreatePerson): Promise<PersonRow> {
     const values = { ...input, birth: resolveDate(input.birth), death: resolveDate(input.death) };
-    return inGraphTransaction(this.pool, async (client) => {
-      const tx = createDatabase(client);
-      const [row] = await tx.insert(persons).values(values).returning();
-      if (!row) {
-        throw new Error("Insert returned no row");
+    for (let attempt = 1; ; attempt++) {
+      try {
+        // Each attempt must fully resolve before the next can know whether a
+        // retry is even needed — nothing here is parallelizable.
+        // eslint-disable-next-line no-await-in-loop
+        return await inGraphTransaction(this.pool, async (client) => {
+          const tx = createDatabase(client);
+          const [row] = await tx
+            .insert(persons)
+            .values({ ...values, publicId: generatePublicId() })
+            .returning();
+          if (!row) {
+            throw new Error("Insert returned no row");
+          }
+          await upsertPersonNode(this.pool, row.id, { client });
+          return row;
+        });
+      } catch (error) {
+        if (attempt >= 5 || !isUniqueViolation(error)) {
+          throw error;
+        }
       }
-      await upsertPersonNode(this.pool, row.id, { client });
-      return row;
-    });
+    }
   }
 
   /** Relational fields only — the graph node is keyed by `id` alone, so nothing there changes. */
@@ -378,7 +437,8 @@ export class PersonService {
   }
 
   async addEvent(input: CreatePersonEvent): Promise<PersonEventRow> {
-    const [row] = await this.db.insert(personEvents).values(input).returning();
+    const values = { ...input, date: resolveDate(input.date) };
+    const [row] = await this.db.insert(personEvents).values(values).returning();
     if (!row) {
       throw new Error("Insert returned no row");
     }
@@ -387,9 +447,10 @@ export class PersonService {
 
   async updateEvent(input: UpdatePersonEvent): Promise<PersonEventRow> {
     const { id, ...patch } = input;
+    const values = { ...patch, date: resolveDate(patch.date) };
     const [row] = await this.db
       .update(personEvents)
-      .set({ ...patch, updatedAt: new Date() })
+      .set({ ...values, updatedAt: new Date() })
       .where(eq(personEvents.id, id))
       .returning();
     if (!row) {
@@ -421,9 +482,14 @@ export class PersonService {
    * guarantees (see `create()` above).
    */
   async addUnion(input: CreateUnion): Promise<UnionRow> {
+    const values = {
+      ...input,
+      startDate: resolveDate(input.startDate),
+      endDate: resolveDate(input.endDate),
+    };
     return inGraphTransaction(this.pool, async (client) => {
       const tx = createDatabase(client);
-      const [row] = await tx.insert(unions).values(input).returning();
+      const [row] = await tx.insert(unions).values(values).returning();
       if (!row) {
         throw new Error("Insert returned no row");
       }
@@ -434,9 +500,14 @@ export class PersonService {
 
   async updateUnion(input: UpdateUnion): Promise<UnionRow> {
     const { id, ...patch } = input;
+    const values = {
+      ...patch,
+      startDate: resolveDate(patch.startDate),
+      endDate: resolveDate(patch.endDate),
+    };
     const [row] = await this.db
       .update(unions)
-      .set({ ...patch, updatedAt: new Date() })
+      .set({ ...values, updatedAt: new Date() })
       .where(eq(unions.id, id))
       .returning();
     if (!row) {
