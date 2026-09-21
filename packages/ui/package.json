@@ -7,6 +7,8 @@
   "exports": {
     "./styles.css": "./src/styles.css",
     "./lib/utils": "./src/lib/utils.ts",
+    "./lib/*": "./src/lib/*.ts",
+    "./hooks/*": "./src/hooks/*.ts",
     "./components/*": "./src/components/*.tsx"
   },
   "scripts": {
@@ -15,15 +17,21 @@
     "clean": "rm -rf .turbo *.tsbuildinfo"
   },
   "dependencies": {
-    "@base-ui/react": "catalog:",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "lucide-react": "catalog:",
+    "motion": "catalog:",
+    "react-aria-components": "catalog:",
     "tailwind-merge": "catalog:"
   },
   "devDependencies": {
+    "@react-aria/test-utils": "catalog:",
+    "@testing-library/jest-dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "jsdom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "tailwindcss": "catalog:",

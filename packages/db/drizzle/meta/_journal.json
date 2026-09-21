@@ -15,6 +15,62 @@
       "when": 1789904403366,
       "tag": "0001_dapper_green_goblin",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789905820426,
+      "tag": "0002_fair_xavin",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789932536109,
+      "tag": "0003_dusty_black_panther",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789935198125,
+      "tag": "0004_futuristic_shadow_king",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789936515585,
+      "tag": "0005_noisy_blue_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789971268759,
+      "tag": "0006_lonely_ender_wiggin",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789971830211,
+      "tag": "0007_ambitious_hex",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789974821171,
+      "tag": "0008_spicy_young_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789975965707,
+      "tag": "0009_swift_ultimates",
+      "breakpoints": true
     }
   ]
 }

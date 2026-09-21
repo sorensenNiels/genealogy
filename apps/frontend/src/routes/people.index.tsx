@@ -1,5 +1,15 @@
 import type { AppRouter } from "@genealogy/backend";
 import { formatLifespan, formatPersonName } from "@genealogy/core";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@genealogy/ui/components/alert-dialog";
 import { Button } from "@genealogy/ui/components/button";
 import { Input } from "@genealogy/ui/components/input";
 import {
@@ -12,14 +22,15 @@ import {
 } from "@genealogy/ui/components/table";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
 import type { inferRouterOutputs } from "@trpc/server";
+import { Trash2Icon } from "lucide-react";
 import { useState } from "react";
 
 import { useTRPC } from "../lib/trpc";
 
-export const Route = createFileRoute("/people")({
+export const Route = createFileRoute("/people/")({
   component: People,
 });
 
@@ -30,10 +41,27 @@ type PersonListItem = inferRouterOutputs<AppRouter>["person"]["list"]["items"][n
 const features = tableFeatures({});
 const helper = createColumnHelper<typeof features, PersonListItem>();
 const columns = helper.columns([
-  helper.accessor((row) => formatPersonName(row), { id: "name", header: "Name" }),
+  helper.accessor((row) => formatPersonName(row), {
+    id: "name",
+    header: "Name",
+    cell: (context) => (
+      <Link
+        to="/people/$personId"
+        params={{ personId: context.row.original.id }}
+        className="hover:underline"
+      >
+        {context.getValue()}
+      </Link>
+    ),
+  }),
   helper.accessor("sex", { id: "sex", header: "Sex" }),
   helper.accessor((row) => formatLifespan(row) ?? "—", { id: "lifespan", header: "Lifespan" }),
   helper.accessor((row) => row.birthPlace ?? "—", { id: "birthPlace", header: "Born in" }),
+  helper.display({
+    id: "actions",
+    header: "",
+    cell: (context) => <DeletePersonAction person={context.row.original} />,
+  }),
 ]);
 
 const PAGE_SIZE = 50;
@@ -112,15 +140,15 @@ function People() {
           {(field) => (
             <Input
               className="max-w-40"
-              placeholder="Surname"
+              placeholder="Last name"
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(event) => field.handleChange(event.target.value)}
-              aria-label="Surname"
+              aria-label="Last name"
             />
           )}
         </form.Field>
-        <Button type="submit" disabled={createPerson.isPending}>
+        <Button type="submit" isDisabled={createPerson.isPending}>
           {createPerson.isPending ? "Adding…" : "Add person"}
         </Button>
       </form>
@@ -163,6 +191,56 @@ function People() {
           )}
         </TableBody>
       </Table>
+    </div>
+  );
+}
+
+/** Hidden outright when `hasRelations` is set — the backend enforces the same rule in `remove`. */
+function DeletePersonAction({ person }: { person: PersonListItem }) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const removePerson = useMutation(
+    trpc.person.remove.mutationOptions({
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({ queryKey: trpc.person.list.queryKey() });
+      },
+    }),
+  );
+
+  if (person.hasRelations) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <AlertDialog>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`Delete ${formatPersonName(person)}`}
+          isDisabled={removePerson.isPending}
+        >
+          <Trash2Icon className="size-4 text-destructive" />
+        </Button>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {formatPersonName(person)}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes them and everything recorded about them — alternate names,
+              life events, sources and citations. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onPress={() => removePerson.mutate({ id: person.id })}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {removePerson.isError && (
+        <p className="text-xs text-destructive">{removePerson.error.message}</p>
+      )}
     </div>
   );
 }

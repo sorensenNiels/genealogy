@@ -1,0 +1,1860 @@
+import type { AppRouter } from "@genealogy/backend";
+import {
+  calculateAge,
+  confidenceSchema,
+  eventTypeSchema,
+  formatFullPersonName,
+  formatLifespan,
+  formatPersonName,
+  nameVariantTypeSchema,
+  parentageSchema,
+  sexSchema,
+  unionStatusSchema,
+  type CitationFactType,
+  type Confidence,
+  type EventType,
+  type NameVariantType,
+  type Parentage,
+  type Sex,
+  type UnionStatus,
+} from "@genealogy/core";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@genealogy/ui/components/alert-dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
+import { Badge } from "@genealogy/ui/components/badge";
+import { Button } from "@genealogy/ui/components/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@genealogy/ui/components/card";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+} from "@genealogy/ui/components/combobox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@genealogy/ui/components/dialog";
+import { Input } from "@genealogy/ui/components/input";
+import { Popover, PopoverContent } from "@genealogy/ui/components/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@genealogy/ui/components/select";
+import { Switch } from "@genealogy/ui/components/switch";
+import { useForm, useStore } from "@tanstack/react-form";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import type { inferRouterOutputs } from "@trpc/server";
+import {
+  Cake,
+  CameraIcon,
+  CircleHelp,
+  Cross,
+  Loader2Icon,
+  Mars,
+  PlusIcon,
+  Trash2Icon,
+  Venus,
+  XIcon,
+} from "lucide-react";
+import type { ReactNode } from "react";
+import { useRef, useState } from "react";
+
+import { apiUrl } from "../lib/env";
+import { useTRPC } from "../lib/trpc";
+
+export const Route = createFileRoute("/people/$personId")({
+  component: PersonDetailRoute,
+});
+
+type RouterOutputs = inferRouterOutputs<AppRouter>;
+type PersonRow = RouterOutputs["person"]["byId"];
+type NameVariantRow = RouterOutputs["person"]["listNames"][number];
+type PersonEventRow = RouterOutputs["person"]["listEvents"][number];
+type UnionRow = RouterOutputs["person"]["listUnions"][number];
+type SourceRow = RouterOutputs["source"]["listSources"][number];
+type CitationRow = RouterOutputs["source"]["listCitations"][number];
+type RelativeKind = "parent" | "spouse" | "child";
+
+const NO_UNIONS: UnionRow[] = [];
+
+// Stored values stay the M/F/U schema; only the displayed labels change here.
+// Revisit once i18n lands — this should become a translation lookup, not a
+// hardcoded English map.
+const SEX_LABELS: Record<(typeof sexSchema.options)[number], string> = {
+  M: "Male",
+  F: "Female",
+  U: "Unknown",
+};
+
+/**
+ * Suggested keys for the `details` bag on `EventForm`, per event type — the
+ * bag itself stays a free-form `Record<string, string>` (see `EventDetails`
+ * in packages/core), this is purely a frontend display/input convenience.
+ * "other" has none: its free-text label and description already cover it.
+ */
+const EVENT_DETAIL_FIELDS: Partial<Record<EventType, { key: string; label: string }[]>> = {
+  christening: [
+    { key: "officiant", label: "Officiant" },
+    { key: "church", label: "Church" },
+  ],
+  burial: [
+    { key: "cemetery", label: "Cemetery" },
+    { key: "plot", label: "Plot" },
+  ],
+  cremation: [{ key: "crematorium", label: "Crematorium" }],
+  immigration: [
+    { key: "ship", label: "Ship name" },
+    { key: "port", label: "Port" },
+  ],
+  emigration: [
+    { key: "ship", label: "Ship name" },
+    { key: "port", label: "Port" },
+  ],
+  naturalization: [
+    { key: "country", label: "Country" },
+    { key: "court", label: "Court" },
+  ],
+  residence: [{ key: "address", label: "Address" }],
+  occupation: [
+    { key: "employer", label: "Employer" },
+    { key: "jobTitle", label: "Job title" },
+  ],
+};
+
+function PersonDetailRoute() {
+  const { personId } = Route.useParams();
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  const person = useQuery(trpc.person.byId.queryOptions({ id: personId }));
+  const relatives = useQuery(trpc.person.relatives.queryOptions({ id: personId }));
+  const names = useQuery(trpc.person.listNames.queryOptions({ personId }));
+  const events = useQuery(trpc.person.listEvents.queryOptions({ personId }));
+  const unions = useQuery(trpc.person.listUnions.queryOptions({ personId }));
+  const sourcesList = useQuery(trpc.source.listSources.queryOptions());
+  const citationsList = useQuery(trpc.source.listCitations.queryOptions({ personId }));
+
+  const refresh = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: trpc.person.byId.queryKey({ id: personId }) }),
+      queryClient.invalidateQueries({
+        queryKey: trpc.person.relatives.queryKey({ id: personId }),
+      }),
+      queryClient.invalidateQueries({ queryKey: trpc.person.list.queryKey() }),
+      queryClient.invalidateQueries({ queryKey: trpc.person.listNames.queryKey({ personId }) }),
+      queryClient.invalidateQueries({ queryKey: trpc.person.listEvents.queryKey({ personId }) }),
+      queryClient.invalidateQueries({ queryKey: trpc.person.listUnions.queryKey({ personId }) }),
+      queryClient.invalidateQueries({ queryKey: trpc.source.listSources.queryKey() }),
+      queryClient.invalidateQueries({
+        queryKey: trpc.source.listCitations.queryKey({ personId }),
+      }),
+    ]);
+  };
+
+  if (person.isPending) {
+    return <p className="text-muted-foreground">Loading…</p>;
+  }
+  if (person.isError) {
+    return <p className="text-destructive">Could not load person: {person.error.message}</p>;
+  }
+
+  const parents = relatives.data?.parents ?? [];
+  const spouses = relatives.data?.spouses ?? [];
+  const children = relatives.data?.children ?? [];
+  const unionRows = unions.data ?? [];
+  // Nobody already related (in any direction) should be offered again as a pick.
+  const excludeIds = new Set([
+    personId,
+    ...parents.map((p) => p.id),
+    ...spouses.map((p) => p.id),
+    ...children.map((p) => p.id),
+  ]);
+  // Mirrors the guard in PersonService.remove — a union can outlive the
+  // SPOUSE_OF edge it came from (see unlinkSpouse), so it counts too.
+  const canDelete =
+    parents.length === 0 && spouses.length === 0 && children.length === 0 && unionRows.length === 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-end">
+        <Link
+          to="/people/$personId/print"
+          params={{ personId }}
+          className="text-sm text-muted-foreground hover:text-foreground"
+        >
+          Print summary →
+        </Link>
+      </div>
+      <PersonFields
+        person={person.data}
+        onSaved={refresh}
+        canDelete={canDelete}
+        onDeleted={() => navigate({ to: "/people" })}
+      />
+      <div className="grid gap-6 md:grid-cols-3">
+        <RelativesSection
+          title="Parents"
+          kind="parent"
+          personId={personId}
+          relatives={parents}
+          excludeIds={excludeIds}
+          onChanged={refresh}
+        />
+        <RelativesSection
+          title="Spouses"
+          kind="spouse"
+          personId={personId}
+          relatives={spouses}
+          excludeIds={excludeIds}
+          onChanged={refresh}
+          unions={unions.data ?? []}
+        />
+        <RelativesSection
+          title="Children"
+          kind="child"
+          personId={personId}
+          relatives={children}
+          excludeIds={excludeIds}
+          onChanged={refresh}
+        />
+      </div>
+      <div className="grid gap-6 md:grid-cols-2">
+        <NamesSection personId={personId} names={names.data ?? []} onChanged={refresh} />
+        <EventsSection personId={personId} events={events.data ?? []} onChanged={refresh} />
+      </div>
+      <CitationsSection
+        personId={personId}
+        citations={citationsList.data ?? []}
+        sourcesList={sourcesList.data ?? []}
+        names={names.data ?? []}
+        events={events.data ?? []}
+        unions={unions.data ?? []}
+        onChanged={refresh}
+      />
+    </div>
+  );
+}
+
+function PersonFields({
+  person,
+  onSaved,
+  canDelete,
+  onDeleted,
+}: {
+  person: PersonRow;
+  onSaved: () => Promise<void>;
+  canDelete: boolean;
+  onDeleted: () => void;
+}) {
+  const trpc = useTRPC();
+  const update = useMutation(trpc.person.update.mutationOptions({ onSuccess: onSaved }));
+  const removePerson = useMutation(trpc.person.remove.mutationOptions({ onSuccess: onDeleted }));
+
+  const form = useForm({
+    defaultValues: {
+      given: person.given,
+      middleName: person.middleName ?? "",
+      surname: person.surname,
+      sex: person.sex,
+      titlePrefix: person.titlePrefix ?? "",
+      suffix: person.suffix ?? "",
+      nickname: person.nickname.length > 0 ? person.nickname : [""],
+      birthOriginal: person.birth?.original ?? "",
+      birthPlace: person.birthPlace ?? "",
+      deathOriginal: person.death?.original ?? "",
+      deathPlace: person.deathPlace ?? "",
+      notes: person.notes ?? "",
+      isLiving: person.isLiving,
+    },
+    onSubmit: async ({ value, formApi }) => {
+      await update.mutateAsync({
+        id: person.id,
+        given: value.given,
+        middleName: value.middleName.trim() === "" ? null : value.middleName,
+        surname: value.surname,
+        sex: value.sex,
+        titlePrefix: value.titlePrefix.trim() === "" ? null : value.titlePrefix,
+        suffix: value.suffix.trim() === "" ? null : value.suffix,
+        nickname: value.nickname.map((name) => name.trim()).filter((name) => name !== ""),
+        // Only the free-text wording is editable here; earliest/latest bounds
+        // are set by parsing (GEDCOM import, later) and kept as-is otherwise.
+        birth:
+          value.birthOriginal.trim() === ""
+            ? null
+            : {
+                original: value.birthOriginal.trim(),
+                earliest: person.birth?.earliest ?? null,
+                latest: person.birth?.latest ?? null,
+              },
+        birthPlace: value.birthPlace.trim() === "" ? null : value.birthPlace,
+        death:
+          value.deathOriginal.trim() === ""
+            ? null
+            : {
+                original: value.deathOriginal.trim(),
+                earliest: person.death?.earliest ?? null,
+                latest: person.death?.latest ?? null,
+              },
+        deathPlace: value.deathPlace.trim() === "" ? null : value.deathPlace,
+        notes: value.notes.trim() === "" ? null : value.notes,
+        isLiving: value.isLiving,
+      });
+      // Rebaselines dirty-tracking against what was just saved — the values
+      // themselves don't change, only the "clean" snapshot they're compared to.
+      formApi.reset(value);
+    },
+  });
+
+  const isLiving = useStore(form.store, (state) => state.values.isLiving);
+  const isDirty = useStore(form.store, (state) => state.isDirty);
+
+  const age = calculateAge(person);
+  const birthLine = person.birth?.original
+    ? `Born ${person.birth.original}${person.isLiving && age !== null ? ` (${age})` : ""}`
+    : null;
+  const deathLine = !person.isLiving
+    ? `${person.death?.original ? `Died ${person.death.original}` : "Died"}${age !== null ? ` (${age})` : ""}`
+    : null;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-4">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <GenderIcon sex={person.sex} />
+            {formatFullPersonName(person)}
+          </CardTitle>
+          {birthLine && (
+            <CardDescription className="flex items-center gap-1.5">
+              <Cake className="size-3.5 shrink-0" aria-hidden="true" />
+              {birthLine}
+            </CardDescription>
+          )}
+          {deathLine && (
+            <CardDescription className="flex items-center gap-1.5">
+              <Cross className="size-3.5 shrink-0" aria-hidden="true" />
+              {deathLine}
+            </CardDescription>
+          )}
+        </div>
+        <PersonPhoto person={person} onChanged={onSaved} />
+      </CardHeader>
+      <CardContent>
+        <form
+          className="grid gap-4 sm:grid-cols-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+        >
+          <div className="flex items-end justify-between gap-4 sm:col-span-2">
+            <form.Field name="sex">
+              {(field) => (
+                <LabeledField label="Gender">
+                  <Select
+                    aria-label="Gender"
+                    value={field.state.value}
+                    onChange={(value) => {
+                      if (value) field.handleChange(sexSchema.parse(value));
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sexSchema.options.map((option) => (
+                        <SelectItem key={option} id={option}>
+                          {SEX_LABELS[option]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </LabeledField>
+              )}
+            </form.Field>
+            <form.Field name="isLiving">
+              {(field) => (
+                <Switch
+                  isSelected={field.state.value}
+                  onChange={(isSelected) => field.handleChange(isSelected)}
+                >
+                  Living
+                </Switch>
+              )}
+            </form.Field>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-3">
+            <form.Field name="given">
+              {(field) => (
+                <LabeledField label="First names">
+                  <Input
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                  />
+                </LabeledField>
+              )}
+            </form.Field>
+            <form.Field name="middleName">
+              {(field) => (
+                <LabeledField label="Middle names">
+                  <Input
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                  />
+                </LabeledField>
+              )}
+            </form.Field>
+            <form.Field name="surname">
+              {(field) => (
+                <LabeledField label="Last names">
+                  <Input
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                  />
+                </LabeledField>
+              )}
+            </form.Field>
+          </div>
+          <form.Field name="titlePrefix">
+            {(field) => (
+              <LabeledField label="Title / prefix">
+                <Input
+                  placeholder="e.g. Dr., Rev."
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => field.handleChange(event.target.value)}
+                />
+              </LabeledField>
+            )}
+          </form.Field>
+          <form.Field name="suffix">
+            {(field) => (
+              <LabeledField label="Suffix">
+                <Input
+                  placeholder="e.g. Jr., III"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => field.handleChange(event.target.value)}
+                />
+              </LabeledField>
+            )}
+          </form.Field>
+          <form.Field name="nickname" mode="array">
+            {(arrayField) => (
+              <div className="space-y-1 text-sm sm:col-span-2">
+                <span className="text-muted-foreground">Nicknames / Preferred names</span>
+                <div className="space-y-2">
+                  {arrayField.state.value.map((_, index) => (
+                    // Reordering isn't supported, so the input's position is a stable key.
+                    // eslint-disable-next-line react/no-array-index-key
+                    <div key={index} className="flex items-center gap-2">
+                      <form.Field name={`nickname[${index}]`}>
+                        {(field) => (
+                          <Input
+                            className="flex-1"
+                            value={field.state.value}
+                            onBlur={field.handleBlur}
+                            onChange={(event) => field.handleChange(event.target.value)}
+                          />
+                        )}
+                      </form.Field>
+                      {arrayField.state.value.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Remove nickname"
+                          onPress={() => arrayField.removeValue(index)}
+                        >
+                          <XIcon />
+                        </Button>
+                      )}
+                      {index === arrayField.state.value.length - 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Add nickname"
+                          onPress={() => arrayField.pushValue("")}
+                        >
+                          <PlusIcon />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </form.Field>
+          <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
+            <form.Field name="birthOriginal">
+              {(field) => (
+                <LabeledField label="Date of Birth">
+                  <Input
+                    placeholder="e.g. abt 1854"
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                  />
+                </LabeledField>
+              )}
+            </form.Field>
+            <form.Field name="birthPlace">
+              {(field) => (
+                <LabeledField label="Place of Birth">
+                  <Input
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                  />
+                </LabeledField>
+              )}
+            </form.Field>
+          </div>
+          {!isLiving && (
+            <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
+              <form.Field name="deathOriginal">
+                {(field) => (
+                  <LabeledField label="Date of Death">
+                    <Input
+                      placeholder="e.g. 12 MAR 1901"
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(event) => field.handleChange(event.target.value)}
+                    />
+                  </LabeledField>
+                )}
+              </form.Field>
+              <form.Field name="deathPlace">
+                {(field) => (
+                  <LabeledField label="Place of Death">
+                    <Input
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(event) => field.handleChange(event.target.value)}
+                    />
+                  </LabeledField>
+                )}
+              </form.Field>
+            </div>
+          )}
+          <form.Field name="notes">
+            {(field) => (
+              <LabeledField label="Notes" className="sm:col-span-2">
+                <Input
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => field.handleChange(event.target.value)}
+                />
+              </LabeledField>
+            )}
+          </form.Field>
+          <div className="flex items-center justify-between gap-4 sm:col-span-2">
+            <Button type="submit" isDisabled={update.isPending}>
+              Save
+              {update.isPending ? (
+                <Loader2Icon
+                  className="size-3 shrink-0 animate-spin text-destructive"
+                  aria-label="Saving"
+                />
+              ) : (
+                isDirty && (
+                  <span
+                    className="size-2 shrink-0 rounded-full bg-destructive"
+                    aria-label="Unsaved changes"
+                  />
+                )
+              )}
+            </Button>
+            {canDelete && (
+              <AlertDialog>
+                <Button type="button" variant="outline" className="text-destructive">
+                  <Trash2Icon /> Delete
+                </Button>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete {formatFullPersonName(person)}?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This permanently removes them and everything recorded about them — alternate
+                      names, life events, sources and citations. This cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onPress={() => removePerson.mutate({ id: person.id })}>
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+          </div>
+          {removePerson.isError && (
+            <p className="text-sm text-destructive sm:col-span-2">{removePerson.error.message}</p>
+          )}
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function GenderIcon({ sex }: { sex: Sex }) {
+  const props = {
+    className: "size-5 shrink-0 text-muted-foreground",
+    "aria-hidden": true,
+  } as const;
+  if (sex === "M") return <Mars {...props} />;
+  if (sex === "F") return <Venus {...props} />;
+  return <CircleHelp {...props} />;
+}
+
+function initials(person: Pick<PersonRow, "given" | "surname">): string {
+  const parts = [person.given, person.surname].filter((part) => part.trim() !== "");
+  const letters = parts.map((part) => part.trim()[0]?.toUpperCase() ?? "").join("");
+  return letters === "" ? "?" : letters;
+}
+
+function PersonPhoto({ person, onChanged }: { person: PersonRow; onChanged: () => Promise<void> }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const photoUrl = person.photoPath ? `${apiUrl}/uploads/${person.photoPath}` : null;
+
+  const upload = async (file: File) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch(`${apiUrl}/people/${person.id}/photo`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      if (!response.ok) {
+        throw new Error(`Photo upload failed: ${response.status}`);
+      }
+      await onChanged();
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const remove = async () => {
+    await fetch(`${apiUrl}/people/${person.id}/photo`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    await onChanged();
+  };
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void upload(file);
+          event.target.value = "";
+        }}
+      />
+      <Button
+        variant="ghost"
+        className="group relative size-16 rounded-full p-0"
+        isDisabled={uploading}
+        onPress={() => fileInputRef.current?.click()}
+        aria-label={photoUrl ? "Change photo" : "Upload photo"}
+      >
+        <Avatar className="size-16">
+          {photoUrl && <AvatarImage src={photoUrl} alt={formatPersonName(person)} />}
+          <AvatarFallback className="text-base">{initials(person)}</AvatarFallback>
+        </Avatar>
+        <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white opacity-0 transition-opacity group-data-hovered:opacity-100">
+          {uploading ? (
+            <span className="text-xs">…</span>
+          ) : (
+            <CameraIcon className="size-5" aria-hidden="true" />
+          )}
+        </span>
+      </Button>
+      {photoUrl && <RemoveButton itemLabel="this photo" onConfirm={() => void remove()} />}
+    </div>
+  );
+}
+
+/** A "Remove" button that requires an explicit confirmation before it acts. */
+function RemoveButton({ itemLabel, onConfirm }: { itemLabel: string; onConfirm: () => void }) {
+  return (
+    <AlertDialog>
+      <Button variant="ghost" size="sm">
+        Remove
+      </Button>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remove {itemLabel}?</AlertDialogTitle>
+          <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onPress={onConfirm}>Remove</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function LabeledField({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className={`space-y-1 text-sm ${className ?? ""}`}>
+      <span className="text-muted-foreground">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function RelativesSection({
+  title,
+  kind,
+  personId,
+  relatives,
+  excludeIds,
+  onChanged,
+  unions = NO_UNIONS,
+}: {
+  title: string;
+  kind: RelativeKind;
+  personId: string;
+  relatives: PersonRow[];
+  excludeIds: Set<string>;
+  onChanged: () => Promise<void>;
+  /** Only meaningful for the Spouses section — shown alongside each spouse row. */
+  unions?: UnionRow[];
+}) {
+  const trpc = useTRPC();
+  const unlinkParent = useMutation(trpc.person.unlinkParent.mutationOptions());
+  const unlinkSpouse = useMutation(trpc.person.unlinkSpouse.mutationOptions());
+
+  const remove = async (relativeId: string) => {
+    if (kind === "spouse") {
+      await unlinkSpouse.mutateAsync({ aId: personId, bId: relativeId });
+    } else if (kind === "parent") {
+      await unlinkParent.mutateAsync({ parentId: relativeId, childId: personId });
+    } else {
+      await unlinkParent.mutateAsync({ parentId: personId, childId: relativeId });
+    }
+    await onChanged();
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <CardTitle className="text-base">{title}</CardTitle>
+        <AddRelative
+          kind={kind}
+          personId={personId}
+          excludeIds={excludeIds}
+          onChanged={onChanged}
+        />
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {relatives.length === 0 && <p className="text-sm text-muted-foreground">None recorded.</p>}
+        {relatives.map((relative) => {
+          const union = unions.find(
+            (candidate) =>
+              (candidate.personAId === personId && candidate.personBId === relative.id) ||
+              (candidate.personBId === personId && candidate.personAId === relative.id),
+          );
+          return (
+            <div key={relative.id} className="flex items-center justify-between gap-2 text-sm">
+              <div>
+                <Link
+                  to="/people/$personId"
+                  params={{ personId: relative.id }}
+                  className="hover:underline"
+                >
+                  {formatPersonName(relative)}
+                  {formatLifespan(relative) && (
+                    <span className="ml-1 text-muted-foreground">({formatLifespan(relative)})</span>
+                  )}
+                </Link>
+                {union && (
+                  <p className="text-xs text-muted-foreground">
+                    {union.status}
+                    {union.startDate ? ` · ${union.startDate.original}` : ""}
+                    {union.startPlace ? ` in ${union.startPlace}` : ""}
+                  </p>
+                )}
+              </div>
+              <RemoveButton
+                itemLabel={`the relationship with ${formatPersonName(relative)}`}
+                onConfirm={() => void remove(relative.id)}
+              />
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AddRelative({
+  kind,
+  personId,
+  excludeIds,
+  onChanged,
+}: {
+  kind: RelativeKind;
+  personId: string;
+  excludeIds: Set<string>;
+  onChanged: () => Promise<void>;
+}) {
+  const trpc = useTRPC();
+  const [open, setOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [parentage, setParentage] = useState<Parentage>("unknown");
+  const [unionStatus, setUnionStatus] = useState<UnionStatus>("married");
+  const [unionDate, setUnionDate] = useState("");
+  const [unionPlace, setUnionPlace] = useState("");
+
+  const search = useQuery({
+    ...trpc.person.list.queryOptions({
+      limit: 10,
+      offset: 0,
+      search: query.trim() === "" ? null : query.trim(),
+    }),
+    enabled: open,
+  });
+
+  const linkParent = useMutation(trpc.person.linkParent.mutationOptions());
+  const addUnion = useMutation(trpc.person.addUnion.mutationOptions());
+
+  const options = (search.data?.items ?? []).filter((candidate) => !excludeIds.has(candidate.id));
+
+  const link = async (target: PersonRow) => {
+    if (kind === "spouse") {
+      await addUnion.mutateAsync({
+        personAId: personId,
+        personBId: target.id,
+        status: unionStatus,
+        startDate:
+          unionDate.trim() === ""
+            ? null
+            : { original: unionDate.trim(), earliest: null, latest: null },
+        startPlace: unionPlace.trim() === "" ? null : unionPlace,
+      });
+    } else if (kind === "parent") {
+      await linkParent.mutateAsync({ parentId: target.id, childId: personId, parentage });
+    } else {
+      await linkParent.mutateAsync({ parentId: personId, childId: target.id, parentage });
+    }
+    setOpen(false);
+    setQuery("");
+    await onChanged();
+  };
+
+  return (
+    <Popover isOpen={open} onOpenChange={setOpen}>
+      <Button variant="outline" size="sm">
+        + Add
+      </Button>
+      <PopoverContent className="w-80 space-y-3">
+        {kind !== "spouse" && (
+          <Select
+            aria-label="Parentage"
+            value={parentage}
+            onChange={(value) => {
+              if (value) setParentage(parentageSchema.parse(value));
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {parentageSchema.options.map((option) => (
+                <SelectItem key={option} id={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {kind === "spouse" && (
+          <div className="space-y-2">
+            <Select
+              aria-label="Union status"
+              value={unionStatus}
+              onChange={(value) => {
+                if (value) setUnionStatus(unionStatusSchema.parse(value));
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {unionStatusSchema.options.map((option) => (
+                  <SelectItem key={option} id={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              placeholder="Marriage date, e.g. 12 JUN 1920"
+              value={unionDate}
+              onChange={(event) => setUnionDate(event.target.value)}
+            />
+            <Input
+              placeholder="Marriage place"
+              value={unionPlace}
+              onChange={(event) => setUnionPlace(event.target.value)}
+            />
+          </div>
+        )}
+        <Combobox<PersonRow>
+          aria-label="Search people"
+          items={options}
+          inputValue={query}
+          onInputChange={setQuery}
+          onChange={(value) => {
+            const target = options.find((candidate) => candidate.id === value);
+            if (target) void link(target);
+          }}
+        >
+          <ComboboxInput placeholder="Search people…" />
+          <ComboboxContent<PersonRow>
+            renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
+          >
+            {(item) => (
+              <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
+                {formatPersonName(item)}
+                {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
+              </ComboboxItem>
+            )}
+          </ComboboxContent>
+        </Combobox>
+        <Dialog isOpen={createOpen} onOpenChange={setCreateOpen}>
+          <Button variant="ghost" size="sm" className="w-full">
+            + Create new person
+          </Button>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>New person</DialogTitle>
+            </DialogHeader>
+            <CreateAndLinkForm
+              kind={kind}
+              personId={personId}
+              parentage={parentage}
+              unionStatus={unionStatus}
+              unionDate={unionDate}
+              unionPlace={unionPlace}
+              onDone={async () => {
+                setCreateOpen(false);
+                setOpen(false);
+                await onChanged();
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function CreateAndLinkForm({
+  kind,
+  personId,
+  parentage,
+  unionStatus,
+  unionDate,
+  unionPlace,
+  onDone,
+}: {
+  kind: RelativeKind;
+  personId: string;
+  parentage: Parentage;
+  unionStatus: UnionStatus;
+  unionDate: string;
+  unionPlace: string;
+  onDone: () => Promise<void>;
+}) {
+  const trpc = useTRPC();
+  const createPerson = useMutation(trpc.person.create.mutationOptions());
+  const linkParent = useMutation(trpc.person.linkParent.mutationOptions());
+  const addUnion = useMutation(trpc.person.addUnion.mutationOptions());
+
+  const form = useForm({
+    defaultValues: { given: "", surname: "" },
+    onSubmit: async ({ value, formApi }) => {
+      const created = await createPerson.mutateAsync(value);
+      if (kind === "spouse") {
+        await addUnion.mutateAsync({
+          personAId: personId,
+          personBId: created.id,
+          status: unionStatus,
+          startDate:
+            unionDate.trim() === ""
+              ? null
+              : { original: unionDate.trim(), earliest: null, latest: null },
+          startPlace: unionPlace.trim() === "" ? null : unionPlace,
+        });
+      } else if (kind === "parent") {
+        await linkParent.mutateAsync({ parentId: created.id, childId: personId, parentage });
+      } else {
+        await linkParent.mutateAsync({ parentId: personId, childId: created.id, parentage });
+      }
+      formApi.reset();
+      await onDone();
+    },
+  });
+
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <form.Field name="given">
+        {(field) => (
+          <Input
+            placeholder="Given names"
+            value={field.state.value}
+            onChange={(event) => field.handleChange(event.target.value)}
+          />
+        )}
+      </form.Field>
+      <form.Field name="surname">
+        {(field) => (
+          <Input
+            placeholder="Last name"
+            value={field.state.value}
+            onChange={(event) => field.handleChange(event.target.value)}
+          />
+        )}
+      </form.Field>
+      <DialogFooter>
+        <Button type="submit" isDisabled={createPerson.isPending}>
+          {createPerson.isPending ? "Creating…" : "Create and link"}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function NamesSection({
+  personId,
+  names,
+  onChanged,
+}: {
+  personId: string;
+  names: NameVariantRow[];
+  onChanged: () => Promise<void>;
+}) {
+  const trpc = useTRPC();
+  const removeName = useMutation(trpc.person.removeName.mutationOptions());
+  const [addOpen, setAddOpen] = useState(false);
+
+  const remove = async (id: string) => {
+    await removeName.mutateAsync({ id });
+    await onChanged();
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <CardTitle className="text-base">Alternate names</CardTitle>
+        <Dialog isOpen={addOpen} onOpenChange={setAddOpen}>
+          <Button variant="outline" size="sm">
+            + Add
+          </Button>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add alternate name</DialogTitle>
+            </DialogHeader>
+            <NameForm
+              personId={personId}
+              name={null}
+              onDone={async () => {
+                setAddOpen(false);
+                await onChanged();
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {names.length === 0 && <p className="text-sm text-muted-foreground">None recorded.</p>}
+        {names.map((name) => (
+          <NameRow
+            key={name.id}
+            personId={personId}
+            name={name}
+            onChanged={onChanged}
+            onRemove={() => void remove(name.id)}
+          />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function NameRow({
+  personId,
+  name,
+  onChanged,
+  onRemove,
+}: {
+  personId: string;
+  name: NameVariantRow;
+  onChanged: () => Promise<void>;
+  onRemove: () => void;
+}) {
+  const [editOpen, setEditOpen] = useState(false);
+
+  return (
+    <div className="flex items-center justify-between gap-2 text-sm">
+      <div>
+        <Badge variant="outline" className="mr-2">
+          {name.nameType}
+        </Badge>
+        <span>{[name.given, name.surname].filter(Boolean).join(" ")}</span>
+        {name.notes && <p className="text-xs text-muted-foreground">{name.notes}</p>}
+      </div>
+      <div className="flex items-center gap-1">
+        <Dialog isOpen={editOpen} onOpenChange={setEditOpen}>
+          <Button variant="ghost" size="sm">
+            Edit
+          </Button>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit alternate name</DialogTitle>
+            </DialogHeader>
+            <NameForm
+              personId={personId}
+              name={name}
+              onDone={async () => {
+                setEditOpen(false);
+                await onChanged();
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+        <RemoveButton
+          itemLabel={`the alternate name "${[name.given, name.surname].filter(Boolean).join(" ")}"`}
+          onConfirm={onRemove}
+        />
+      </div>
+    </div>
+  );
+}
+
+function NameForm({
+  personId,
+  name,
+  onDone,
+}: {
+  personId: string;
+  name: NameVariantRow | null;
+  onDone: () => Promise<void>;
+}) {
+  const trpc = useTRPC();
+  const addName = useMutation(trpc.person.addName.mutationOptions());
+  const updateName = useMutation(trpc.person.updateName.mutationOptions());
+  const [nameType, setNameType] = useState<NameVariantType>(name?.nameType ?? "maiden");
+
+  const form = useForm({
+    defaultValues: {
+      given: name?.given ?? "",
+      surname: name?.surname ?? "",
+      notes: name?.notes ?? "",
+    },
+    onSubmit: async ({ value }) => {
+      const payload = {
+        nameType,
+        given: value.given,
+        surname: value.surname,
+        notes: value.notes.trim() === "" ? null : value.notes,
+      };
+      if (name) {
+        await updateName.mutateAsync({ id: name.id, ...payload });
+      } else {
+        await addName.mutateAsync({ personId, ...payload });
+      }
+      await onDone();
+    },
+  });
+
+  const pending = addName.isPending || updateName.isPending;
+
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <Select
+        aria-label="Name type"
+        value={nameType}
+        onChange={(value) => {
+          if (value) setNameType(nameVariantTypeSchema.parse(value));
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {nameVariantTypeSchema.options.map((option) => (
+            <SelectItem key={option} id={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <form.Field name="given">
+        {(field) => (
+          <Input
+            placeholder="Given names"
+            value={field.state.value}
+            onChange={(event) => field.handleChange(event.target.value)}
+          />
+        )}
+      </form.Field>
+      <form.Field name="surname">
+        {(field) => (
+          <Input
+            placeholder="Last name"
+            value={field.state.value}
+            onChange={(event) => field.handleChange(event.target.value)}
+          />
+        )}
+      </form.Field>
+      <form.Field name="notes">
+        {(field) => (
+          <Input
+            placeholder="Notes"
+            value={field.state.value}
+            onChange={(event) => field.handleChange(event.target.value)}
+          />
+        )}
+      </form.Field>
+      <DialogFooter>
+        <Button type="submit" isDisabled={pending}>
+          {pending ? "Saving…" : name ? "Save" : "Add"}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function EventsSection({
+  personId,
+  events,
+  onChanged,
+}: {
+  personId: string;
+  events: PersonEventRow[];
+  onChanged: () => Promise<void>;
+}) {
+  const trpc = useTRPC();
+  const removeEvent = useMutation(trpc.person.removeEvent.mutationOptions());
+  const [addOpen, setAddOpen] = useState(false);
+
+  const remove = async (id: string) => {
+    await removeEvent.mutateAsync({ id });
+    await onChanged();
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <CardTitle className="text-base">Life events</CardTitle>
+        <Dialog isOpen={addOpen} onOpenChange={setAddOpen}>
+          <Button variant="outline" size="sm">
+            + Add
+          </Button>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add event</DialogTitle>
+            </DialogHeader>
+            <EventForm
+              personId={personId}
+              event={null}
+              onDone={async () => {
+                setAddOpen(false);
+                await onChanged();
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {events.length === 0 && <p className="text-sm text-muted-foreground">None recorded.</p>}
+        {events.map((event) => (
+          <EventRow
+            key={event.id}
+            personId={personId}
+            event={event}
+            onChanged={onChanged}
+            onRemove={() => void remove(event.id)}
+          />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function EventRow({
+  personId,
+  event,
+  onChanged,
+  onRemove,
+}: {
+  personId: string;
+  event: PersonEventRow;
+  onChanged: () => Promise<void>;
+  onRemove: () => void;
+}) {
+  const [editOpen, setEditOpen] = useState(false);
+
+  return (
+    <div className="flex items-center justify-between gap-2 text-sm">
+      <div>
+        <Badge variant="outline" className="mr-2">
+          {event.eventType}
+        </Badge>
+        {event.eventType === "other" && event.label && (
+          <span className="mr-1 font-medium">{event.label}</span>
+        )}
+        {event.date?.original}
+        {event.place ? ` in ${event.place}` : ""}
+        {event.details && Object.keys(event.details).length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {Object.entries(event.details)
+              .map(([key, value]) => {
+                const label = EVENT_DETAIL_FIELDS[event.eventType]?.find(
+                  (field) => field.key === key,
+                )?.label;
+                return `${label ?? key}: ${value}`;
+              })
+              .join(" · ")}
+          </p>
+        )}
+        {event.description && <p className="text-xs text-muted-foreground">{event.description}</p>}
+      </div>
+      <div className="flex items-center gap-1">
+        <Dialog isOpen={editOpen} onOpenChange={setEditOpen}>
+          <Button variant="ghost" size="sm">
+            Edit
+          </Button>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit event</DialogTitle>
+            </DialogHeader>
+            <EventForm
+              personId={personId}
+              event={event}
+              onDone={async () => {
+                setEditOpen(false);
+                await onChanged();
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+        <RemoveButton itemLabel={`this ${event.eventType} event`} onConfirm={onRemove} />
+      </div>
+    </div>
+  );
+}
+
+function EventForm({
+  personId,
+  event,
+  onDone,
+}: {
+  personId: string;
+  event: PersonEventRow | null;
+  onDone: () => Promise<void>;
+}) {
+  const trpc = useTRPC();
+  const addEvent = useMutation(trpc.person.addEvent.mutationOptions());
+  const updateEvent = useMutation(trpc.person.updateEvent.mutationOptions());
+  const [eventType, setEventType] = useState<EventType>(event?.eventType ?? "residence");
+  const [details, setDetails] = useState<Record<string, string>>(event?.details ?? {});
+
+  const form = useForm({
+    defaultValues: {
+      label: event?.label ?? "",
+      dateOriginal: event?.date?.original ?? "",
+      place: event?.place ?? "",
+      description: event?.description ?? "",
+    },
+    onSubmit: async ({ value }) => {
+      const detailFields = EVENT_DETAIL_FIELDS[eventType] ?? [];
+      const detailEntries = detailFields
+        .map(({ key }) => [key, (details[key] ?? "").trim()] as const)
+        .filter(([, fieldValue]) => fieldValue !== "");
+      const payload = {
+        eventType,
+        label: value.label.trim() === "" ? null : value.label.trim(),
+        date:
+          value.dateOriginal.trim() === ""
+            ? null
+            : { original: value.dateOriginal.trim(), earliest: null, latest: null },
+        place: value.place.trim() === "" ? null : value.place,
+        details: detailEntries.length > 0 ? Object.fromEntries(detailEntries) : null,
+        description: value.description.trim() === "" ? null : value.description,
+      };
+      if (event) {
+        await updateEvent.mutateAsync({ id: event.id, ...payload });
+      } else {
+        await addEvent.mutateAsync({ personId, ...payload });
+      }
+      await onDone();
+    },
+  });
+
+  const pending = addEvent.isPending || updateEvent.isPending;
+  const label = useStore(form.store, (state) => state.values.label);
+  const needsLabel = eventType === "other" && label.trim() === "";
+
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={(submitEvent) => {
+        submitEvent.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <Select
+        aria-label="Event type"
+        value={eventType}
+        onChange={(value) => {
+          if (value) setEventType(eventTypeSchema.parse(value));
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {eventTypeSchema.options.map((option) => (
+            <SelectItem key={option} id={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {eventType === "other" && (
+        <form.Field name="label">
+          {(field) => (
+            <Input
+              placeholder='Label — required for "other" events, e.g. "Emigrated to Canada"'
+              value={field.state.value}
+              onChange={(inputEvent) => field.handleChange(inputEvent.target.value)}
+            />
+          )}
+        </form.Field>
+      )}
+      <form.Field name="dateOriginal">
+        {(field) => (
+          <Input
+            placeholder="Date, e.g. 1902 or abt 1902"
+            value={field.state.value}
+            onChange={(inputEvent) => field.handleChange(inputEvent.target.value)}
+          />
+        )}
+      </form.Field>
+      <form.Field name="place">
+        {(field) => (
+          <Input
+            placeholder="Place"
+            value={field.state.value}
+            onChange={(inputEvent) => field.handleChange(inputEvent.target.value)}
+          />
+        )}
+      </form.Field>
+      {(EVENT_DETAIL_FIELDS[eventType] ?? []).map((detailField) => (
+        <Input
+          key={detailField.key}
+          placeholder={detailField.label}
+          value={details[detailField.key] ?? ""}
+          onChange={(inputEvent) =>
+            setDetails((prev) => ({ ...prev, [detailField.key]: inputEvent.target.value }))
+          }
+        />
+      ))}
+      <form.Field name="description">
+        {(field) => (
+          <Input
+            placeholder="Description"
+            value={field.state.value}
+            onChange={(inputEvent) => field.handleChange(inputEvent.target.value)}
+          />
+        )}
+      </form.Field>
+      <DialogFooter>
+        <Button type="submit" isDisabled={pending || needsLabel}>
+          {pending ? "Saving…" : event ? "Save" : "Add"}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+type FactOption = {
+  key: string;
+  factType: CitationFactType;
+  factId: string | null;
+  label: string;
+};
+
+function CitationsSection({
+  personId,
+  citations,
+  sourcesList,
+  names,
+  events,
+  unions,
+  onChanged,
+}: {
+  personId: string;
+  citations: CitationRow[];
+  sourcesList: SourceRow[];
+  names: NameVariantRow[];
+  events: PersonEventRow[];
+  unions: UnionRow[];
+  onChanged: () => Promise<void>;
+}) {
+  const trpc = useTRPC();
+  const removeCitation = useMutation(trpc.source.removeCitation.mutationOptions());
+  const [addOpen, setAddOpen] = useState(false);
+
+  const remove = async (id: string) => {
+    await removeCitation.mutateAsync({ id });
+    await onChanged();
+  };
+
+  const sourceById = new Map(sourcesList.map((source) => [source.id, source]));
+
+  const factLabel = (citation: CitationRow): string => {
+    switch (citation.factType) {
+      case "person":
+        return "This person";
+      case "birth":
+        return "Birth";
+      case "death":
+        return "Death";
+      case "name": {
+        const name = names.find((candidate) => candidate.id === citation.factId);
+        return name
+          ? `Alternate name: ${[name.given, name.surname].filter(Boolean).join(" ")}`
+          : "Alternate name";
+      }
+      case "event": {
+        const event = events.find((candidate) => candidate.id === citation.factId);
+        return event
+          ? `Event: ${event.eventType}${event.label ? ` (${event.label})` : ""}`
+          : "Event";
+      }
+      case "union": {
+        const union = unions.find((candidate) => candidate.id === citation.factId);
+        return union ? `Union (${union.status})` : "Union";
+      }
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <CardTitle className="text-base">Sources &amp; citations</CardTitle>
+        <Dialog isOpen={addOpen} onOpenChange={setAddOpen}>
+          <Button variant="outline" size="sm">
+            + Add
+          </Button>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add citation</DialogTitle>
+            </DialogHeader>
+            <CitationForm
+              personId={personId}
+              sourcesList={sourcesList}
+              names={names}
+              events={events}
+              unions={unions}
+              onDone={async () => {
+                setAddOpen(false);
+                await onChanged();
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {citations.length === 0 && <p className="text-sm text-muted-foreground">None recorded.</p>}
+        {citations.map((citation) => {
+          const source = sourceById.get(citation.sourceId);
+          return (
+            <div key={citation.id} className="flex items-center justify-between gap-2 text-sm">
+              <div>
+                <Badge variant="outline" className="mr-2">
+                  {citation.confidence}
+                </Badge>
+                <span className="font-medium">{source?.title ?? "Unknown source"}</span>
+                <p className="text-xs text-muted-foreground">
+                  {factLabel(citation)}
+                  {citation.page ? ` · p. ${citation.page}` : ""}
+                  {citation.note ? ` · ${citation.note}` : ""}
+                </p>
+              </div>
+              <RemoveButton
+                itemLabel={`this citation of "${source?.title ?? "this source"}"`}
+                onConfirm={() => void remove(citation.id)}
+              />
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CitationForm({
+  personId,
+  sourcesList,
+  names,
+  events,
+  unions,
+  onDone,
+}: {
+  personId: string;
+  sourcesList: SourceRow[];
+  names: NameVariantRow[];
+  events: PersonEventRow[];
+  unions: UnionRow[];
+  onDone: () => Promise<void>;
+}) {
+  const trpc = useTRPC();
+  const createSource = useMutation(trpc.source.createSource.mutationOptions());
+  const addCitation = useMutation(trpc.source.addCitation.mutationOptions());
+
+  const factOptions: FactOption[] = [
+    { key: "person|none", factType: "person", factId: null, label: "This person (general)" },
+    { key: "birth|none", factType: "birth", factId: null, label: "Birth" },
+    { key: "death|none", factType: "death", factId: null, label: "Death" },
+    ...names.map((name) => ({
+      key: `name|${name.id}`,
+      factType: "name" as const,
+      factId: name.id,
+      label: `Name: ${[name.given, name.surname].filter(Boolean).join(" ") || "unnamed"}`,
+    })),
+    ...events.map((event) => ({
+      key: `event|${event.id}`,
+      factType: "event" as const,
+      factId: event.id,
+      label: `Event: ${event.eventType}${event.label ? ` (${event.label})` : ""}`,
+    })),
+    ...unions.map((union) => ({
+      key: `union|${union.id}`,
+      factType: "union" as const,
+      factId: union.id,
+      label: `Union (${union.status})`,
+    })),
+  ];
+
+  const [factKey, setFactKey] = useState(factOptions[0]!.key);
+  const [sourceMode, setSourceMode] = useState<"existing" | "new">(
+    sourcesList.length > 0 ? "existing" : "new",
+  );
+  const [sourceId, setSourceId] = useState(sourcesList[0]?.id ?? "");
+  const [newSourceTitle, setNewSourceTitle] = useState("");
+  const [newSourceAuthor, setNewSourceAuthor] = useState("");
+  const [confidence, setConfidence] = useState<Confidence>("medium");
+  const [page, setPage] = useState("");
+  const [note, setNote] = useState("");
+
+  const selectedFact = factOptions.find((option) => option.key === factKey) ?? factOptions[0]!;
+  const pending = createSource.isPending || addCitation.isPending;
+  const canSubmit = sourceMode === "existing" ? sourceId !== "" : newSourceTitle.trim() !== "";
+
+  const submit = async () => {
+    const resolvedSourceId =
+      sourceMode === "existing"
+        ? sourceId
+        : (
+            await createSource.mutateAsync({
+              title: newSourceTitle.trim(),
+              author: newSourceAuthor.trim() === "" ? null : newSourceAuthor.trim(),
+            })
+          ).id;
+    await addCitation.mutateAsync({
+      sourceId: resolvedSourceId,
+      personId,
+      factType: selectedFact.factType,
+      factId: selectedFact.factId,
+      confidence,
+      page: page.trim() === "" ? null : page,
+      note: note.trim() === "" ? null : note,
+    });
+    await onDone();
+  };
+
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <Select
+        aria-label="What this cites"
+        value={factKey}
+        onChange={(value) => {
+          if (value) setFactKey(String(value));
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {factOptions.map((option) => (
+            <SelectItem key={option.key} id={option.key}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {sourceMode === "existing" ? (
+        <div className="space-y-2">
+          <Select
+            aria-label="Source"
+            value={sourceId}
+            onChange={(value) => {
+              if (value) setSourceId(String(value));
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {sourcesList.map((source) => (
+                <SelectItem key={source.id} id={source.id}>
+                  {source.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onPress={() => {
+              setSourceMode("new");
+            }}
+          >
+            + New source instead
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Input
+            placeholder="Source title"
+            value={newSourceTitle}
+            onChange={(inputEvent) => setNewSourceTitle(inputEvent.target.value)}
+          />
+          <Input
+            placeholder="Author (optional)"
+            value={newSourceAuthor}
+            onChange={(inputEvent) => setNewSourceAuthor(inputEvent.target.value)}
+          />
+          {sourcesList.length > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onPress={() => {
+                setSourceMode("existing");
+              }}
+            >
+              Use an existing source instead
+            </Button>
+          )}
+        </div>
+      )}
+
+      <Select
+        aria-label="Confidence"
+        value={confidence}
+        onChange={(value) => {
+          if (value) setConfidence(confidenceSchema.parse(value));
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {confidenceSchema.options.map((option) => (
+            <SelectItem key={option} id={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Input
+        placeholder="Page"
+        value={page}
+        onChange={(inputEvent) => setPage(inputEvent.target.value)}
+      />
+      <Input
+        placeholder="Note"
+        value={note}
+        onChange={(inputEvent) => setNote(inputEvent.target.value)}
+      />
+
+      <DialogFooter>
+        <Button type="submit" isDisabled={pending || !canSubmit}>
+          {pending ? "Adding…" : "Add"}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}

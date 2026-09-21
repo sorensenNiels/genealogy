@@ -35,43 +35,113 @@ export const personNameSchema = z.object({
   given: z.string().trim().default(""),
   /** Family name as written; spelling variants belong on the source, not here. */
   surname: z.string().trim().default(""),
-  /** Patronymic, where a culture uses one distinctly from the surname. */
-  patronymic: z.string().trim().nullable().default(null),
 });
 export type PersonName = z.infer<typeof personNameSchema>;
 
 export const personSchema = personNameSchema.extend({
   id: personIdSchema,
   sex: sexSchema,
+  /** Middle name(s), kept apart from `given` so first/middle/last can be edited separately. */
+  middleName: z.string().nullable(),
+  /** Formal title or prefix as recorded by a source: "Dr.", "Rev.", "Sir". */
+  titlePrefix: z.string().nullable(),
+  /** Generational or honorific suffix: "Jr.", "III". */
+  suffix: z.string().nullable(),
+  /** Nicknames/preferred names, distinct from the alternate-name history in `NameVariant`. */
+  nickname: z.array(z.string()),
+  /**
+   * A filename under the backend's UPLOADS_DIR, not a URL — set only via the
+   * photo upload endpoint (apps/backend/src/person/person-photo.controller.ts),
+   * never through `updatePersonSchema`.
+   */
+  photoPath: z.string().nullable(),
   birth: historicalDateSchema.nullable(),
   birthPlace: z.string().nullable(),
   death: historicalDateSchema.nullable(),
   deathPlace: z.string().nullable(),
   notes: z.string().nullable(),
+  /**
+   * A deliberate flag rather than an inference from `death`, so a person can
+   * be marked not-living even absent a recorded death date. Not enforced
+   * anywhere yet — it exists so the eventual family-sharing privacy rules
+   * (redacting details for living people) aren't a retrofit.
+   */
+  isLiving: z.boolean(),
 });
 export type Person = z.infer<typeof personSchema>;
 
 /** Input accepted when creating a person; the id is assigned by the database. */
 export const createPersonSchema = z.object({
   given: z.string().trim().default(""),
+  middleName: z.string().trim().nullable().default(null),
   surname: z.string().trim().default(""),
-  patronymic: z.string().trim().nullable().default(null),
   sex: sexSchema.default("U"),
+  titlePrefix: z.string().trim().nullable().default(null),
+  suffix: z.string().trim().nullable().default(null),
+  nickname: z.array(z.string().trim()).default([]),
   birth: historicalDateSchema.nullable().default(null),
   birthPlace: z.string().nullable().default(null),
   death: historicalDateSchema.nullable().default(null),
   deathPlace: z.string().nullable().default(null),
   notes: z.string().nullable().default(null),
+  isLiving: z.boolean().default(true),
 });
 export type CreatePerson = z.infer<typeof createPersonSchema>;
 
-/** "Anne Marie Sørensen", collapsing whitespace where parts are missing. */
-export function formatPersonName(name: PersonName): string {
-  const parts = [name.given, name.patronymic, name.surname];
+/** Input accepted when editing a person; every field but `id` is optional. */
+export const updatePersonSchema = z.object({
+  id: personIdSchema,
+  given: z.string().trim().optional(),
+  middleName: z.string().trim().nullable().optional(),
+  surname: z.string().trim().optional(),
+  sex: sexSchema.optional(),
+  titlePrefix: z.string().trim().nullable().optional(),
+  suffix: z.string().trim().nullable().optional(),
+  nickname: z.array(z.string().trim()).optional(),
+  birth: historicalDateSchema.nullable().optional(),
+  birthPlace: z.string().nullable().optional(),
+  death: historicalDateSchema.nullable().optional(),
+  deathPlace: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  isLiving: z.boolean().optional(),
+});
+export type UpdatePerson = z.infer<typeof updatePersonSchema>;
+
+/**
+ * `Anne Marie Sørensen`, or `Niels "Pete" Sørensen` when a nickname is set —
+ * `Niels "Pete, Junior" Sørensen` when there's more than one — collapsing
+ * whitespace where parts are missing.
+ */
+export function formatPersonName(
+  name: PersonName & { middleName?: string | null; nickname?: string[] | null },
+): string {
+  const nicknames = (name.nickname ?? []).map((n) => n.trim()).filter((n) => n !== "");
+  const parts = [
+    name.given,
+    name.middleName && name.middleName.trim() !== "" ? name.middleName.trim() : null,
+    nicknames.length > 0 ? `"${nicknames.join(", ")}"` : null,
+    name.surname,
+  ];
   const present = parts.filter(
     (part): part is string => typeof part === "string" && part.trim() !== "",
   );
   return present.length > 0 ? present.join(" ") : "Unknown";
+}
+
+/**
+ * The formal form of a name, with title/prefix and generational suffix —
+ * "Dr. Niels Sørensen, Jr." Reserved for a person's own page header; lists,
+ * search results and relative links use the shorter `formatPersonName`.
+ */
+export function formatFullPersonName(
+  person: PersonName & Pick<Person, "middleName" | "nickname" | "titlePrefix" | "suffix">,
+): string {
+  const core = formatPersonName(person);
+  const withPrefix =
+    person.titlePrefix && person.titlePrefix.trim() !== "" ? `${person.titlePrefix} ${core}` : core;
+  return person.suffix && person.suffix.trim() !== ""
+    ? `${withPrefix}, ${person.suffix}`
+    : withPrefix;
 }
 
 /**
@@ -88,4 +158,42 @@ export function formatLifespan(person: Pick<Person, "birth" | "death">): string 
 function yearOf(date: HistoricalDate | null): string | null {
   const iso = date?.earliest ?? date?.latest ?? null;
   return iso ? iso.slice(0, 4) : null;
+}
+
+/**
+ * Age in whole years: to `asOf` (default today) if living, otherwise at
+ * death. Needs a resolved (parsed) bound on both ends it uses — an
+ * unparsed-only date (`earliest`/`latest` both null, just free text) can't
+ * anchor an age, so this returns null rather than guessing.
+ */
+export function calculateAge(
+  person: Pick<Person, "birth" | "death" | "isLiving">,
+  asOf: Date = new Date(),
+): number | null {
+  const bornIso = person.birth?.earliest ?? person.birth?.latest ?? null;
+  if (!bornIso) return null;
+
+  const endIso = person.isLiving ? null : (person.death?.earliest ?? person.death?.latest ?? null);
+  if (!person.isLiving && !endIso) return null;
+
+  const born = new Date(bornIso);
+  const end = endIso ? new Date(endIso) : asOf;
+
+  let age = end.getUTCFullYear() - born.getUTCFullYear();
+  const hadBirthday =
+    end.getUTCMonth() > born.getUTCMonth() ||
+    (end.getUTCMonth() === born.getUTCMonth() && end.getUTCDate() >= born.getUTCDate());
+  if (!hadBirthday) age -= 1;
+
+  return age >= 0 ? age : null;
+}
+
+/** "Age 34", or "Died at age 76" — null when `calculateAge` can't resolve one. */
+export function formatAge(
+  person: Pick<Person, "birth" | "death" | "isLiving">,
+  asOf?: Date,
+): string | null {
+  const age = calculateAge(person, asOf);
+  if (age === null) return null;
+  return person.isLiving ? `Age ${age}` : `Died at age ${age}`;
 }

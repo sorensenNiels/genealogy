@@ -20,7 +20,8 @@ the stack was assembled (September 2026).
 | Database                        | PostgreSQL + Apache AGE             | 18 / 1.8.0                 |
 | Frontend                        | React + Vite                        | 19.3.0 / 8.3.0             |
 | Routing / data / tables / forms | TanStack Router, Query, Table, Form | 1.170 / 5.103 / 9.2 / 1.33 |
-| Components                      | shadcn/ui (Base UI) on Tailwind CSS | new-york, slate / 4.3.3    |
+| Components                      | shadcn/ui (React Aria) on Tailwind  | new-york, slate / 4.3.3    |
+| Animation                       | motion                              | 13.4.0                     |
 | Authentication                  | better-auth                         | 1.7.5                      |
 
 ## Repository shape
@@ -139,29 +140,246 @@ Two sharp edges are documented in code and in [CLAUDE.md](CLAUDE.md):
    none of them can be bound parameters. `cypher()` validates all three and
    requires user values to travel through `params`; those guards are unit-tested.
 
-### shadcn/ui on Base UI, not Radix
+### Photo uploads: one REST controller, multer, local disk
 
-New components are pulled from shadcn's Base UI (`@base-ui/react`) preset rather
-than the Radix UI preset it originally shipped with. The switch only touched
-`button.tsx` — the one component that used a primitive at all
-(`@radix-ui/react-slot`, for the `asChild` polymorphic-render pattern);
-`card.tsx`, `input.tsx` and `table.tsx` wrap plain elements and needed no
-change. `button.tsx` now wraps Base UI's own `Button` primitive
-(`@base-ui/react/button`), which exposes the same polymorphism through a
-`render` prop instead of a separate `Slot` component — `asChild` is gone from
-`ButtonProps`, replaced by `render` (Base UI's own naming), which was safe
-because nothing in the app used `asChild` yet.
+`person-photo.controller.ts` is the one REST endpoint in an otherwise all-tRPC
+API — tRPC's contract is JSON in, JSON (well, superjson) out, and has no
+first-class way to accept `multipart/form-data`. Rather than bending tRPC to
+fit or reaching for a heavier upload library, this is a plain Nest
+`@Controller` using `@nestjs/platform-express`'s `FileInterceptor` (already a
+dependency for the Express platform adapter) with `multer` for the multipart
+parsing. It re-implements the same `auth.api.getSession` check
+`protectedProcedure` does, by hand, since it sits outside tRPC's context.
 
-The existing new-york/slate visual design was deliberately kept as-is: shadcn's
-official Base UI preset (`base-vega`) is a full restyle bundled with the
-primitive swap, not just a primitive swap, and re-theming wasn't part of this
-change. `components.json` still reads `style: "new-york"` / `baseColor: "slate"`
-as a result — the shadcn CLI (v4) only exposes a Base UI vs. Radix choice
-through `init`'s `--base` flag as part of a full preset, with no standalone
-per-project marker independent of `style`/`baseColor`. `button.tsx`'s import is
-the real source of truth for now; the next component that needs a real
-interactive primitive (Dialog, Select, etc.) is what will force that
-components.json question for real.
+`multer` was checked against the "Recommending or adding a library" rule in
+[CLAUDE.md](CLAUDE.md) before adding it: both `multer` (2.4.0) and
+`@types/multer` had released within the current month at the time this was
+added, and multer is what `@nestjs/platform-express` itself documents and
+bundles for file uploads — there was no lighter-weight alternative to
+consider that Nest's own file-upload story doesn't already assume.
+
+Uploaded files are written to `UPLOADS_DIR` (default `./data/uploads`, a
+plain filesystem path, not S3 or any object-storage service) and served back
+at `/uploads/<filename>` via `app.useStaticAssets`. This fits the "self-hosted
+single server" deployment model the rest of the stack assumes (see the
+Postgres section above) — no external storage dependency, at the cost of
+needing `UPLOADS_DIR` mounted as a volume in the eventual docker-compose
+packaging (still 🚧, see [FEATURES.md](FEATURES.md)) so uploads survive a
+container recreate, the same way `postgres-data` already does.
+
+The `persons.photo_path` column stores just the filename, never a URL — the
+frontend joins it with the backend's own origin (`apiUrl` from
+`apps/frontend/src/lib/env.ts`) at render time, so nothing in the database is
+tied to a specific host or port.
+
+### shadcn/ui on React Aria Components, not Radix or Base UI
+
+New components are pulled from Adobe's React Aria Components
+(`react-aria-components`) rather than shadcn's original Radix preset or the
+Base UI preset it was briefly switched to. `card.tsx`, `input.tsx` and
+`table.tsx` wrap plain elements and have never needed to change across either
+switch; `button.tsx`, `select.tsx`, `popover.tsx`, `dialog.tsx` and
+`combobox.tsx` each wrap the matching React Aria component.
+
+This was a deliberate, user-directed choice over Base UI, made after checking
+(per the "Recommending or adding a library" rule in
+[CLAUDE.md](CLAUDE.md)) that `react-aria-components` is still actively
+released — it and its `react-aria`/`react-stately` siblings all shipped
+within the current month. React Aria's own accessibility track record (it
+predates Base UI by years and backs Adobe's Spectrum design system in
+production) was the deciding factor over re-verifying Base UI's, which was
+comparatively new at the time it was first adopted here.
+
+As with the Base UI switch before it, `pnpm dlx shadcn add` is not usable
+as-is: it fetches the default Radix + `cmdk` registry entries regardless of
+which headless library the project actually uses, so every generated file's
+primitive import needs hand-swapping to `react-aria-components`. The
+new-york/slate visual design was kept as-is; only the primitive layer
+underneath it changed.
+
+Points that will bite you, coming from either Radix or Base UI:
+
+- **No separate `Trigger` component for `Popover`/`Dialog`.** React Aria's
+  `DialogTrigger` takes the trigger element as its first child directly — any
+  pressable component works, most often this package's own `Button`. Base UI
+  needed a dedicated `PopoverTrigger`/`DialogTrigger` wrapper; here, don't add
+  one.
+- **List items are identified by `id`, not `value`.** In `Select`/`ComboBox`,
+  an item's `id` is what `value`/`onChange` matches against; `value` is a
+  separate, optional data payload. Passing an object as `value` (the Base UI
+  pattern) is a type error here.
+- **`ListBoxItem`/`ComboBoxItem` need an explicit `textValue`** whenever their
+  children aren't a single plain string (e.g. a name plus a parenthesized
+  lifespan) — React Aria uses it for type-ahead and warns loudly at runtime
+  if it's missing and can't be inferred.
+- **Components without a visible `<Label>` need an explicit `aria-label`.**
+  Unlike native `<select>`/`<input>`, wrapping a React Aria component in a
+  plain `<label>` element does not associate it accessibly; React Aria warns
+  in the console when this is missed; treat that warning as a bug, not noise.
+- **States are `data-hovered`/`data-pressed`/`data-focus-visible`/
+  `data-disabled`/`data-selected`/`data-entering`/`data-exiting`**, all
+  presence-only attributes styled the same way as Base UI's
+  `data-open`/`data-starting-style` were: plain Tailwind `data-hovered:…`
+  (no brackets needed) plus a `transition` utility for enter/exit, since this
+  project has no `tailwindcss-animate`/`tw-animate-css` plugin installed for
+  the `animate-in`/`fade-in-0` utility classes shadcn's generated files
+  otherwise assume.
+- **`onPress`, not `onClick`, for this package's `Button`.** `onClick` still
+  works (React Aria keeps it as a compatibility alias) but normalizes worse
+  across mouse/touch/keyboard/screen-reader activation; prefer `onPress` in
+  new code. Plain native `<button>` elements (not this package's `Button`)
+  are unaffected and keep using `onClick`.
+
+### Dark mode: a hand-rolled toggle, not `next-themes`
+
+Dark mode is a plain `.dark` class on `<html>`, driven by
+`packages/ui/src/hooks/use-theme.ts` — the first hook in the package, and the
+reason `packages/ui/src/hooks/` exists (`components.json` already reserved a
+`@genealogy/ui/hooks` alias for it, unused until now). The preference is
+tri-state: an explicit `"light"`/`"dark"` stored in `localStorage` always
+wins; absent one, the resolved theme follows `prefers-color-scheme` live via a
+`matchMedia` listener. `packages/ui/src/components/theme-toggle.tsx` is a
+ready-made toggle button built on the hook; `apps/frontend/src/routes/__root.tsx`
+places it in the header.
+
+`next-themes` was deliberately not used — it exists to solve Next.js's
+server/client hydration mismatch for theme state, and this is a Vite SPA with
+no server-rendered HTML to mismatch against. The one piece that pattern still
+needs here is FOUC prevention: `apps/frontend/index.html` has a small inline
+`<script>` in `<head>`, before any stylesheet, that reads the same
+`localStorage` key (falling back to `matchMedia`) and sets `.dark`
+synchronously. It duplicates the hook's resolution logic by hand — there's no
+way to share code between an inline HTML script and a TypeScript module, so
+keep the two in sync by hand if the storage key or resolution rule ever
+changes. No new CSS was needed: `packages/ui/src/styles.css` already defined
+full `:root`/`.dark` variables from day one, they were just never reachable.
+
+### Motion for animation, applied by hand to React Aria components
+
+`motion` (Framer Motion's current package name) drives the one animation this
+project has deliberately built so far: spring-based entry/exit on the four
+overlay components (`popover`, `dialog`, `select`, `combobox`). This was
+chosen over **Animate UI**, a shadcn-CLI-style component registry that looked
+like a shortcut — its own `packages/ui/package.json` depends on `radix-ui`,
+not `react-aria-components` (one of its own doc pages claims React Aria; the
+source says otherwise), and adopting it would have reintroduced Radix right
+after the Radix → Base UI → React Aria consolidation this repo already went
+through. It had also gone quiet — no commits in the ~9 months before this was
+checked, despite still calling itself "Beta." `motion` itself was verified
+separately as actively released and is what Animate UI's own animations run
+on anyway, so it's used directly against this project's own React
+Aria–based components instead.
+
+The pattern is React Aria's own documented one for animating `Modal`/`Popover`
+exits with Motion (see the "Animation" section of the styling guide): wrap the
+overlay component with `motion.create(...)` and give it an `isExiting` prop
+so it stays mounted until the exit animation finishes, keyed off a
+`'unmounted' | 'hidden' | 'visible'` state tracked wherever `onOpenChange`
+fires. `packages/ui/src/hooks/use-overlay-transition.ts` builds that state
+machine once and hands it to the matching Content component via React
+context, so `popover.tsx`/`dialog.tsx`/`select.tsx`/`combobox.tsx` each only
+need their own `variants` shape, and no consumer of `Popover`/`Dialog`/
+`Select`/`Combobox` ever sees the state machine at all.
+
+One sharp edge hit while building this: `Select` and `Combobox` cannot use the
+same "return `null` while unmounted" trick that `Dialog`/`Popover` use freely.
+React Aria needs to resolve a `Select`/`ComboBox`'s current value against its
+item collection to display a label — including before the popup has ever been
+opened — and that collection is built from the actual `SelectItem`/
+`ComboBoxItem` elements existing in the React tree. Returning `null` from
+`SelectContent`/`ComboboxContent` before first open made the collection
+empty, so the trigger showed "Select an item" instead of the real value even
+though a matching option existed. The fix: always render the item list (never
+return `null` there), and only vary the Motion `animate`/`isExiting` props
+between the "hidden" and "visible" states — `Popover`/`Dialog` don't have this
+requirement, since their content is arbitrary and has no collection to keep
+discoverable.
+
+A second, unrelated bug surfaced while writing the regression tests for the
+above: `combobox.tsx` has no separate trigger button, just the search input,
+so it fell back to React Aria's default `menuTrigger="input"` — which only
+opens on an actual edit, not on focus or a plain click. Clicking into the
+"Add relative" search field did nothing until you typed a character. Fixed by
+setting `menuTrigger="focus"` explicitly, which also reads better anyway (see
+every match immediately, then narrow by typing).
+
+A third bug, found much later (reported as "the Sex dropdown doesn't open"):
+`select.tsx` and `combobox.tsx` both wrapped React Aria's `Popover` directly
+with `motion.create(Popover)`, the same pattern `popover.tsx` uses
+successfully. For `Select`/`Combobox` specifically this left the popover
+permanently at its `initial` opacity — mounted, positioned correctly,
+interactive (keyboard/click selection both worked, and `tester.open()` in a
+test would call it open) — but invisible, because `opacity: 0` was stuck in
+the DOM forever. Confirmed with Playwright against the real dev server
+(`getComputedStyle(...).opacity` stayed `"0"` indefinitely after opening,
+across repeated open/close cycles) — `pnpm test` was green throughout,
+because jsdom does not reproduce this at all (see below).
+
+Root cause: `PopoverContent` returns `null` until first opened, so
+`MotionPopover` only ever mounts once there's a real `hidden → visible`
+transition to perform, and Motion animates it normally. `SelectContent`/
+`ComboboxContent` can't do that (see the sharp edge above — they must stay
+mounted so the item collection resolves a label before first open), so
+`MotionPopover` mounts immediately on page load with `initial="hidden"` and
+`animate="hidden"` _already equal_ — a no-op first render. React Aria's
+`Popover` itself then re-renders on its own, independent of our animation
+state, to recompute its position (`--trigger-anchor-point`/`--trigger-width`,
+written directly into the same inline `style` attribute Motion writes
+`opacity`/`transform` into) every time the trigger's size or placement is
+recalculated. That later re-render stomps Motion's animated values back to
+whatever it computed, which — since Motion never got a real mount-time
+transition to run — was never anything but the `initial` hidden values.
+
+Fixed by not handing `Popover` itself to `motion.create()`. Instead, `Popover`
+renders un-wrapped (still taking `isExiting` directly as a prop, which is all
+that's needed to keep it mounted before first open — passing that prop
+short-circuits `Popover`'s own `!state.isOpen && !isExiting → return null`
+check regardless of Motion), and a plain `motion.create("div")` goes one level
+inside it, wrapping just the `ListBox`. A plain div never participates in
+`Popover`'s own position recomputation, so nothing ever overwrites what Motion
+writes to it.
+
+**This class of bug cannot be caught by this package's component tests.**
+jsdom has no real layout/paint engine, so it does not reproduce React Aria's
+position-recompute-driven style-stomping at all — a version of `select.tsx`
+with this exact bug passes every test in `select.test.tsx` unchanged (checked
+directly: reverting the fix and re-running `pnpm test` still shows all green).
+Anything that depends on an element's real computed style over real elapsed
+time — stuck opacity, mispositioned overlays, a transition that never
+completes — needs verification against the actual dev server in a real
+browser (this project's pattern: a throwaway Playwright script driven from
+the CLI, checking `getComputedStyle` on the real DOM), not just
+`@react-aria/test-utils` assertions. Keep this in mind before trusting a
+green `pnpm test` for anything animation- or layout-shaped.
+
+### Component tests: Vitest + React Testing Library + `@react-aria/test-utils`
+
+`packages/ui` had zero test coverage before both of the bugs above shipped
+silently — `pnpm test` there was a no-op (`vitest run --passWithNoTests`,
+default `environment: "node"`, unable to render React at all). Fixed with:
+
+- `vitest.config.ts` in `packages/ui` setting `environment: "jsdom"` and a
+  `vitest.setup.ts` (imports `@testing-library/jest-dom/vitest` for matchers
+  like `toBeVisible`, plus `ResizeObserver`/`scrollIntoView`/pointer-capture
+  stubs jsdom doesn't implement but React Aria's overlay positioning and
+  interaction layers call). That setup file lives outside `src/` (matching
+  where Vitest itself looks for it) but is added to `tsconfig.json`'s
+  `include` too — otherwise `tsc` never sees the jest-dom augmentation and
+  every matcher fails to typecheck even though the tests themselves pass.
+- `@react-aria/test-utils` — React Aria's own ARIA-pattern testers
+  (`new User().createTester("Select", { root })`, `.createTester("ComboBox", ...)`,
+  etc.), which drive components the way a real user would (via
+  `@testing-library/user-event`) and query by role rather than
+  implementation detail. This is what actually caught both bugs above: a
+  hand-rolled `fireEvent.click` on the trigger wouldn't have exercised the
+  same open/value-resolution path a real click does.
+
+One test file per component with meaningful behavior (`select.test.tsx`,
+`combobox.test.tsx`, `dialog.test.tsx`, `popover.test.tsx`, `tabs.test.tsx`,
+plus lighter render/interaction checks for `button`/`switch`/`checkbox`).
+Purely presentational components (`card`, `input`, `table`, `badge`,
+`avatar`, `separator`) don't have their own test files yet — add one if a bug
+is ever found in one, same as any other component.
 
 ### better-auth, hosted entirely in the backend
 
@@ -216,6 +434,21 @@ is how shadcn is meant to be used — they are source you own. `components.json`
 points the CLI at that package, so `shadcn add` lands components in the right
 place.
 
+**File-based routes nest purely on path prefix, regardless of whether the
+"parent" file renders an `<Outlet />`.** `people.$personId.print.tsx` was
+first added expecting a route independent of `people.$personId.tsx` — same
+URL prefix, unrelated page. Instead, the generator's `RoutePrefixMap` (longest
+matching existing route path wins) made it a _child_ of `people.$personId`
+automatically, and since that route's component returns its own full JSX with
+no `<Outlet />`, the child silently never rendered: the URL changed on
+navigation but the parent's content stayed on screen, with no console error.
+Fixed with the Remix-style trailing-underscore escape — the file is
+`people.$personId_.print.tsx` — which only changes the route's internal `id`
+(and what `tsr generate` writes as the first argument to `createFileRoute`);
+the actual URL (`/people/$personId/print`) and every `<Link to="...">` calling
+it are unaffected. Reach for this any time a new route needs to share a URL
+prefix with an existing route file but not its layout.
+
 ## Verified, not assumed
 
 The stack was exercised end to end before being documented: the dev container
@@ -239,7 +472,16 @@ These are open, and nothing in the code presumes an answer:
   attributes.
 - **GEDCOM import and export.** The domain model is shaped for it —
   `HistoricalDate` keeps the source's own wording, and `sex` uses the GEDCOM
-  vocabulary — but no parser exists.
+  vocabulary — but no importer/exporter exists. `parseHistoricalDate` in
+  `packages/core` (used by `PersonService.create`/`update` to fill in
+  `earliest`/`latest` whenever a caller sends only `original`, which is all
+  the person edit form ever sends) is a first pass at the wordings this app's
+  own fields produce — exact day/month/year, month/year, bare year, and
+  abt/bef/aft qualifiers — not the full GEDCOM date grammar (no `BET ... AND
+...` ranges, no double-dating, no calendar escapes). A caller that already
+  resolved bounds itself is trusted and left alone, so a future GEDCOM
+  importer reading the fuller grammar can supply its own without this parser
+  overriding it.
 - **Media and document storage.** No object store is wired up.
 - **Deployment target and CI.** `pnpm check && pnpm test` is the intended gate;
   no pipeline is defined.

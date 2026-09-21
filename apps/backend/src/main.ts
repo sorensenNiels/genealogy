@@ -28,6 +28,11 @@ async function bootstrap(): Promise<void> {
   // Lets DatabaseModule close the pg pool on SIGTERM.
   app.enableShutdownHooks();
 
+  // Serves whatever person-photo.controller.ts writes under UPLOADS_DIR back
+  // out at /uploads/<filename> — plain static files, no auth on the read
+  // side (same trust model as any other <img src>).
+  app.useStaticAssets(config.getOrThrow<string>("UPLOADS_DIR"), { prefix: "/uploads/" });
+
   // Mounted before tRPC, and via the raw Express instance rather than
   // INestApplication.use: better-auth's own docs mount with app.all (method-
   // agnostic route matching, not INestApplication's use-only passthrough) at

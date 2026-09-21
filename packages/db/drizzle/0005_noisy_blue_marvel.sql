@@ -1,0 +1,1 @@
+ALTER TABLE "person_events" ADD COLUMN "label" text;

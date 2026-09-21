@@ -1,0 +1,1 @@
+ALTER TABLE "persons" ADD COLUMN "is_living" boolean DEFAULT true NOT NULL;

@@ -13,6 +13,9 @@
     "declarationMap": false,
     "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*"],
+  // vitest.setup.ts lives outside src/ (matching vitest.config.ts's own
+  // location) but must still be type-checked: its jest-dom import is what
+  // makes matchers like `toBeVisible` typecheck in every *.test.tsx file.
+  "include": ["src/**/*", "vitest.setup.ts"],
   "exclude": ["node_modules"]
 }

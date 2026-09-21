@@ -20,3 +20,11 @@ routeTree.gen.ts
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# Skill scaffolding some tooling drops into the working directory; not part
+# of this project's source.
+.agents/
+
+# Uploaded files (see UPLOADS_DIR in apps/backend) — belongs in a mounted
+# volume in production, never in the repo.
+apps/backend/data/

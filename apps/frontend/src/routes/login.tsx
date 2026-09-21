@@ -103,7 +103,7 @@ function Login() {
           <Button
             variant="outline"
             className="w-full"
-            onClick={() => authClient.signIn.social({ provider: "google", callbackURL: "/" })}
+            onPress={() => authClient.signIn.social({ provider: "google", callbackURL: "/" })}
           >
             Continue with Google
           </Button>

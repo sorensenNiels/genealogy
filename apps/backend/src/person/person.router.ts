@@ -1,8 +1,22 @@
-import { createPersonSchema, parentageSchema, personIdSchema } from "@genealogy/core";
+import {
+  createNameVariantSchema,
+  createPersonEventSchema,
+  createPersonSchema,
+  createUnionSchema,
+  nameVariantIdSchema,
+  parentageSchema,
+  personEventIdSchema,
+  personIdSchema,
+  unionIdSchema,
+  updateNameVariantSchema,
+  updatePersonEventSchema,
+  updatePersonSchema,
+  updateUnionSchema,
+} from "@genealogy/core";
 import { Injectable } from "@nestjs/common";
 import { z } from "zod";
 
-import { publicProcedure, router } from "../trpc/trpc.base.js";
+import { protectedProcedure, router } from "../trpc/trpc.base.js";
 import { PersonService } from "./person.service.js";
 
 const listInput = z.object({
@@ -27,17 +41,32 @@ export class PersonRouter {
    */
   build() {
     return router({
-      list: publicProcedure.input(listInput).query(({ input }) => this.persons.list(input)),
+      list: protectedProcedure.input(listInput).query(({ input }) => this.persons.list(input)),
 
-      byId: publicProcedure
+      byId: protectedProcedure
         .input(z.object({ id: personIdSchema }))
         .query(({ input }) => this.persons.byId(input.id)),
 
-      create: publicProcedure
+      create: protectedProcedure
         .input(createPersonSchema)
         .mutation(({ input }) => this.persons.create(input)),
 
-      linkParent: publicProcedure
+      update: protectedProcedure
+        .input(updatePersonSchema)
+        .mutation(({ input }) => this.persons.update(input)),
+
+      remove: protectedProcedure
+        .input(z.object({ id: personIdSchema }))
+        .mutation(async ({ input }) => {
+          await this.persons.remove(input.id);
+          return { ok: true } as const;
+        }),
+
+      relatives: protectedProcedure
+        .input(z.object({ id: personIdSchema }))
+        .query(({ input }) => this.persons.relatives(input.id)),
+
+      linkParent: protectedProcedure
         .input(
           z.object({
             parentId: personIdSchema,
@@ -50,20 +79,91 @@ export class PersonRouter {
           return { ok: true } as const;
         }),
 
-      linkSpouse: publicProcedure
+      linkSpouse: protectedProcedure
         .input(z.object({ aId: personIdSchema, bId: personIdSchema }))
         .mutation(async ({ input }) => {
           await this.persons.linkSpouse(input.aId, input.bId);
           return { ok: true } as const;
         }),
 
-      ancestors: publicProcedure
+      unlinkParent: protectedProcedure
+        .input(z.object({ parentId: personIdSchema, childId: personIdSchema }))
+        .mutation(async ({ input }) => {
+          await this.persons.unlinkParent(input.parentId, input.childId);
+          return { ok: true } as const;
+        }),
+
+      unlinkSpouse: protectedProcedure
+        .input(z.object({ aId: personIdSchema, bId: personIdSchema }))
+        .mutation(async ({ input }) => {
+          await this.persons.unlinkSpouse(input.aId, input.bId);
+          return { ok: true } as const;
+        }),
+
+      ancestors: protectedProcedure
         .input(pedigreeInput)
         .query(({ input }) => this.persons.ancestors(input.id, input.generations)),
 
-      descendants: publicProcedure
+      descendants: protectedProcedure
         .input(pedigreeInput)
         .query(({ input }) => this.persons.descendants(input.id, input.generations)),
+
+      listNames: protectedProcedure
+        .input(z.object({ personId: personIdSchema }))
+        .query(({ input }) => this.persons.listNames(input.personId)),
+
+      addName: protectedProcedure
+        .input(createNameVariantSchema)
+        .mutation(({ input }) => this.persons.addName(input)),
+
+      updateName: protectedProcedure
+        .input(updateNameVariantSchema)
+        .mutation(({ input }) => this.persons.updateName(input)),
+
+      removeName: protectedProcedure
+        .input(z.object({ id: nameVariantIdSchema }))
+        .mutation(async ({ input }) => {
+          await this.persons.removeName(input.id);
+          return { ok: true } as const;
+        }),
+
+      listEvents: protectedProcedure
+        .input(z.object({ personId: personIdSchema }))
+        .query(({ input }) => this.persons.listEvents(input.personId)),
+
+      addEvent: protectedProcedure
+        .input(createPersonEventSchema)
+        .mutation(({ input }) => this.persons.addEvent(input)),
+
+      updateEvent: protectedProcedure
+        .input(updatePersonEventSchema)
+        .mutation(({ input }) => this.persons.updateEvent(input)),
+
+      removeEvent: protectedProcedure
+        .input(z.object({ id: personEventIdSchema }))
+        .mutation(async ({ input }) => {
+          await this.persons.removeEvent(input.id);
+          return { ok: true } as const;
+        }),
+
+      listUnions: protectedProcedure
+        .input(z.object({ personId: personIdSchema }))
+        .query(({ input }) => this.persons.listUnions(input.personId)),
+
+      addUnion: protectedProcedure
+        .input(createUnionSchema)
+        .mutation(({ input }) => this.persons.addUnion(input)),
+
+      updateUnion: protectedProcedure
+        .input(updateUnionSchema)
+        .mutation(({ input }) => this.persons.updateUnion(input)),
+
+      removeUnion: protectedProcedure
+        .input(z.object({ id: unionIdSchema }))
+        .mutation(async ({ input }) => {
+          await this.persons.removeUnion(input.id);
+          return { ok: true } as const;
+        }),
     });
   }
 }

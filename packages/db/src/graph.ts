@@ -51,8 +51,114 @@ export async function addSpouseOf(
     `MATCH (a:Person {id: $aId}), (b:Person {id: $bId})
      MERGE (a)-[r:SPOUSE_OF]->(b)
      RETURN r`,
-    ["a", "b", "r"],
+    ["r"],
     { ...options, params: { aId, bId } },
+  );
+}
+
+/**
+ * Spouses regardless of which side `addSpouseOf` created the edge from — it
+ * only ever writes one directed `SPOUSE_OF` edge, so this match is undirected.
+ */
+export async function spousesOf(
+  pool: Pool,
+  personId: string,
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<PedigreeNode[]> {
+  const rows = await cypher<{ spouse: AgeVertex<PersonNodeProps> }>(
+    pool,
+    `MATCH (:Person {id: $id})-[:SPOUSE_OF]-(spouse:Person)
+     RETURN DISTINCT spouse`,
+    ["spouse"],
+    { ...options, params: { id: personId } },
+  );
+  return rows.map((row) => ({ personId: row.spouse.properties.id, generation: 1 }));
+}
+
+/**
+ * Which of these ids currently have any relationship at all — a parent,
+ * child, or spouse edge — checked in one round trip rather than one
+ * `relatives()` call per row. Used to decide whether each row in a list of
+ * people is safe to delete. Doesn't account for a union that outlived its
+ * `SPOUSE_OF` edge (see `unlinkSpouse`); callers that care about that check
+ * `unions` separately, same as `PersonService.remove` does.
+ *
+ * AGE's Cypher doesn't accept `[:PARENT_OF|SPOUSE_OF]` (multi-type patterns),
+ * hence the two separate `OPTIONAL MATCH`es rather than one.
+ */
+export async function personsWithRelations(
+  pool: Pool,
+  personIds: readonly string[],
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<Set<string>> {
+  if (personIds.length === 0) return new Set();
+  const rows = await cypher<{ id: string }>(
+    pool,
+    `UNWIND $ids AS pid
+     MATCH (p:Person {id: pid})
+     OPTIONAL MATCH (p)-[r:PARENT_OF]-()
+     OPTIONAL MATCH (p)-[s:SPOUSE_OF]-()
+     WITH p, r, s
+     WHERE r IS NOT NULL OR s IS NOT NULL
+     RETURN DISTINCT p.id AS id`,
+    ["id"],
+    { ...options, params: { ids: personIds } },
+  );
+  return new Set(rows.map((row) => row.id));
+}
+
+/** Removes a `PARENT_OF` edge. A no-op if the two were never linked. */
+export async function removeParentOf(
+  pool: Pool,
+  parentId: string,
+  childId: string,
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<void> {
+  await cypher(
+    pool,
+    `MATCH (:Person {id: $parentId})-[r:PARENT_OF]->(:Person {id: $childId})
+     DELETE r
+     RETURN true AS deleted`,
+    ["deleted"],
+    { ...options, params: { parentId, childId } },
+  );
+}
+
+/** Removes a `SPOUSE_OF` edge, regardless of which side it was created from. */
+export async function removeSpouseOf(
+  pool: Pool,
+  aId: string,
+  bId: string,
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<void> {
+  await cypher(
+    pool,
+    `MATCH (:Person {id: $aId})-[r:SPOUSE_OF]-(:Person {id: $bId})
+     DELETE r
+     RETURN true AS deleted`,
+    ["deleted"],
+    { ...options, params: { aId, bId } },
+  );
+}
+
+/**
+ * Removes the `Person` node and any edges touching it. Callers are expected to
+ * have already confirmed there are none to remove — see `PersonService.remove`
+ * — so this never silently drops relationship data; `DETACH DELETE` is just
+ * the belt-and-braces way to word the query, not a license to skip that check.
+ */
+export async function deletePersonNode(
+  pool: Pool,
+  personId: string,
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<void> {
+  await cypher(
+    pool,
+    `MATCH (p:Person {id: $id})
+     DETACH DELETE p
+     RETURN true AS deleted`,
+    ["deleted"],
+    { ...options, params: { id: personId } },
   );
 }
 

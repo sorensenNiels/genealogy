@@ -4,6 +4,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 
 import { AUTH, type Auth } from "../auth/auth.module.js";
 import { PersonRouter } from "../person/person.router.js";
+import { SourceRouter } from "../source/source.router.js";
 import { publicProcedure, router } from "./trpc.base.js";
 import { createContextFactory } from "./trpc.context.js";
 
@@ -13,6 +14,7 @@ export class TrpcRouter {
 
   constructor(
     private readonly person: PersonRouter,
+    private readonly source: SourceRouter,
     @Inject(AUTH) private readonly auth: Auth,
   ) {}
 
@@ -23,6 +25,7 @@ export class TrpcRouter {
         checkedAt: new Date(),
       })),
       person: this.person.build(),
+      source: this.source.build(),
     });
   }
 
