@@ -74,23 +74,13 @@ import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
-import {
-  Cake,
-  CameraIcon,
-  CircleHelp,
-  Cross,
-  Loader2Icon,
-  Mars,
-  PlusIcon,
-  Trash2Icon,
-  Venus,
-  XIcon,
-} from "lucide-react";
+import { Cake, CameraIcon, Cross, Loader2Icon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 
 import { apiUrl } from "../lib/env";
 import { formatDisplayDate } from "../lib/format-date";
+import { GenderIcon, initials, SEX_LABELS } from "../lib/person-display";
 import { useTRPC } from "../lib/trpc";
 
 export const Route = createFileRoute("/people/$personId")({
@@ -99,23 +89,31 @@ export const Route = createFileRoute("/people/$personId")({
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PersonRow = RouterOutputs["person"]["byId"];
+type ParentRow = RouterOutputs["person"]["relatives"]["parents"][number];
 type NameVariantRow = RouterOutputs["person"]["listNames"][number];
 type PersonEventRow = RouterOutputs["person"]["listEvents"][number];
 type UnionRow = RouterOutputs["person"]["listUnions"][number];
 type SourceRow = RouterOutputs["source"]["listSources"][number];
 type CitationRow = RouterOutputs["source"]["listCitations"][number];
-type RelativeKind = "parent" | "spouse" | "child";
+type RelativeKind = "spouse" | "child";
+
+const PARENTAGE_LABELS: Record<Parentage, string> = {
+  birth: "Birth",
+  adopted: "Adopted",
+  step: "Step",
+  foster: "Foster",
+  unknown: "Unknown",
+};
+
+const UNION_STATUS_LABELS: Record<UnionStatus, string> = {
+  married: "Married",
+  divorced: "Divorced",
+  partnership: "Partnership",
+  annulled: "Annulled",
+  widowed: "Widowed",
+};
 
 const NO_UNIONS: UnionRow[] = [];
-
-// Stored values stay the M/F/U schema; only the displayed labels change here.
-// Revisit once i18n lands — this should become a translation lookup, not a
-// hardcoded English map.
-const SEX_LABELS: Record<(typeof sexSchema.options)[number], string> = {
-  M: "Male",
-  F: "Female",
-  U: "Unknown",
-};
 
 // A starting point, not a closed vocabulary — PersonFields' Title/prefix and
 // Suffix fields merge these with whatever's already been typed for other
@@ -265,11 +263,9 @@ function PersonDetailRoute() {
         onDeleted={() => navigate({ to: "/people" })}
       />
       <div className="grid gap-6 md:grid-cols-3">
-        <RelativesSection
-          title="Parents"
-          kind="parent"
+        <ParentsSection
           personId={personId}
-          relatives={parents}
+          parents={parents}
           excludeIds={excludeIds}
           onChanged={refresh}
         />
@@ -507,6 +503,7 @@ function PersonFields({
                   onBlur={field.handleBlur}
                   onChange={field.handleChange}
                   options={titlePrefixOptions}
+                  isClearable
                 />
               </LabeledField>
             )}
@@ -520,6 +517,7 @@ function PersonFields({
                   onBlur={field.handleBlur}
                   onChange={field.handleChange}
                   options={suffixOptions}
+                  isClearable
                 />
               </LabeledField>
             )}
@@ -709,22 +707,6 @@ function historicalDatePreview(text: string): HistoricalDatePreview | null {
   return display ? { text: display, status: "parsed" } : { text: trimmed, status: "unparsed" };
 }
 
-function GenderIcon({ sex }: { sex: Sex }) {
-  const props = {
-    className: "size-5 shrink-0 text-muted-foreground",
-    "aria-hidden": true,
-  } as const;
-  if (sex === "M") return <Mars {...props} />;
-  if (sex === "F") return <Venus {...props} />;
-  return <CircleHelp {...props} />;
-}
-
-function initials(person: Pick<PersonRow, "given" | "surname">): string {
-  const parts = [person.given, person.surname].filter((part) => part.trim() !== "");
-  const letters = parts.map((part) => part.trim()[0]?.toUpperCase() ?? "").join("");
-  return letters === "" ? "?" : letters;
-}
-
 function PersonPhoto({ person, onChanged }: { person: PersonRow; onChanged: () => Promise<void> }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -857,8 +839,6 @@ function RelativesSection({
   const remove = async (relativeId: string) => {
     if (kind === "spouse") {
       await unlinkSpouse.mutateAsync({ aId: personId, bId: relativeId });
-    } else if (kind === "parent") {
-      await unlinkParent.mutateAsync({ parentId: relativeId, childId: personId });
     } else {
       await unlinkParent.mutateAsync({ parentId: personId, childId: relativeId });
     }
@@ -877,7 +857,6 @@ function RelativesSection({
         />
       </CardHeader>
       <CardContent className="space-y-2">
-        {relatives.length === 0 && <p className="text-sm text-muted-foreground">None recorded.</p>}
         {relatives.map((relative) => {
           const union = unions.find(
             (candidate) =>
@@ -963,8 +942,6 @@ function AddRelative({
             : { original: unionDate.trim(), ...parseHistoricalDate(unionDate.trim()) },
         startPlace: unionPlace.trim() === "" ? null : unionPlace,
       });
-    } else if (kind === "parent") {
-      await linkParent.mutateAsync({ parentId: target.id, childId: personId, parentage });
     } else {
       await linkParent.mutateAsync({ parentId: personId, childId: target.id, parentage });
     }
@@ -1014,7 +991,7 @@ function AddRelative({
               <SelectContent>
                 {unionStatusSchema.options.map((option) => (
                   <SelectItem key={option} id={option}>
-                    {option}
+                    {UNION_STATUS_LABELS[option]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1119,11 +1096,408 @@ function CreateAndLinkForm({
               : { original: unionDate.trim(), ...parseHistoricalDate(unionDate.trim()) },
           startPlace: unionPlace.trim() === "" ? null : unionPlace,
         });
-      } else if (kind === "parent") {
-        await linkParent.mutateAsync({ parentId: created.id, childId: personId, parentage });
       } else {
         await linkParent.mutateAsync({ parentId: personId, childId: created.id, parentage });
       }
+      formApi.reset();
+      await onDone();
+    },
+  });
+
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <form.Field name="given">
+        {(field) => (
+          <Input
+            placeholder="Given names"
+            value={field.state.value}
+            onChange={(event) => field.handleChange(event.target.value)}
+          />
+        )}
+      </form.Field>
+      <form.Field name="surname">
+        {(field) => (
+          <Input
+            placeholder="Last name"
+            value={field.state.value}
+            onChange={(event) => field.handleChange(event.target.value)}
+          />
+        )}
+      </form.Field>
+      <DialogFooter>
+        <Button type="submit" isDisabled={createPerson.isPending}>
+          {createPerson.isPending ? "Creating…" : "Create and link"}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+/**
+ * Parents get their own layout rather than reusing RelativesSection: a birth
+ * father and mother are the common case and read better as named slots than
+ * as an undifferentiated list, while adoptive/step/foster parents — and any
+ * birth parent whose sex isn't recorded, or a third birth parent a source
+ * disagrees about — fall through to a tagged "Other parents" list instead of
+ * being forced into a slot that wouldn't be accurate.
+ */
+function ParentsSection({
+  personId,
+  parents,
+  excludeIds,
+  onChanged,
+}: {
+  personId: string;
+  parents: ParentRow[];
+  excludeIds: Set<string>;
+  onChanged: () => Promise<void>;
+}) {
+  const trpc = useTRPC();
+  const unlinkParent = useMutation(trpc.person.unlinkParent.mutationOptions());
+
+  const remove = async (parentId: string) => {
+    await unlinkParent.mutateAsync({ parentId, childId: personId });
+    await onChanged();
+  };
+
+  const father = parents.find((parent) => parent.parentage === "birth" && parent.sex === "M");
+  const mother = parents.find((parent) => parent.parentage === "birth" && parent.sex === "F");
+  const others = parents.filter((parent) => parent !== father && parent !== mother);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Parents</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-3">
+          <ParentSlot
+            label="Father"
+            personId={personId}
+            parent={father}
+            presetSex="M"
+            excludeIds={excludeIds}
+            onRemove={remove}
+            onChanged={onChanged}
+          />
+          <ParentSlot
+            label="Mother"
+            personId={personId}
+            parent={mother}
+            presetSex="F"
+            excludeIds={excludeIds}
+            onRemove={remove}
+            onChanged={onChanged}
+          />
+        </div>
+        <div className="space-y-2 border-t pt-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm text-muted-foreground">Other parents</span>
+            <AddOtherParent personId={personId} excludeIds={excludeIds} onChanged={onChanged} />
+          </div>
+          {others.map((parent) => (
+            <div key={parent.id} className="flex items-center justify-between gap-2 text-sm">
+              <div className="flex items-center gap-2">
+                <Link
+                  to="/people/$personId"
+                  params={{ personId: parent.id }}
+                  className="hover:underline"
+                >
+                  {formatPersonName(parent)}
+                  {formatLifespan(parent) && (
+                    <span className="ml-1 text-muted-foreground">({formatLifespan(parent)})</span>
+                  )}
+                </Link>
+                <Badge variant="outline">{PARENTAGE_LABELS[parent.parentage]}</Badge>
+              </div>
+              <RemoveButton
+                itemLabel={`the relationship with ${formatPersonName(parent)}`}
+                onConfirm={() => void remove(parent.id)}
+              />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ParentSlot({
+  label,
+  personId,
+  parent,
+  presetSex,
+  excludeIds,
+  onRemove,
+  onChanged,
+}: {
+  label: string;
+  personId: string;
+  parent: ParentRow | undefined;
+  presetSex: Sex;
+  excludeIds: Set<string>;
+  onRemove: (parentId: string) => Promise<void>;
+  onChanged: () => Promise<void>;
+}) {
+  if (!parent) {
+    return (
+      <AddParentSlot
+        label={label}
+        personId={personId}
+        presetSex={presetSex}
+        excludeIds={excludeIds}
+        onChanged={onChanged}
+      />
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-2 text-sm">
+      <div>
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <Link to="/people/$personId" params={{ personId: parent.id }} className="hover:underline">
+          {formatPersonName(parent)}
+          {formatLifespan(parent) && (
+            <span className="ml-1 text-muted-foreground">({formatLifespan(parent)})</span>
+          )}
+        </Link>
+      </div>
+      <RemoveButton
+        itemLabel={`the relationship with ${formatPersonName(parent)}`}
+        onConfirm={() => void onRemove(parent.id)}
+      />
+    </div>
+  );
+}
+
+/** Fills the Father/Mother slot: parentage is always "birth", so there's nothing to pick. */
+function AddParentSlot({
+  label,
+  personId,
+  presetSex,
+  excludeIds,
+  onChanged,
+}: {
+  label: string;
+  personId: string;
+  presetSex: Sex;
+  excludeIds: Set<string>;
+  onChanged: () => Promise<void>;
+}) {
+  const trpc = useTRPC();
+  const [open, setOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const search = useQuery({
+    ...trpc.person.list.queryOptions({
+      limit: 10,
+      offset: 0,
+      search: query.trim() === "" ? null : query.trim(),
+    }),
+    enabled: open,
+  });
+
+  const linkParent = useMutation(trpc.person.linkParent.mutationOptions());
+  const options = (search.data?.items ?? []).filter((candidate) => !excludeIds.has(candidate.id));
+
+  const link = async (target: PersonRow) => {
+    await linkParent.mutateAsync({ parentId: target.id, childId: personId, parentage: "birth" });
+    setOpen(false);
+    setQuery("");
+    await onChanged();
+  };
+
+  return (
+    <Popover isOpen={open} onOpenChange={setOpen}>
+      <Button variant="outline" size="sm" className="w-full justify-start">
+        + Add {label.toLowerCase()}
+      </Button>
+      <PopoverContent className="w-80 space-y-3">
+        <Combobox<PersonRow>
+          aria-label={`Search for ${label.toLowerCase()}`}
+          items={options}
+          inputValue={query}
+          onInputChange={setQuery}
+          onChange={(value) => {
+            const target = options.find((candidate) => candidate.id === value);
+            if (target) void link(target);
+          }}
+        >
+          <ComboboxInput placeholder="Search people…" />
+          <ComboboxContent<PersonRow>
+            renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
+          >
+            {(item) => (
+              <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
+                <span className="flex items-center gap-1.5">
+                  <GenderIcon sex={item.sex} className="size-3.5" />
+                  {formatPersonName(item)}
+                  {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
+                </span>
+              </ComboboxItem>
+            )}
+          </ComboboxContent>
+        </Combobox>
+        <Dialog isOpen={createOpen} onOpenChange={setCreateOpen}>
+          <Button variant="ghost" size="sm" className="w-full">
+            + Create new person
+          </Button>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>New {label.toLowerCase()}</DialogTitle>
+            </DialogHeader>
+            <CreateAndLinkParentForm
+              personId={personId}
+              parentage="birth"
+              presetSex={presetSex}
+              onDone={async () => {
+                setCreateOpen(false);
+                setOpen(false);
+                await onChanged();
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Adoptive/step/foster parents, or any birth parent that doesn't fit a slot. */
+function AddOtherParent({
+  personId,
+  excludeIds,
+  onChanged,
+}: {
+  personId: string;
+  excludeIds: Set<string>;
+  onChanged: () => Promise<void>;
+}) {
+  const trpc = useTRPC();
+  const [open, setOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [parentage, setParentage] = useState<Parentage>("unknown");
+
+  const search = useQuery({
+    ...trpc.person.list.queryOptions({
+      limit: 10,
+      offset: 0,
+      search: query.trim() === "" ? null : query.trim(),
+    }),
+    enabled: open,
+  });
+
+  const linkParent = useMutation(trpc.person.linkParent.mutationOptions());
+  const options = (search.data?.items ?? []).filter((candidate) => !excludeIds.has(candidate.id));
+
+  const link = async (target: PersonRow) => {
+    await linkParent.mutateAsync({ parentId: target.id, childId: personId, parentage });
+    setOpen(false);
+    setQuery("");
+    await onChanged();
+  };
+
+  return (
+    <Popover isOpen={open} onOpenChange={setOpen}>
+      <Button variant="outline" size="sm">
+        + Add
+      </Button>
+      <PopoverContent className="w-80 space-y-3">
+        <Select
+          aria-label="Parentage"
+          value={parentage}
+          onChange={(value) => {
+            if (value) setParentage(parentageSchema.parse(value));
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {parentageSchema.options.map((option) => (
+              <SelectItem key={option} id={option}>
+                {PARENTAGE_LABELS[option]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Combobox<PersonRow>
+          aria-label="Search people"
+          items={options}
+          inputValue={query}
+          onInputChange={setQuery}
+          onChange={(value) => {
+            const target = options.find((candidate) => candidate.id === value);
+            if (target) void link(target);
+          }}
+        >
+          <ComboboxInput placeholder="Search people…" />
+          <ComboboxContent<PersonRow>
+            renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
+          >
+            {(item) => (
+              <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
+                {formatPersonName(item)}
+                {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
+              </ComboboxItem>
+            )}
+          </ComboboxContent>
+        </Combobox>
+        <Dialog isOpen={createOpen} onOpenChange={setCreateOpen}>
+          <Button variant="ghost" size="sm" className="w-full">
+            + Create new person
+          </Button>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>New person</DialogTitle>
+            </DialogHeader>
+            <CreateAndLinkParentForm
+              personId={personId}
+              parentage={parentage}
+              presetSex={null}
+              onDone={async () => {
+                setCreateOpen(false);
+                setOpen(false);
+                await onChanged();
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function CreateAndLinkParentForm({
+  personId,
+  parentage,
+  presetSex,
+  onDone,
+}: {
+  personId: string;
+  parentage: Parentage;
+  presetSex: Sex | null;
+  onDone: () => Promise<void>;
+}) {
+  const trpc = useTRPC();
+  const createPerson = useMutation(trpc.person.create.mutationOptions());
+  const linkParent = useMutation(trpc.person.linkParent.mutationOptions());
+
+  const form = useForm({
+    defaultValues: { given: "", surname: "" },
+    onSubmit: async ({ value, formApi }) => {
+      const created = await createPerson.mutateAsync(
+        presetSex ? { ...value, sex: presetSex } : value,
+      );
+      await linkParent.mutateAsync({ parentId: created.id, childId: personId, parentage });
       formApi.reset();
       await onDone();
     },
@@ -1206,7 +1580,6 @@ function NamesSection({
         </Dialog>
       </CardHeader>
       <CardContent className="space-y-2">
-        {names.length === 0 && <p className="text-sm text-muted-foreground">None recorded.</p>}
         {names.map((name) => (
           <NameRow
             key={name.id}
@@ -1413,7 +1786,6 @@ function EventsSection({
         </Dialog>
       </CardHeader>
       <CardContent className="space-y-2">
-        {events.length === 0 && <p className="text-sm text-muted-foreground">None recorded.</p>}
         {events.map((event) => (
           <EventRow
             key={event.id}
@@ -1718,7 +2090,6 @@ function CitationsSection({
         </Dialog>
       </CardHeader>
       <CardContent className="space-y-2">
-        {citations.length === 0 && <p className="text-sm text-muted-foreground">None recorded.</p>}
         {citations.map((citation) => {
           const source = sourceById.get(citation.sourceId);
           return (

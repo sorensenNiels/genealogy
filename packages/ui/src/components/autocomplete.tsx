@@ -1,7 +1,9 @@
+import { XIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, type ComponentProps } from "react";
 import {
   ComboBox as RACComboBox,
+  Group,
   Input as RACInput,
   ListBox,
   ListBoxItem,
@@ -29,6 +31,8 @@ export interface AutocompleteProps extends Omit<
    * suggestion list, not a closed vocabulary.
    */
   options: readonly string[];
+  /** Shows a clear (×) button inside the field, on the right, whenever there's a value to clear. */
+  isClearable?: boolean;
 }
 
 /**
@@ -38,7 +42,14 @@ export interface AutocompleteProps extends Omit<
  * still commits whatever was typed even if it matches nothing, via
  * `allowsCustomValue`.
  */
-export function Autocomplete({ value, onChange, options, className, ...props }: AutocompleteProps) {
+export function Autocomplete({
+  value,
+  onChange,
+  options,
+  className,
+  isClearable,
+  ...props
+}: AutocompleteProps) {
   const { contextValue, handleOpenChange } = useOverlayTransition();
   // `items` is a controlled collection as far as RAC is concerned — it
   // doesn't filter it against `inputValue` itself (that's `defaultItems`'
@@ -62,14 +73,30 @@ export function Autocomplete({ value, onChange, options, className, ...props }: 
       onOpenChange={handleOpenChange}
     >
       <OverlayTransitionProvider value={contextValue}>
-        <RACInput
-          data-slot="autocomplete-input"
+        <Group
+          data-slot="autocomplete-input-group"
           className={cn(
-            "flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm",
+            "flex h-9 w-full min-w-0 items-center gap-1 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 md:text-sm",
             className,
           )}
-          {...props}
-        />
+        >
+          <RACInput
+            data-slot="autocomplete-input"
+            className="w-full min-w-0 bg-transparent text-inherit outline-none placeholder:text-muted-foreground"
+            {...props}
+          />
+          {isClearable && value !== "" && (
+            <button
+              type="button"
+              data-slot="autocomplete-clear"
+              aria-label="Clear"
+              onClick={() => onChange("")}
+              className="shrink-0 rounded-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            >
+              <XIcon className="size-3.5" aria-hidden="true" />
+            </button>
+          )}
+        </Group>
         <AutocompleteContent />
       </OverlayTransitionProvider>
     </RACComboBox>
@@ -89,7 +116,7 @@ function AutocompleteContent() {
       >
         <ListBox<{
           id: string;
-        }> className="max-h-60 overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md outline-hidden">
+        }> className="scrollbar-thin max-h-60 overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md outline-hidden">
           {(item) => (
             <ListBoxItem
               id={item.id}

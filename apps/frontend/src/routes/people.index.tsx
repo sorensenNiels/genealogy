@@ -1,5 +1,5 @@
 import type { AppRouter } from "@genealogy/backend";
-import { formatLifespan, formatPersonName } from "@genealogy/core";
+import { calculateAge, formatLifespan, formatPersonName } from "@genealogy/core";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,6 +10,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@genealogy/ui/components/alert-dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
+import { Badge } from "@genealogy/ui/components/badge";
 import { Button } from "@genealogy/ui/components/button";
 import { CopyableText } from "@genealogy/ui/components/copyable-text";
 import { Input } from "@genealogy/ui/components/input";
@@ -21,14 +23,15 @@ import {
   TableHeader,
   TableRow,
 } from "@genealogy/ui/components/table";
-import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
 import type { inferRouterOutputs } from "@trpc/server";
 import { Trash2Icon } from "lucide-react";
 import { useState } from "react";
 
+import { apiUrl } from "../lib/env";
+import { GenderIcon, initials, SEX_LABELS } from "../lib/person-display";
 import { useTRPC } from "../lib/trpc";
 
 export const Route = createFileRoute("/people/")({
@@ -44,23 +47,54 @@ const helper = createColumnHelper<typeof features, PersonListItem>();
 const columns = helper.columns([
   helper.accessor((row) => formatPersonName(row), {
     id: "name",
-    header: "Name",
-    cell: (context) => (
-      <Link
-        to="/people/$personId"
-        params={{ personId: context.row.original.id }}
-        className="hover:underline"
-      >
-        {context.getValue()}
-      </Link>
-    ),
+    header: "Person",
+    cell: (context) => {
+      const person = context.row.original;
+      const photoUrl = person.photoPath ? `${apiUrl}/uploads/${person.photoPath}` : null;
+      return (
+        <Link
+          to="/people/$personId"
+          params={{ personId: person.id }}
+          className="flex items-center gap-2 hover:underline"
+        >
+          <Avatar className="size-8">
+            {photoUrl && <AvatarImage src={photoUrl} alt="" />}
+            <AvatarFallback className="text-xs">{initials(person)}</AvatarFallback>
+          </Avatar>
+          {context.getValue()}
+        </Link>
+      );
+    },
   }),
   helper.accessor("publicId", {
     id: "publicId",
     header: "ID",
     cell: (context) => <CopyableText value={context.getValue()} />,
   }),
-  helper.accessor("sex", { id: "sex", header: "Sex" }),
+  helper.accessor("sex", {
+    id: "sex",
+    header: "Gender",
+    cell: (context) => (
+      <span className="flex items-center gap-1.5">
+        <GenderIcon sex={context.getValue()} className="size-4" />
+        {SEX_LABELS[context.getValue()]}
+      </span>
+    ),
+  }),
+  helper.accessor("isLiving", {
+    id: "status",
+    header: "Status",
+    cell: (context) => (
+      <Badge variant={context.getValue() ? "secondary" : "outline"}>
+        {context.getValue() ? "Living" : "Deceased"}
+      </Badge>
+    ),
+  }),
+  helper.accessor((row) => calculateAge(row), {
+    id: "age",
+    header: "Age",
+    cell: (context) => context.getValue() ?? "—",
+  }),
   helper.accessor((row) => formatLifespan(row) ?? "—", { id: "lifespan", header: "Lifespan" }),
   helper.accessor((row) => row.birthPlace ?? "—", { id: "birthPlace", header: "Born in" }),
   helper.display({
@@ -75,89 +109,62 @@ const PAGE_SIZE = 50;
 function People() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const offset = page * PAGE_SIZE;
 
   const people = useQuery(
     trpc.person.list.queryOptions({
       limit: PAGE_SIZE,
-      offset: 0,
+      offset,
       search: search.trim() === "" ? null : search.trim(),
     }),
   );
 
+  // Creates a blank record (every field on CreatePerson defaults) and drops
+  // straight onto its own page — the same "person ui" used for editing — to
+  // fill in, rather than asking for a name up front in the list toolbar.
   const createPerson = useMutation(
     trpc.person.create.mutationOptions({
-      onSuccess: async () => {
+      onSuccess: async (person) => {
         await queryClient.invalidateQueries({ queryKey: trpc.person.list.queryKey() });
+        await navigate({ to: "/people/$personId", params: { personId: person.id } });
       },
     }),
   );
 
-  const form = useForm({
-    defaultValues: { given: "", surname: "" },
-    onSubmit: async ({ value, formApi }) => {
-      await createPerson.mutateAsync(value);
-      formApi.reset();
-    },
-  });
-
   // The table needs a stable array; an inline `?? []` would be a new one each render.
   const rows = people.data?.items ?? EMPTY_ROWS;
   const table = useTable({ features, columns, data: rows });
+  const total = people.data?.total ?? 0;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold">People</h1>
+          <h1 className="text-2xl font-semibold">Person list</h1>
           <p className="text-sm text-muted-foreground">
             {people.data ? `${people.data.total} recorded` : "Loading…"}
           </p>
         </div>
-        <Input
-          className="max-w-xs"
-          placeholder="Search by name"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          aria-label="Search people by name"
-        />
-      </div>
-
-      <form
-        className="flex flex-wrap items-end gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void form.handleSubmit();
-        }}
-      >
-        <form.Field name="given">
-          {(field) => (
-            <Input
-              className="max-w-40"
-              placeholder="Given names"
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(event) => field.handleChange(event.target.value)}
-              aria-label="Given names"
-            />
-          )}
-        </form.Field>
-        <form.Field name="surname">
-          {(field) => (
-            <Input
-              className="max-w-40"
-              placeholder="Last name"
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(event) => field.handleChange(event.target.value)}
-              aria-label="Last name"
-            />
-          )}
-        </form.Field>
-        <Button type="submit" isDisabled={createPerson.isPending}>
+        <Button isDisabled={createPerson.isPending} onPress={() => createPerson.mutate({})}>
           {createPerson.isPending ? "Adding…" : "Add person"}
         </Button>
-      </form>
+      </div>
+
+      <Input
+        className="max-w-xs"
+        placeholder="Search by name"
+        value={search}
+        onChange={(event) => {
+          setSearch(event.target.value);
+          // A filtered result set can have fewer pages than the last
+          // unfiltered position — start over rather than strand the view.
+          setPage(0);
+        }}
+        aria-label="Search people by name"
+      />
 
       {people.isError && (
         <p className="text-sm text-destructive">Could not load people: {people.error.message}</p>
@@ -177,9 +184,16 @@ function People() {
         </TableHeader>
         <TableBody>
           {table.getRowModel().rows.map((row) => (
-            <TableRow key={row.id}>
+            <TableRow key={row.id} className="group">
               {row.getAllCells().map((cell) => (
-                <TableCell key={cell.id}>
+                <TableCell
+                  key={cell.id}
+                  className={
+                    cell.column.id === "actions"
+                      ? "opacity-0 transition-opacity group-hover:opacity-100"
+                      : undefined
+                  }
+                >
                   <table.FlexRender cell={cell} />
                 </TableCell>
               ))}
@@ -197,6 +211,32 @@ function People() {
           )}
         </TableBody>
       </Table>
+
+      {total > PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <p>
+            Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              isDisabled={page === 0}
+              onPress={() => setPage((current) => current - 1)}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              isDisabled={offset + PAGE_SIZE >= total}
+              onPress={() => setPage((current) => current + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

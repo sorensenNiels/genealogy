@@ -40,6 +40,32 @@ export async function addParentOf(
   );
 }
 
+export interface ParentEdge {
+  personId: string;
+  parentage: Parentage;
+}
+
+/**
+ * Direct parents only, with the parentage recorded on each edge. Separate from
+ * `ancestorsOf` because that walk can span several generations through several
+ * edges, each with its own `parentage` — there is no single value to report
+ * for a multi-hop ancestor, only for a direct parent.
+ */
+export async function parentsOf(
+  pool: Pool,
+  personId: string,
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<ParentEdge[]> {
+  const rows = await cypher<{ parent: AgeVertex<PersonNodeProps>; parentage: Parentage }>(
+    pool,
+    `MATCH (parent:Person)-[r:PARENT_OF]->(:Person {id: $id})
+     RETURN parent, r.parentage AS parentage`,
+    ["parent", "parentage"],
+    { ...options, params: { id: personId } },
+  );
+  return rows.map((row) => ({ personId: row.parent.properties.id, parentage: row.parentage }));
+}
+
 export async function addSpouseOf(
   pool: Pool,
   aId: string,

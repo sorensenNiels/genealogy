@@ -96,7 +96,7 @@ export function SelectContent<T extends object>({
       >
         <ListBox
           className={cn(
-            "max-h-80 min-w-32 overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md outline-hidden",
+            "scrollbar-thin max-h-80 min-w-32 overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md outline-hidden",
             className,
           )}
         >

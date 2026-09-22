@@ -88,3 +88,27 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* A thin, theme-aware scrollbar for overlay lists (Autocomplete/Combobox/
+   Select) — Firefox reads the two `scrollbar-*` properties directly, WebKit
+   browsers read the pseudo-elements; between the two this covers every
+   browser this project targets, so there's no JS-based scrollbar library to
+   maintain. */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 9999px;
+  }
+}

@@ -9,8 +9,16 @@ import { Autocomplete } from "./autocomplete";
 const testUtilUser = new User({ interactionType: "mouse" });
 const OPTIONS = ["Dr.", "Rev.", "Prof."];
 
-function TitleAutocomplete({ onChange }: { onChange?: (value: string) => void }) {
-  const [value, setValue] = useState("");
+function TitleAutocomplete({
+  onChange,
+  isClearable = false,
+  initialValue = "",
+}: {
+  onChange?: (value: string) => void;
+  isClearable?: boolean;
+  initialValue?: string;
+}) {
+  const [value, setValue] = useState(initialValue);
   return (
     <Autocomplete
       aria-label="Title"
@@ -20,6 +28,7 @@ function TitleAutocomplete({ onChange }: { onChange?: (value: string) => void })
         onChange?.(next);
       }}
       options={OPTIONS}
+      isClearable={isClearable}
     />
   );
 }
@@ -48,5 +57,26 @@ describe("Autocomplete", () => {
 
     await userEvent.type(screen.getByRole("combobox"), "Baron");
     expect(committed).toBe("Baron");
+  });
+
+  it("shows no clear button unless isClearable is set, even with a value", () => {
+    render(<TitleAutocomplete initialValue="Dr." />);
+    expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
+  });
+
+  it("hides the clear button when isClearable but the field is empty", () => {
+    render(<TitleAutocomplete isClearable />);
+    expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
+  });
+
+  it("clears the value when the clear button is clicked", async () => {
+    let current = "";
+    render(
+      <TitleAutocomplete isClearable initialValue="Dr." onChange={(value) => (current = value)} />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(current).toBe("");
+    expect(screen.getByRole("combobox")).toHaveValue("");
   });
 });

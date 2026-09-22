@@ -51,7 +51,7 @@ function RootLayout() {
             className="text-sm text-muted-foreground hover:text-foreground"
             activeProps={{ className: "text-sm text-foreground font-medium" }}
           >
-            People
+            Person list
           </Link>
           <span className="ml-auto flex items-center gap-3">
             <ThemeToggle />

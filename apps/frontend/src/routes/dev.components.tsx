@@ -114,6 +114,7 @@ function ComponentsShowcase() {
   const [switchOn, setSwitchOn] = useState(true);
   const [checked, setChecked] = useState(true);
   const [titlePrefix, setTitlePrefix] = useState("");
+  const [suffix, setSuffix] = useState("Jr.");
 
   const options = SAMPLE_PEOPLE.filter((person) =>
     person.name.toLowerCase().includes(query.toLowerCase()),
@@ -186,6 +187,16 @@ function ComponentsShowcase() {
             value={titlePrefix}
             onChange={setTitlePrefix}
             options={["Mr.", "Mrs.", "Miss", "Ms.", "Dr.", "Rev.", "Prof.", "Sir"]}
+          />
+        </div>
+        <div className="w-56 space-y-1">
+          <p className="text-xs text-muted-foreground">Clearable</p>
+          <Autocomplete
+            placeholder="e.g. Jr., III"
+            value={suffix}
+            onChange={setSuffix}
+            options={["Jr.", "Sr.", "II", "III", "IV"]}
+            isClearable
           />
         </div>
       </Section>

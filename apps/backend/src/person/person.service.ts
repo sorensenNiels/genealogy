@@ -25,6 +25,7 @@ import {
   deletePersonNode,
   descendantsOf,
   inGraphTransaction,
+  parentsOf,
   personEvents,
   personNames,
   persons,
@@ -100,7 +101,7 @@ export interface ListPersonsResult {
 }
 
 export interface RelativesResult {
-  parents: PersonRow[];
+  parents: (PersonRow & { parentage: Parentage })[];
   spouses: PersonRow[];
   children: PersonRow[];
 }
@@ -320,14 +321,14 @@ export class PersonService {
 
   /** Direct parents, spouses and children, resolved to full rows for display. */
   async relatives(id: string): Promise<RelativesResult> {
-    const [parentNodes, spouseNodes, childNodes] = await Promise.all([
-      ancestorsOf(this.pool, id, 1),
+    const [parentEdges, spouseNodes, childNodes] = await Promise.all([
+      parentsOf(this.pool, id),
       spousesOf(this.pool, id),
       descendantsOf(this.pool, id, 1),
     ]);
 
     const ids = [
-      ...new Set([...parentNodes, ...spouseNodes, ...childNodes].map((node) => node.personId)),
+      ...new Set([...parentEdges, ...spouseNodes, ...childNodes].map((node) => node.personId)),
     ];
     const rows =
       ids.length > 0 ? await this.db.select().from(persons).where(inArray(persons.id, ids)) : [];
@@ -336,7 +337,10 @@ export class PersonService {
       nodes.flatMap((node) => byId.get(node.personId) ?? []);
 
     return {
-      parents: toRows(parentNodes),
+      parents: parentEdges.flatMap((edge) => {
+        const row = byId.get(edge.personId);
+        return row ? [{ ...row, parentage: edge.parentage }] : [];
+      }),
       spouses: toRows(spouseNodes),
       children: toRows(childNodes),
     };
@@ -530,9 +534,14 @@ export class PersonService {
       .where(and(eq(citations.factType, "union"), eq(citations.factId, id)));
   }
 
+  /** `ilike` is already case-insensitive (confirmed against this db's en_US.UTF-8 collation, including Danish letters like ø/å/æ) — no extra lowercasing needed here. */
   private searchFilter(search: string | null): SQL | undefined {
     if (!search || search.trim() === "") return undefined;
     const pattern = `%${search.trim()}%`;
-    return or(ilike(persons.surname, pattern), ilike(persons.given, pattern));
+    return or(
+      ilike(persons.surname, pattern),
+      ilike(persons.given, pattern),
+      ilike(persons.middleName, pattern),
+    );
   }
 }

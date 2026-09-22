@@ -15,6 +15,7 @@ A living backlog for the genealogy app. Status markers: ✅ done, 🚧 planned, 
 - ✅ Search people by name
 - ✅ A short, human-readable public id per person (FamilySearch-style, e.g. `LZ4Y-9K2`) — always starts with a letter, distinct from the internal database id, shown as a subtle click-to-copy indicator in the people list and on a person's own page
 - ✅ Autocomplete on Title/prefix and Suffix, suggesting a fixed list of common values plus whatever's already been typed for other people — encourages reusing the same wording ("Dr." rather than a mix of "Dr.", "Dr", "Doctor") without forcing a closed vocabulary
+- ✅ "Person list" (renamed from "People"): avatar/initials, gender shown as an icon + label, a living/deceased status badge, an Age column, hover-revealed row actions, and real pagination (previously hard-capped at 50 with no way to see anyone past that)
 
 ### Person record & UI — gaps found in a review of the current implementation
 
@@ -33,7 +34,7 @@ A living backlog for the genealogy app. Status markers: ✅ done, 🚧 planned, 
 
 ## Tree & visualization
 
-- 🚧 Pedigree (ancestor) and descendant tree views, toggle between them — React Flow + elkjs, not yet built
+- 🚧 Pedigree (ancestor) and descendant tree views, toggle between them — React Flow + elkjs, not yet built. Once a route exists, add a "View in tree" action to the person list row actions (deliberately left out for now rather than shipping a dead-end button — see the list's own row actions)
 
 ## Import / export
 
