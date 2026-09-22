@@ -33,7 +33,7 @@ export const mergeRouters = t.mergeRouters;
 
 export const publicProcedure = t.procedure;
 
-/** Not applied anywhere yet — person.router.ts stays public until that's a product decision. */
+/** Applied to every procedure in person.router.ts, source.router.ts and settings.router.ts. */
 export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   if (!ctx.session) {
     throw new TRPCError({ code: "UNAUTHORIZED" });

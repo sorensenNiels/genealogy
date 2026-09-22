@@ -428,7 +428,11 @@ function PersonFields({
           className="grid gap-4 sm:grid-cols-2"
           onSubmit={(event) => {
             event.preventDefault();
-            void form.handleSubmit();
+            // TanStack Form rethrows onSubmit's rejection after resetting
+            // isSubmitting — caught here only to avoid an unhandled
+            // rejection; the failure itself is surfaced via update.isError
+            // below.
+            void form.handleSubmit().catch(() => {});
           }}
         >
           <div className="flex items-end justify-between gap-4 sm:col-span-2">
@@ -649,6 +653,9 @@ function PersonFields({
               </AlertDialog>
             )}
           </div>
+          {update.isError && (
+            <p className="text-sm text-destructive sm:col-span-2">{update.error.message}</p>
+          )}
           {removePerson.isError && (
             <p className="text-sm text-destructive sm:col-span-2">{removePerson.error.message}</p>
           )}

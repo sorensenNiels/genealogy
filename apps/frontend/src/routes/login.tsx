@@ -26,15 +26,24 @@ function Login() {
     defaultValues: { name: "", email: "", password: "" },
     onSubmit: async ({ value }) => {
       setError(null);
-      const result =
-        mode === "sign-in"
-          ? await authClient.signIn.email({ email: value.email, password: value.password })
-          : await authClient.signUp.email(value);
-      if (result.error) {
-        setError(result.error.message ?? "Something went wrong.");
-        return;
+      try {
+        const result =
+          mode === "sign-in"
+            ? await authClient.signIn.email({ email: value.email, password: value.password })
+            : await authClient.signUp.email(value);
+        if (result.error) {
+          setError(result.error.message ?? "Something went wrong.");
+          return;
+        }
+        await navigate({ to: "/" });
+      } catch (caughtError) {
+        // A network failure (including our own request timeout — see
+        // lib/network-logging.ts) throws instead of resolving to
+        // `{ error }`, so without this the button would just go quiet with
+        // nothing but a console line to explain why.
+        console.error("Sign-in/sign-up request failed", caughtError);
+        setError("Request failed — check the browser console for details.");
       }
-      await navigate({ to: "/" });
     },
   });
 

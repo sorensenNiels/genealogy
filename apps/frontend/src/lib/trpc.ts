@@ -4,6 +4,7 @@ import { createTRPCContext } from "@trpc/tanstack-react-query";
 import superjson from "superjson";
 
 import { apiUrl } from "./env";
+import { loggedFetch } from "./network-logging";
 
 /**
  * `AppRouter` is a type-only import from the backend, so nothing server-side
@@ -24,7 +25,7 @@ export const trpcClient = createTRPCClient<AppRouter>({
       // there, which exactOptionalPropertyTypes rejects against DOM's `| null`.
       fetch(url, options) {
         const { signal, ...rest } = options ?? {};
-        return fetch(url, { ...rest, credentials: "include", signal: signal ?? null });
+        return loggedFetch(url, { ...rest, credentials: "include", signal: signal ?? null });
       },
     }),
   ],

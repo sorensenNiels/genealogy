@@ -39,8 +39,16 @@ export class TrpcRouter {
       createExpressMiddleware({
         router: this.build(),
         createContext: createContextFactory(this.auth),
-        onError: ({ path, error }) => {
-          this.logger.error(`tRPC ${path ?? "<no path>"}: ${error.message}`, error.stack);
+        onError: ({ path, type, error, ctx }) => {
+          // `type` (query/mutation) and whether a session was on the context
+          // are the two things needed to tell "this call was never
+          // authenticated" apart from "the session check itself failed" —
+          // both surface as the same UNAUTHORIZED message otherwise.
+          const hasSession = ctx?.session != null;
+          this.logger.error(
+            `tRPC ${type} ${path ?? "<no path>"}: ${error.message} (session: ${hasSession})`,
+            error.stack,
+          );
         },
       }),
     );
