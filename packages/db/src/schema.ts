@@ -1,5 +1,16 @@
 import type { EventDetails, HistoricalDate } from "@genealogy/core";
-import { boolean, index, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const sexEnum = pgEnum("sex", ["M", "F", "U"]);
 
@@ -23,18 +34,15 @@ export const persons = pgTable(
     // column is never user-editable and Drizzle doesn't need to know about it.
     publicId: text("public_id").notNull().unique(),
 
+    // No separate middle-name column — displayed as "First names" everywhere,
+    // this holds every given name a person has, middle ones included.
     given: text("given").notNull().default(""),
-    middleName: text("middle_name"),
     surname: text("surname").notNull().default(""),
     sex: sexEnum("sex").notNull().default("U"),
 
     // Single-valued, unlike the name history in `personNames` below.
     titlePrefix: text("title_prefix"),
     suffix: text("suffix"),
-
-    // Plain strings rather than rows in `personNames`: nicknames don't carry
-    // their own note/citation like an alternate name does, just an ordered list.
-    nickname: text("nickname").array().notNull().default([]),
 
     // A filename under UPLOADS_DIR (see apps/backend/src/config/env.ts), not
     // a URL — the frontend builds the URL by joining it with the backend's
@@ -59,17 +67,11 @@ export const persons = pgTable(
   (table) => [index("persons_surname_idx").on(table.surname, table.given)],
 );
 
-export const nameVariantTypeEnum = pgEnum("name_variant_type", [
-  "maiden",
-  "married",
-  "alternate_spelling",
-  "other",
-]);
-
 /**
- * A name a person was also known by — maiden name, married name(s), spelling
- * variants found in records. Its own table rather than an array column
- * because each variant carries its own note and there can be any number.
+ * A name a person was also known by — birth name, married name(s), a
+ * nickname, spelling variants found in records. Its own table rather than an
+ * array column because each variant carries its own note and there can be
+ * any number.
  */
 export const personNames = pgTable(
   "person_names",
@@ -78,26 +80,20 @@ export const personNames = pgTable(
     personId: uuid("person_id")
       .notNull()
       .references(() => persons.id, { onDelete: "cascade" }),
-    nameType: nameVariantTypeEnum("name_type").notNull(),
+    // Plain text, not an enum: the set of name-variant types is
+    // user-configurable (see `configurableOptions` below, topic
+    // "name_variant_type") — a new one must not require a migration.
+    nameType: text("name_type").notNull(),
     given: text("given").notNull().default(""),
     surname: text("surname").notNull().default(""),
+    // Jsonb for the same reason as persons.birth/death: genealogical dates are
+    // ranges and approximations more often than they are exact days.
+    since: jsonb("since").$type<HistoricalDate>(),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("person_names_person_idx").on(table.personId)],
 );
-
-export const eventTypeEnum = pgEnum("event_type", [
-  "christening",
-  "burial",
-  "cremation",
-  "immigration",
-  "emigration",
-  "naturalization",
-  "residence",
-  "occupation",
-  "other",
-]);
 
 /**
  * Life events beyond birth/death, which stay as columns on `persons` since
@@ -112,7 +108,12 @@ export const personEvents = pgTable(
     personId: uuid("person_id")
       .notNull()
       .references(() => persons.id, { onDelete: "cascade" }),
-    eventType: eventTypeEnum("event_type").notNull(),
+    // Plain text, not an enum: the set of event types is user-configurable
+    // (see `configurableOptions` below, topic "event_type") — a new one must
+    // not require a migration. The literal "other" is still meaningful to
+    // application code (see person-event.ts); it's seeded as a protected,
+    // undeletable option rather than enforced by this column's type.
+    eventType: text("event_type").notNull(),
     // Distinguishes one "other" event from another; named types don't need it.
     label: text("label"),
     date: jsonb("date").$type<HistoricalDate>(),
@@ -126,14 +127,6 @@ export const personEvents = pgTable(
   },
   (table) => [index("person_events_person_idx").on(table.personId)],
 );
-
-export const unionStatusEnum = pgEnum("union_status", [
-  "married",
-  "divorced",
-  "partnership",
-  "annulled",
-  "widowed",
-]);
 
 /**
  * The evidence-backed detail of a spousal relationship. Deliberately
@@ -152,7 +145,10 @@ export const unions = pgTable(
     personBId: uuid("person_b_id")
       .notNull()
       .references(() => persons.id, { onDelete: "cascade" }),
-    status: unionStatusEnum("status").notNull().default("married"),
+    // Plain text, not an enum: the set of union statuses is
+    // user-configurable (see `configurableOptions` below, topic
+    // "union_status") — a new one must not require a migration.
+    status: text("status").notNull().default("married"),
     startDate: jsonb("start_date").$type<HistoricalDate>(),
     startPlace: text("start_place"),
     // Separation, divorce, or the death of a spouse — whatever ended it.
@@ -181,8 +177,6 @@ export const sources = pgTable("sources", {
   sourceType: text("source_type"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
-
-export const confidenceEnum = pgEnum("confidence", ["low", "medium", "high", "proven"]);
 
 export const citationFactTypeEnum = pgEnum("citation_fact_type", [
   "person",
@@ -223,7 +217,10 @@ export const citations = pgTable(
     volume: text("volume"),
     entryId: text("entry_id"),
     certificateNumber: text("certificate_number"),
-    confidence: confidenceEnum("confidence").notNull().default("medium"),
+    // Plain text, not an enum: the set of confidence levels is
+    // user-configurable (see `configurableOptions` below, topic
+    // "confidence") — a new one must not require a migration.
+    confidence: text("confidence").notNull().default("medium"),
     note: text("note"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -295,6 +292,36 @@ export const verification = pgTable(
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
 
+/**
+ * The options offered in a "closed vocabulary" dropdown — event types,
+ * alternate-name types, confidence levels, union statuses, parentage types
+ * (see `ConfigurableTopic` in packages/core) — editable from the Settings
+ * page instead of requiring a code change + migration for every new value.
+ *
+ * `key` is what referencing rows actually store (`personEvents.eventType`,
+ * `citations.confidence`, ...) and is immutable once created; only `label`
+ * and `sortOrder` can be edited afterwards, so renaming or reordering an
+ * option never orphans existing data. `isProtected` marks the handful of
+ * keys application code branches on directly (event_type's "other",
+ * parentage's "birth") — those can be relabeled but never deleted.
+ */
+export const configurableOptions = pgTable(
+  "configurable_options",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    topic: text("topic").notNull(),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    isProtected: boolean("is_protected").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("configurable_options_topic_key_unique").on(table.topic, table.key),
+    index("configurable_options_topic_idx").on(table.topic, table.sortOrder),
+  ],
+);
+
 export const schema = {
   persons,
   personNames,
@@ -302,11 +329,8 @@ export const schema = {
   unions,
   sources,
   citations,
+  configurableOptions,
   sexEnum,
-  nameVariantTypeEnum,
-  eventTypeEnum,
-  unionStatusEnum,
-  confidenceEnum,
   citationFactTypeEnum,
   user,
   session,
@@ -321,3 +345,4 @@ export type PersonEventRow = typeof personEvents.$inferSelect;
 export type UnionRow = typeof unions.$inferSelect;
 export type SourceRow = typeof sources.$inferSelect;
 export type CitationRow = typeof citations.$inferSelect;
+export type ConfigurableOptionRow = typeof configurableOptions.$inferSelect;

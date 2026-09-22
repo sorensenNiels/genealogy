@@ -1,0 +1,1 @@
+ALTER TYPE "public"."name_variant_type" ADD VALUE 'preferred_name' BEFORE 'alternate_spelling';

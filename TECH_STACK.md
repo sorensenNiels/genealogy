@@ -470,6 +470,84 @@ the actual URL (`/people/$personId/print`) and every `<Link to="...">` calling
 it are unaffected. Reach for this any time a new route needs to share a URL
 prefix with an existing route file but not its layout.
 
+### Person names: "First names" and "Last names", nowhere else
+
+A person's given names and surname are always labeled **"First names"** and
+**"Last names"** on every form that lets someone type or edit them — the main
+person record, the quick "create and link" dialogs under Parents/Spouses/
+Children, and the alternate-name form under "Alternate names". Never "Given
+names", "Surname", or singular "Last name" — those crept in as forms were
+added independently and read as inconsistent once several existed side by
+side. `packages/core/src/person.ts` still calls the underlying fields `given`
+and `surname` (matching GEDCOM vocabulary, which `sexSchema`'s comment already
+leans on) — only the user-facing label changed, not the wire format.
+
+There is deliberately no separate "Middle names" field. `given` holds every
+given name a person has, middle ones included, unsplit and in source order —
+the `personNameSchema` comment says so directly. A dedicated `middleName`
+column existed briefly and was removed once it became clear it just
+duplicated what "First names" was already documented to hold; the migration
+that dropped it folds any existing middle name back onto the end of `given`
+rather than discarding it.
+
+### Configurable dropdown options, not hardcoded enums
+
+Five closed-vocabulary dropdowns — life event types, alternate-name types,
+citation confidence levels, spouse union statuses, and parent relationship
+types — are backed by a single `configurableOptions` table
+(`packages/db/src/schema.ts`) rather than Postgres enums or hardcoded Zod
+`z.enum([...])` lists, and are managed from `/settings` (the gear icon in the
+nav) instead of requiring a code change + migration for every new value.
+Each row is `{ topic, key, label, sortOrder, isProtected }`; `key` is what
+`person_events.event_type`, `person_names.name_type`, `citations.confidence`,
+`unions.status` and the `PARENT_OF` graph edge's `parentage` property
+actually store, and is immutable once created — only `label`/`sortOrder` can
+change afterwards, so relabeling or reordering an option never orphans
+existing data. The four Postgres columns above were converted from `enum` to
+plain `text` for this (see migration `0015`); `parentage` never had a column
+at all, since it already lived as a bare agtype string on the graph edge.
+
+Two dropdowns stay hardcoded on purpose: `citationFactType`
+(person/birth/death/name/event/union) and `sex` (M/F/U) are structural —
+code branches on their exact value in ways a runtime-editable list can't
+safely support (e.g. a citation's `factId` is required or forbidden
+depending on `factType`). Two individual option keys are seeded
+`isProtected: true` for the same reason at a smaller scale: `event_type`'s
+`"other"` (a required-label rule keys off it) and `parentage`'s `"birth"`
+(the Parents UI's Father/Mother slots key off it) — protected options can be
+relabeled but never deleted. `EVENT_DETAIL_FIELDS` (the extra fields
+immigration/burial/etc. get, like ship name or cemetery) stays a hardcoded
+map keyed by the built-in event-type strings; an admin-added event type
+gets only the generic date/place/description fields, not bonus ones — a
+deliberate limitation, not an oversight.
+
+### One Save button component, not one per form
+
+Every form that saves or creates a record uses `SaveButton`
+(`packages/ui/src/components/save-button.tsx`) instead of a bare `Button
+type="submit"`. It renders a small red dot once the form is dirty, and
+swaps the dot for a spinner (disabling the button) while the save is in
+flight — first built for the person-details page's Save button, then pulled
+out once a second and third form needed the identical behaviour rather than
+re-implementing it slightly differently each time. `isDirty`/`isPending`
+come from the owning TanStack Form's own store
+(`useStore(form.store, (s) => s.isDirty / s.isSubmitting)`), not from a
+mutation's own `isPending` — a form whose `onSubmit` awaits more than one
+mutation (`CreateAndLinkForm`, creating a person then linking them) would
+otherwise report "not pending" between the two calls, since the first
+mutation's own `isPending` flips back to `false` before the second one
+starts.
+
+A handful of forms track a Select's value in `useState` rather than a
+`form.Field` (`NameForm`'s name type, `EventForm`'s event type — both
+backed by `configurableOptions`, see above), which the form's own `isDirty`
+can't see change on its own; those combine it with a manual comparison
+against the value's initial snapshot. `CitationForm` has no TanStack Form
+at all — every field is `useState` — so it snapshots all of them once on
+mount and compares the whole set; the snapshot uses `useState`, not
+`useRef`, because reading `ref.current` during render is flagged by
+oxlint's `react(refs)` rule even though the value itself never changes here.
+
 ## Verified, not assumed
 
 The stack was exercised end to end before being documented: the dev container

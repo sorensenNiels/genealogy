@@ -8,6 +8,7 @@ import {
   redirect,
   useNavigate,
 } from "@tanstack/react-router";
+import { SettingsIcon } from "lucide-react";
 
 import { authClient, useSession } from "../lib/auth";
 
@@ -54,6 +55,7 @@ function RootLayout() {
             Person list
           </Link>
           <span className="ml-auto flex items-center gap-3">
+            <SettingsLink />
             <ThemeToggle />
             <SessionStatus />
           </span>
@@ -63,6 +65,25 @@ function RootLayout() {
         <Outlet />
       </main>
     </div>
+  );
+}
+
+function SettingsLink() {
+  const { data: session, isPending } = useSession();
+
+  if (isPending || !session) {
+    return null;
+  }
+
+  return (
+    <Link
+      to="/settings"
+      className="text-muted-foreground hover:text-foreground"
+      activeProps={{ className: "text-foreground" }}
+      aria-label="Settings"
+    >
+      <SettingsIcon className="size-5" aria-hidden="true" />
+    </Link>
   );
 }
 

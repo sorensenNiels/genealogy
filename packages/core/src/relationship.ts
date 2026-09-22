@@ -14,8 +14,14 @@ export type RelationshipKind = z.infer<typeof relationshipKindSchema>;
  * How a parent-child link came about. Genealogically this matters: an adoptive
  * line is a real relationship but not a biological descent path, and pedigree
  * collapse calculations must be able to tell them apart.
+ *
+ * Not a closed enum — the set of parentage types is user-configurable (see
+ * `configurable-options.ts`, topic `"parentage"`), except for the literal
+ * `"birth"`, which the Parents UI (`ParentsSection` in people.$personId.tsx)
+ * depends on to slot someone into Father/Mother; that option is seeded
+ * protected so it can't be deleted.
  */
-export const parentageSchema = z.enum(["birth", "adopted", "step", "foster", "unknown"]);
+export const parentageSchema = z.string().trim().min(1);
 export type Parentage = z.infer<typeof parentageSchema>;
 
 export const relationshipSchema = z.object({

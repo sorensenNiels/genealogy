@@ -66,7 +66,7 @@ export function DialogContent({
           className,
         )}
       >
-        <RACDialog className="outline-none">
+        <RACDialog className="flex flex-col gap-4 outline-none">
           {children}
           {showCloseButton && (
             <Button

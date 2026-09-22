@@ -387,13 +387,14 @@ export class PersonService {
     return descendantsOf(this.pool, id, generations);
   }
 
-  /** Maiden name, married name(s), spelling variants found in records. */
+  /** Birth name, married name(s), spelling variants found in records. */
   async listNames(personId: string): Promise<PersonNameRow[]> {
     return this.db.select().from(personNames).where(eq(personNames.personId, personId));
   }
 
   async addName(input: CreateNameVariant): Promise<PersonNameRow> {
-    const [row] = await this.db.insert(personNames).values(input).returning();
+    const values = { ...input, since: resolveDate(input.since) };
+    const [row] = await this.db.insert(personNames).values(values).returning();
     if (!row) {
       throw new Error("Insert returned no row");
     }
@@ -402,9 +403,10 @@ export class PersonService {
 
   async updateName(input: UpdateNameVariant): Promise<PersonNameRow> {
     const { id, ...patch } = input;
+    const values = { ...patch, since: resolveDate(patch.since) };
     const [row] = await this.db
       .update(personNames)
-      .set(patch)
+      .set(values)
       .where(eq(personNames.id, id))
       .returning();
     if (!row) {
@@ -538,10 +540,6 @@ export class PersonService {
   private searchFilter(search: string | null): SQL | undefined {
     if (!search || search.trim() === "") return undefined;
     const pattern = `%${search.trim()}%`;
-    return or(
-      ilike(persons.surname, pattern),
-      ilike(persons.given, pattern),
-      ilike(persons.middleName, pattern),
-    );
+    return or(ilike(persons.surname, pattern), ilike(persons.given, pattern));
   }
 }

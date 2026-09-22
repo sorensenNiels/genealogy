@@ -3,7 +3,12 @@ import { z } from "zod";
 import { personIdSchema } from "./person.js";
 import { sourceIdSchema } from "./source.js";
 
-export const confidenceSchema = z.enum(["low", "medium", "high", "proven"]);
+/**
+ * Not a closed enum — the set of confidence levels is user-configurable (see
+ * `configurable-options.ts`, topic `"confidence"`); this only checks that
+ * some key was given.
+ */
+export const confidenceSchema = z.string().trim().min(1);
 export type Confidence = z.infer<typeof confidenceSchema>;
 
 /**

@@ -10,6 +10,32 @@ export const SEX_LABELS: Record<Sex, string> = {
   U: "Unknown",
 };
 
+interface ConfigurableOptionLike {
+  topic: string;
+  key: string;
+  label: string;
+}
+
+/** Every configurable option for one topic (event type, confidence, ...), in display order. */
+export function optionsFor<T extends ConfigurableOptionLike>(all: T[], topic: string): T[] {
+  return all.filter((option) => option.topic === topic);
+}
+
+/**
+ * A key's display label, looked up from the fetched configurable options —
+ * falling back to the raw key so a record referencing an option that was
+ * since deleted from Settings still renders something instead of going blank.
+ * Shared between the person detail page and the print view, so both show the
+ * same wording.
+ */
+export function labelFor<T extends ConfigurableOptionLike>(
+  all: T[],
+  topic: string,
+  key: string,
+): string {
+  return optionsFor(all, topic).find((option) => option.key === key)?.label ?? key;
+}
+
 export function GenderIcon({ sex, className = "size-5" }: { sex: Sex; className?: string }) {
   const props = {
     className: `${className} shrink-0 text-muted-foreground`,

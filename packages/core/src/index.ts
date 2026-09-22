@@ -1,4 +1,5 @@
 export * from "./citation.js";
+export * from "./configurable-options.js";
 export * from "./historical-date.js";
 export * from "./name-variant.js";
 export * from "./person-event.js";

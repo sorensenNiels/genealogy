@@ -31,7 +31,11 @@ export type HistoricalDate = z.infer<typeof historicalDateSchema>;
  * which keeps a mapping layer out of the API for as long as that stays true.
  */
 export const personNameSchema = z.object({
-  /** Given names in source order, unsplit: "Anne Marie". */
+  /**
+   * Given names in source order, unsplit: "Anne Marie". There is deliberately
+   * no separate "middle name" field — displayed everywhere as "First names",
+   * it holds every given name a person has, middle ones included.
+   */
   given: z.string().trim().default(""),
   /** Family name as written; spelling variants belong on the source, not here. */
   surname: z.string().trim().default(""),
@@ -41,14 +45,10 @@ export type PersonName = z.infer<typeof personNameSchema>;
 export const personSchema = personNameSchema.extend({
   id: personIdSchema,
   sex: sexSchema,
-  /** Middle name(s), kept apart from `given` so first/middle/last can be edited separately. */
-  middleName: z.string().nullable(),
   /** Formal title or prefix as recorded by a source: "Dr.", "Rev.", "Sir". */
   titlePrefix: z.string().nullable(),
   /** Generational or honorific suffix: "Jr.", "III". */
   suffix: z.string().nullable(),
-  /** Nicknames/preferred names, distinct from the alternate-name history in `NameVariant`. */
-  nickname: z.array(z.string()),
   /**
    * A filename under the backend's UPLOADS_DIR, not a URL — set only via the
    * photo upload endpoint (apps/backend/src/person/person-photo.controller.ts),
@@ -73,12 +73,10 @@ export type Person = z.infer<typeof personSchema>;
 /** Input accepted when creating a person; the id is assigned by the database. */
 export const createPersonSchema = z.object({
   given: z.string().trim().default(""),
-  middleName: z.string().trim().nullable().default(null),
   surname: z.string().trim().default(""),
   sex: sexSchema.default("U"),
   titlePrefix: z.string().trim().nullable().default(null),
   suffix: z.string().trim().nullable().default(null),
-  nickname: z.array(z.string().trim()).default([]),
   birth: historicalDateSchema.nullable().default(null),
   birthPlace: z.string().nullable().default(null),
   death: historicalDateSchema.nullable().default(null),
@@ -92,12 +90,10 @@ export type CreatePerson = z.infer<typeof createPersonSchema>;
 export const updatePersonSchema = z.object({
   id: personIdSchema,
   given: z.string().trim().optional(),
-  middleName: z.string().trim().nullable().optional(),
   surname: z.string().trim().optional(),
   sex: sexSchema.optional(),
   titlePrefix: z.string().trim().nullable().optional(),
   suffix: z.string().trim().nullable().optional(),
-  nickname: z.array(z.string().trim()).optional(),
   birth: historicalDateSchema.nullable().optional(),
   birthPlace: z.string().nullable().optional(),
   death: historicalDateSchema.nullable().optional(),
@@ -112,13 +108,10 @@ export type UpdatePerson = z.infer<typeof updatePersonSchema>;
  * `Niels "Pete, Junior" Sørensen` when there's more than one — collapsing
  * whitespace where parts are missing.
  */
-export function formatPersonName(
-  name: PersonName & { middleName?: string | null; nickname?: string[] | null },
-): string {
+export function formatPersonName(name: PersonName & { nickname?: string[] | null }): string {
   const nicknames = (name.nickname ?? []).map((n) => n.trim()).filter((n) => n !== "");
   const parts = [
     name.given,
-    name.middleName && name.middleName.trim() !== "" ? name.middleName.trim() : null,
     nicknames.length > 0 ? `"${nicknames.join(", ")}"` : null,
     name.surname,
   ];
@@ -131,10 +124,13 @@ export function formatPersonName(
 /**
  * The formal form of a name, with title/prefix and generational suffix —
  * "Dr. Niels Sørensen, Jr." Reserved for a person's own page header; lists,
- * search results and relative links use the shorter `formatPersonName`.
+ * search results and relative links use the shorter `formatPersonName`. Takes
+ * `nickname` as a loose bolt-on rather than off `Person` (which no longer
+ * carries one) — callers that already have a person's nicknames on hand (from
+ * their `NameVariant` rows) can still pass them through for the quoted form.
  */
 export function formatFullPersonName(
-  person: PersonName & Pick<Person, "middleName" | "nickname" | "titlePrefix" | "suffix">,
+  person: PersonName & Pick<Person, "titlePrefix" | "suffix"> & { nickname?: string[] | null },
 ): string {
   const core = formatPersonName(person);
   const withPrefix =

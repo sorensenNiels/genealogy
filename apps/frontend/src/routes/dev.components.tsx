@@ -39,6 +39,7 @@ import {
 import { HistoricalDateInput } from "@genealogy/ui/components/historical-date-input";
 import { Input } from "@genealogy/ui/components/input";
 import { Popover, PopoverContent } from "@genealogy/ui/components/popover";
+import { SaveButton } from "@genealogy/ui/components/save-button";
 import {
   Select,
   SelectContent,
@@ -144,6 +145,18 @@ function ComponentsShowcase() {
         <Button isDisabled>Disabled</Button>
       </Section>
 
+      <Section title="Save Button">
+        <SaveButton isDirty={false} isPending={false}>
+          Save
+        </SaveButton>
+        <SaveButton isDirty isPending={false}>
+          Save
+        </SaveButton>
+        <SaveButton isDirty={false} isPending>
+          Save
+        </SaveButton>
+      </Section>
+
       <Section title="Badge">
         <Badge>Default</Badge>
         <Badge variant="secondary">Secondary</Badge>
@@ -164,7 +177,7 @@ function ComponentsShowcase() {
       </Section>
 
       <Section title="Input">
-        <Input placeholder="Given names" className="max-w-56" />
+        <Input placeholder="First names" className="max-w-56" />
       </Section>
 
       <Section title="Copyable Text">
@@ -242,7 +255,7 @@ function ComponentsShowcase() {
             <TabsTrigger id="sources">Sources</TabsTrigger>
           </TabsList>
           <TabsPanels>
-            <TabsContent id="details">Given/surname, dates, notes.</TabsContent>
+            <TabsContent id="details">First/last names, dates, notes.</TabsContent>
             <TabsContent id="sources">Citations will show here.</TabsContent>
           </TabsPanels>
         </Tabs>

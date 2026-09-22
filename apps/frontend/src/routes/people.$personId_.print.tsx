@@ -6,6 +6,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
 
 import { formatDisplayDate } from "../lib/format-date";
+import { labelFor } from "../lib/person-display";
 import { useTRPC } from "../lib/trpc";
 
 export const Route = createFileRoute("/people/$personId_/print")({
@@ -15,6 +16,7 @@ export const Route = createFileRoute("/people/$personId_/print")({
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PersonRow = RouterOutputs["person"]["byId"];
 type UnionRow = RouterOutputs["person"]["listUnions"][number];
+type ConfigurableOptionRow = RouterOutputs["settings"]["listOptions"][number];
 
 function PrintRoute() {
   const { personId } = Route.useParams();
@@ -27,6 +29,7 @@ function PrintRoute() {
   const unions = useQuery(trpc.person.listUnions.queryOptions({ personId }));
   const citationsList = useQuery(trpc.source.listCitations.queryOptions({ personId }));
   const sourcesList = useQuery(trpc.source.listSources.queryOptions());
+  const options = useQuery(trpc.settings.listOptions.queryOptions());
 
   if (person.isPending) {
     return <p className="text-muted-foreground">Loading…</p>;
@@ -102,8 +105,11 @@ function PrintRoute() {
             <ul className="space-y-1 text-sm">
               {names.data.map((name) => (
                 <li key={name.id}>
-                  <span className="text-muted-foreground">{name.nameType}:</span>{" "}
+                  <span className="text-muted-foreground">
+                    {labelFor(options.data ?? [], "name_variant_type", name.nameType)}:
+                  </span>{" "}
                   {[name.given, name.surname].filter(Boolean).join(" ")}
+                  {name.since ? ` (since ${formatDisplayDate(name.since)})` : ""}
                   {name.notes ? ` — ${name.notes}` : ""}
                 </li>
               ))}
@@ -114,9 +120,14 @@ function PrintRoute() {
         <section>
           <h2 className="mb-2 font-semibold">Immediate family</h2>
           <div className="grid gap-4 text-sm sm:grid-cols-3">
-            <FamilyList title="Parents" people={parents} />
-            <FamilyList title="Spouses" people={spouses} unionFor={unionFor} />
-            <FamilyList title="Children" people={children} />
+            <FamilyList title="Parents" people={parents} options={options.data ?? []} />
+            <FamilyList
+              title="Spouses"
+              people={spouses}
+              unionFor={unionFor}
+              options={options.data ?? []}
+            />
+            <FamilyList title="Children" people={children} options={options.data ?? []} />
           </div>
         </section>
 
@@ -127,7 +138,7 @@ function PrintRoute() {
               {events.data.map((event) => (
                 <li key={event.id}>
                   <span className="text-muted-foreground">
-                    {event.eventType}
+                    {labelFor(options.data ?? [], "event_type", event.eventType)}
                     {event.label ? ` (${event.label})` : ""}:
                   </span>{" "}
                   {formatDisplayDate(event.date)}
@@ -149,7 +160,9 @@ function PrintRoute() {
                   <li key={citation.id}>
                     {source?.title ?? "Unknown source"}
                     {citation.page ? `, p. ${citation.page}` : ""}{" "}
-                    <span className="text-muted-foreground">({citation.confidence})</span>
+                    <span className="text-muted-foreground">
+                      ({labelFor(options.data ?? [], "confidence", citation.confidence)})
+                    </span>
                   </li>
                 );
               })}
@@ -165,10 +178,12 @@ function FamilyList({
   title,
   people,
   unionFor,
+  options,
 }: {
   title: string;
   people: PersonRow[];
   unionFor?: (id: string) => UnionRow | undefined;
+  options: ConfigurableOptionRow[];
 }) {
   return (
     <div>
@@ -183,7 +198,7 @@ function FamilyList({
               <li key={person.id}>
                 {formatPersonName(person)}
                 {formatLifespan(person) ? ` (${formatLifespan(person)})` : ""}
-                {union ? ` — ${union.status}` : ""}
+                {union ? ` — ${labelFor(options, "union_status", union.status)}` : ""}
               </li>
             );
           })}

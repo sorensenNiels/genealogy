@@ -40,6 +40,26 @@ export async function addParentOf(
   );
 }
 
+/**
+ * Whether any `PARENT_OF` edge currently uses this parentage key — checked
+ * before letting Settings delete the configurable option it belongs to,
+ * since a graph edge property isn't a foreign key Postgres can guard for us.
+ */
+export async function parentageInUse(
+  pool: Pool,
+  key: string,
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<boolean> {
+  const rows = await cypher<{ count: number }>(
+    pool,
+    `MATCH ()-[r:PARENT_OF {parentage: $key}]->()
+     RETURN count(r) AS count`,
+    ["count"],
+    { ...options, params: { key } },
+  );
+  return (rows[0]?.count ?? 0) > 0;
+}
+
 export interface ParentEdge {
   personId: string;
   parentage: Parentage;

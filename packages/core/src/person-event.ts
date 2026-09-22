@@ -7,18 +7,14 @@ import { historicalDateSchema, personIdSchema } from "./person.js";
  * since every person has exactly one of each. Everything here can happen zero
  * to many times per person — residence and occupation especially — which is
  * why it lives in its own table instead of more columns on `persons`.
+ *
+ * Not a closed enum — the set of event types is user-configurable (see
+ * `configurable-options.ts`, topic `"event_type"`), so this only checks that
+ * *some* key was given. The literal `"other"` stays meaningful below because
+ * that option is seeded as protected (undeletable) rather than because the
+ * type itself enforces it.
  */
-export const eventTypeSchema = z.enum([
-  "christening",
-  "burial",
-  "cremation",
-  "immigration",
-  "emigration",
-  "naturalization",
-  "residence",
-  "occupation",
-  "other",
-]);
+export const eventTypeSchema = z.string().trim().min(1);
 export type EventType = z.infer<typeof eventTypeSchema>;
 
 export const personEventIdSchema = z.uuid();

@@ -9,14 +9,12 @@ import { historicalDateSchema, personIdSchema } from "./person.js";
  * evidence lives in relational tables (see the `citations` comment in
  * packages/db/src/schema.ts). A pair can also have more than one union over
  * time (divorced, remarried), which a single edge property couldn't express.
+ *
+ * `status` is not a closed enum — the set of union statuses is
+ * user-configurable (see `configurable-options.ts`, topic `"union_status"`);
+ * this only checks that some key was given.
  */
-export const unionStatusSchema = z.enum([
-  "married",
-  "divorced",
-  "partnership",
-  "annulled",
-  "widowed",
-]);
+export const unionStatusSchema = z.string().trim().min(1);
 export type UnionStatus = z.infer<typeof unionStatusSchema>;
 
 export const unionIdSchema = z.uuid();

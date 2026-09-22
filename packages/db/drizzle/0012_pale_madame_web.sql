@@ -1,0 +1,2 @@
+UPDATE "persons" SET "given" = trim(both ' ' from "given" || ' ' || "middle_name") WHERE "middle_name" IS NOT NULL AND trim("middle_name") <> '';--> statement-breakpoint
+ALTER TABLE "persons" DROP COLUMN "middle_name";

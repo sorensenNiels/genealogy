@@ -37,18 +37,6 @@ describe("formatPersonName", () => {
     );
   });
 
-  it("places a middle name between the given and last name", () => {
-    expect(
-      formatPersonName({ given: "Niels", middleName: "Peter Nørager", surname: "Sørensen" }),
-    ).toBe("Niels Peter Nørager Sørensen");
-  });
-
-  it("ignores a blank middle name", () => {
-    expect(formatPersonName({ given: "Niels", middleName: "", surname: "Sørensen" })).toBe(
-      "Niels Sørensen",
-    );
-  });
-
   it("falls back rather than returning an empty string", () => {
     expect(formatPersonName({ given: "", surname: "  " })).toBe("Unknown");
   });
@@ -59,7 +47,6 @@ describe("formatFullPersonName", () => {
     expect(
       formatFullPersonName({
         given: "Niels",
-        middleName: null,
         nickname: [],
         surname: "Sørensen",
         titlePrefix: "Dr.",
@@ -72,7 +59,6 @@ describe("formatFullPersonName", () => {
     expect(
       formatFullPersonName({
         given: "Niels",
-        middleName: null,
         nickname: [],
         surname: "Sørensen",
         titlePrefix: null,
@@ -113,12 +99,10 @@ describe("createPersonSchema", () => {
   it("fills in defaults for an otherwise empty person", () => {
     expect(createPersonSchema.parse({})).toEqual({
       given: "",
-      middleName: null,
       surname: "",
       sex: "U",
       titlePrefix: null,
       suffix: null,
-      nickname: [],
       birth: null,
       birthPlace: null,
       death: null,

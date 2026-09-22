@@ -62,6 +62,7 @@ import {
 } from "@genealogy/ui/components/historical-date-input";
 import { Input } from "@genealogy/ui/components/input";
 import { Popover, PopoverContent } from "@genealogy/ui/components/popover";
+import { SaveButton } from "@genealogy/ui/components/save-button";
 import {
   Select,
   SelectContent,
@@ -74,13 +75,13 @@ import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
-import { Cake, CameraIcon, Cross, Loader2Icon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
+import { Cake, CameraIcon, Cross, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 
 import { apiUrl } from "../lib/env";
 import { formatDisplayDate } from "../lib/format-date";
-import { GenderIcon, initials, SEX_LABELS } from "../lib/person-display";
+import { GenderIcon, initials, labelFor, optionsFor, SEX_LABELS } from "../lib/person-display";
 import { useTRPC } from "../lib/trpc";
 
 export const Route = createFileRoute("/people/$personId")({
@@ -95,23 +96,8 @@ type PersonEventRow = RouterOutputs["person"]["listEvents"][number];
 type UnionRow = RouterOutputs["person"]["listUnions"][number];
 type SourceRow = RouterOutputs["source"]["listSources"][number];
 type CitationRow = RouterOutputs["source"]["listCitations"][number];
+type ConfigurableOptionRow = RouterOutputs["settings"]["listOptions"][number];
 type RelativeKind = "spouse" | "child";
-
-const PARENTAGE_LABELS: Record<Parentage, string> = {
-  birth: "Birth",
-  adopted: "Adopted",
-  step: "Step",
-  foster: "Foster",
-  unknown: "Unknown",
-};
-
-const UNION_STATUS_LABELS: Record<UnionStatus, string> = {
-  married: "Married",
-  divorced: "Divorced",
-  partnership: "Partnership",
-  annulled: "Annulled",
-  widowed: "Widowed",
-};
 
 const NO_UNIONS: UnionRow[] = [];
 
@@ -202,6 +188,7 @@ function PersonDetailRoute() {
   const unions = useQuery(trpc.person.listUnions.queryOptions({ personId }));
   const sourcesList = useQuery(trpc.source.listSources.queryOptions());
   const citationsList = useQuery(trpc.source.listCitations.queryOptions({ personId }));
+  const options = useQuery(trpc.settings.listOptions.queryOptions());
 
   const refresh = async () => {
     await Promise.all([
@@ -258,7 +245,12 @@ function PersonDetailRoute() {
       </div>
       <PersonFields
         person={person.data}
-        onSaved={refresh}
+        nicknames={(names.data ?? [])
+          .filter((name) => name.nameType === "nickname")
+          .map((name) => name.given)}
+        names={names.data ?? []}
+        options={options.data ?? []}
+        onChanged={refresh}
         canDelete={canDelete}
         onDeleted={() => navigate({ to: "/people" })}
       />
@@ -267,6 +259,7 @@ function PersonDetailRoute() {
           personId={personId}
           parents={parents}
           excludeIds={excludeIds}
+          options={options.data ?? []}
           onChanged={refresh}
         />
         <RelativesSection
@@ -275,6 +268,7 @@ function PersonDetailRoute() {
           personId={personId}
           relatives={spouses}
           excludeIds={excludeIds}
+          options={options.data ?? []}
           onChanged={refresh}
           unions={unions.data ?? []}
         />
@@ -284,13 +278,16 @@ function PersonDetailRoute() {
           personId={personId}
           relatives={children}
           excludeIds={excludeIds}
+          options={options.data ?? []}
           onChanged={refresh}
         />
       </div>
-      <div className="grid gap-6 md:grid-cols-2">
-        <NamesSection personId={personId} names={names.data ?? []} onChanged={refresh} />
-        <EventsSection personId={personId} events={events.data ?? []} onChanged={refresh} />
-      </div>
+      <EventsSection
+        personId={personId}
+        events={events.data ?? []}
+        options={options.data ?? []}
+        onChanged={refresh}
+      />
       <CitationsSection
         personId={personId}
         citations={citationsList.data ?? []}
@@ -298,6 +295,7 @@ function PersonDetailRoute() {
         names={names.data ?? []}
         events={events.data ?? []}
         unions={unions.data ?? []}
+        options={options.data ?? []}
         onChanged={refresh}
       />
     </div>
@@ -306,32 +304,43 @@ function PersonDetailRoute() {
 
 function PersonFields({
   person,
-  onSaved,
+  nicknames,
+  names,
+  options,
+  onChanged,
   canDelete,
   onDeleted,
 }: {
   person: PersonRow;
-  onSaved: () => Promise<void>;
+  nicknames: string[];
+  names: NameVariantRow[];
+  options: ConfigurableOptionRow[];
+  onChanged: () => Promise<void>;
   canDelete: boolean;
   onDeleted: () => void;
 }) {
   const trpc = useTRPC();
-  const update = useMutation(trpc.person.update.mutationOptions({ onSuccess: onSaved }));
+  const update = useMutation(trpc.person.update.mutationOptions({ onSuccess: onChanged }));
   const removePerson = useMutation(trpc.person.remove.mutationOptions({ onSuccess: onDeleted }));
+  const removeName = useMutation(trpc.person.removeName.mutationOptions());
   const titlePrefixesQuery = useQuery(trpc.person.listTitlePrefixes.queryOptions());
   const suffixesQuery = useQuery(trpc.person.listSuffixes.queryOptions());
   const titlePrefixOptions = mergeOptions(STANDARD_TITLE_PREFIXES, titlePrefixesQuery.data);
   const suffixOptions = mergeOptions(STANDARD_SUFFIXES, suffixesQuery.data);
+  const [addNameOpen, setAddNameOpen] = useState(false);
+
+  const removeNameById = async (id: string) => {
+    await removeName.mutateAsync({ id });
+    await onChanged();
+  };
 
   const form = useForm({
     defaultValues: {
       given: person.given,
-      middleName: person.middleName ?? "",
       surname: person.surname,
       sex: person.sex,
       titlePrefix: person.titlePrefix ?? "",
       suffix: person.suffix ?? "",
-      nickname: person.nickname.length > 0 ? person.nickname : [""],
       birthOriginal: person.birth?.original ?? "",
       birthPlace: person.birthPlace ?? "",
       deathOriginal: person.death?.original ?? "",
@@ -343,12 +352,10 @@ function PersonFields({
       await update.mutateAsync({
         id: person.id,
         given: value.given,
-        middleName: value.middleName.trim() === "" ? null : value.middleName,
         surname: value.surname,
         sex: value.sex,
         titlePrefix: value.titlePrefix.trim() === "" ? null : value.titlePrefix,
         suffix: value.suffix.trim() === "" ? null : value.suffix,
-        nickname: value.nickname.map((name) => name.trim()).filter((name) => name !== ""),
         // Bounds are recomputed from the current wording on every save, not
         // carried over from what was previously stored — otherwise editing
         // the text alone (without it happening to still parse to the same
@@ -380,6 +387,7 @@ function PersonFields({
 
   const isLiving = useStore(form.store, (state) => state.values.isLiving);
   const isDirty = useStore(form.store, (state) => state.isDirty);
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
 
   const age = calculateAge(person);
   const birthDisplay = formatDisplayDate(person.birth);
@@ -397,7 +405,7 @@ function PersonFields({
         <div>
           <CardTitle className="flex items-center gap-2">
             <GenderIcon sex={person.sex} />
-            {formatFullPersonName(person)}
+            {formatFullPersonName({ ...person, nickname: nicknames })}
             <CopyableText value={person.publicId} className="font-normal" />
           </CardTitle>
           {birthLine && (
@@ -413,7 +421,7 @@ function PersonFields({
             </CardDescription>
           )}
         </div>
-        <PersonPhoto person={person} onChanged={onSaved} />
+        <PersonPhoto person={person} onChanged={onChanged} />
       </CardHeader>
       <CardContent>
         <form
@@ -459,21 +467,10 @@ function PersonFields({
               )}
             </form.Field>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
             <form.Field name="given">
               {(field) => (
                 <LabeledField label="First names">
-                  <Input
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  />
-                </LabeledField>
-              )}
-            </form.Field>
-            <form.Field name="middleName">
-              {(field) => (
-                <LabeledField label="Middle names">
                   <Input
                     value={field.state.value}
                     onBlur={field.handleBlur}
@@ -493,6 +490,44 @@ function PersonFields({
                 </LabeledField>
               )}
             </form.Field>
+          </div>
+          <div className="space-y-2 text-sm sm:col-span-2">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Alternate names</span>
+              <Dialog isOpen={addNameOpen} onOpenChange={setAddNameOpen}>
+                <Button type="button" variant="ghost" size="icon" aria-label="Add alternate name">
+                  <PlusIcon className="size-4" />
+                </Button>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add alternate name</DialogTitle>
+                  </DialogHeader>
+                  <NameForm
+                    personId={person.id}
+                    name={null}
+                    options={options}
+                    onDone={async () => {
+                      setAddNameOpen(false);
+                      await onChanged();
+                    }}
+                  />
+                </DialogContent>
+              </Dialog>
+            </div>
+            {names.length > 0 && (
+              <div className="space-y-2">
+                {names.map((name) => (
+                  <NameRow
+                    key={name.id}
+                    personId={person.id}
+                    name={name}
+                    options={options}
+                    onChanged={onChanged}
+                    onRemove={() => void removeNameById(name.id)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
           <form.Field name="titlePrefix">
             {(field) => (
@@ -520,53 +555,6 @@ function PersonFields({
                   isClearable
                 />
               </LabeledField>
-            )}
-          </form.Field>
-          <form.Field name="nickname" mode="array">
-            {(arrayField) => (
-              <div className="space-y-1 text-sm sm:col-span-2">
-                <span className="text-muted-foreground">Nicknames / Preferred names</span>
-                <div className="space-y-2">
-                  {arrayField.state.value.map((_, index) => (
-                    // Reordering isn't supported, so the input's position is a stable key.
-                    // eslint-disable-next-line react/no-array-index-key
-                    <div key={index} className="flex items-center gap-2">
-                      <form.Field name={`nickname[${index}]`}>
-                        {(field) => (
-                          <Input
-                            className="flex-1"
-                            value={field.state.value}
-                            onBlur={field.handleBlur}
-                            onChange={(event) => field.handleChange(event.target.value)}
-                          />
-                        )}
-                      </form.Field>
-                      {arrayField.state.value.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Remove nickname"
-                          onPress={() => arrayField.removeValue(index)}
-                        >
-                          <XIcon />
-                        </Button>
-                      )}
-                      {index === arrayField.state.value.length - 1 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Add nickname"
-                          onPress={() => arrayField.pushValue("")}
-                        >
-                          <PlusIcon />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
             )}
           </form.Field>
           <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
@@ -635,22 +623,9 @@ function PersonFields({
             )}
           </form.Field>
           <div className="flex items-center justify-between gap-4 sm:col-span-2">
-            <Button type="submit" isDisabled={update.isPending}>
+            <SaveButton isDirty={isDirty} isPending={isSubmitting}>
               Save
-              {update.isPending ? (
-                <Loader2Icon
-                  className="size-3 shrink-0 animate-spin text-destructive"
-                  aria-label="Saving"
-                />
-              ) : (
-                isDirty && (
-                  <span
-                    className="size-2 shrink-0 rounded-full bg-destructive"
-                    aria-label="Unsaved changes"
-                  />
-                )
-              )}
-            </Button>
+            </SaveButton>
             {canDelete && (
               <AlertDialog>
                 <Button type="button" variant="outline" className="text-destructive">
@@ -777,12 +752,23 @@ function PersonPhoto({ person, onChanged }: { person: PersonRow; onChanged: () =
 }
 
 /** A "Remove" button that requires an explicit confirmation before it acts. */
-function RemoveButton({ itemLabel, onConfirm }: { itemLabel: string; onConfirm: () => void }) {
+function RemoveButton({
+  itemLabel,
+  onConfirm,
+  trigger,
+}: {
+  itemLabel: string;
+  onConfirm: () => void;
+  /** Defaults to a plain "Remove" text button. */
+  trigger?: ReactNode;
+}) {
   return (
     <AlertDialog>
-      <Button variant="ghost" size="sm">
-        Remove
-      </Button>
+      {trigger ?? (
+        <Button variant="ghost" size="sm">
+          Remove
+        </Button>
+      )}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Remove {itemLabel}?</AlertDialogTitle>
@@ -820,6 +806,7 @@ function RelativesSection({
   personId,
   relatives,
   excludeIds,
+  options,
   onChanged,
   unions = NO_UNIONS,
 }: {
@@ -828,6 +815,7 @@ function RelativesSection({
   personId: string;
   relatives: PersonRow[];
   excludeIds: Set<string>;
+  options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
   /** Only meaningful for the Spouses section — shown alongside each spouse row. */
   unions?: UnionRow[];
@@ -853,6 +841,7 @@ function RelativesSection({
           kind={kind}
           personId={personId}
           excludeIds={excludeIds}
+          options={options}
           onChanged={onChanged}
         />
       </CardHeader>
@@ -878,7 +867,7 @@ function RelativesSection({
                 </Link>
                 {union && (
                   <p className="text-xs text-muted-foreground">
-                    {union.status}
+                    {labelFor(options, "union_status", union.status)}
                     {union.startDate ? ` · ${formatDisplayDate(union.startDate)}` : ""}
                     {union.startPlace ? ` in ${union.startPlace}` : ""}
                   </p>
@@ -900,16 +889,18 @@ function AddRelative({
   kind,
   personId,
   excludeIds,
+  options: allOptions,
   onChanged,
 }: {
   kind: RelativeKind;
   personId: string;
   excludeIds: Set<string>;
+  options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
   const trpc = useTRPC();
   const [open, setOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [mode, setMode] = useState<"search" | "create">("search");
   const [query, setQuery] = useState("");
   const [parentage, setParentage] = useState<Parentage>("unknown");
   const [unionStatus, setUnionStatus] = useState<UnionStatus>("married");
@@ -922,7 +913,7 @@ function AddRelative({
       offset: 0,
       search: query.trim() === "" ? null : query.trim(),
     }),
-    enabled: open,
+    enabled: open && mode === "search",
   });
 
   const linkParent = useMutation(trpc.person.linkParent.mutationOptions());
@@ -946,116 +937,136 @@ function AddRelative({
       await linkParent.mutateAsync({ parentId: personId, childId: target.id, parentage });
     }
     setOpen(false);
-    setQuery("");
     await onChanged();
   };
 
   return (
-    <Popover isOpen={open} onOpenChange={setOpen}>
+    <Dialog
+      isOpen={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) {
+          setMode("search");
+          setQuery("");
+        }
+      }}
+    >
       <Button variant="outline" size="sm">
         + Add
       </Button>
-      <PopoverContent className="w-80 space-y-3">
-        {kind !== "spouse" && (
-          <Select
-            aria-label="Parentage"
-            value={parentage}
-            onChange={(value) => {
-              if (value) setParentage(parentageSchema.parse(value));
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {parentageSchema.options.map((option) => (
-                <SelectItem key={option} id={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        {kind === "spouse" && (
-          <div className="space-y-2">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{kind === "spouse" ? "Add spouse" : "Add child"}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          {kind !== "spouse" && (
             <Select
-              aria-label="Union status"
-              value={unionStatus}
+              aria-label="Parentage"
+              value={parentage}
               onChange={(value) => {
-                if (value) setUnionStatus(unionStatusSchema.parse(value));
+                if (value) setParentage(parentageSchema.parse(value));
               }}
             >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {unionStatusSchema.options.map((option) => (
-                  <SelectItem key={option} id={option}>
-                    {UNION_STATUS_LABELS[option]}
+                {optionsFor(allOptions, "parentage").map((option) => (
+                  <SelectItem key={option.key} id={option.key}>
+                    {option.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <HistoricalDateInput
-              placeholder="Marriage date, e.g. 12 JUN 1920"
-              value={unionDate}
-              onChange={setUnionDate}
-              preview={historicalDatePreview(unionDate)}
-            />
-            <Input
-              placeholder="Marriage place"
-              value={unionPlace}
-              onChange={(event) => setUnionPlace(event.target.value)}
-            />
-          </div>
-        )}
-        <Combobox<PersonRow>
-          aria-label="Search people"
-          items={options}
-          inputValue={query}
-          onInputChange={setQuery}
-          onChange={(value) => {
-            const target = options.find((candidate) => candidate.id === value);
-            if (target) void link(target);
-          }}
-        >
-          <ComboboxInput placeholder="Search people…" />
-          <ComboboxContent<PersonRow>
-            renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
-          >
-            {(item) => (
-              <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-                {formatPersonName(item)}
-                {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
-              </ComboboxItem>
-            )}
-          </ComboboxContent>
-        </Combobox>
-        <Dialog isOpen={createOpen} onOpenChange={setCreateOpen}>
-          <Button variant="ghost" size="sm" className="w-full">
-            + Create new person
-          </Button>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>New person</DialogTitle>
-            </DialogHeader>
-            <CreateAndLinkForm
-              kind={kind}
-              personId={personId}
-              parentage={parentage}
-              unionStatus={unionStatus}
-              unionDate={unionDate}
-              unionPlace={unionPlace}
-              onDone={async () => {
-                setCreateOpen(false);
-                setOpen(false);
-                await onChanged();
-              }}
-            />
-          </DialogContent>
-        </Dialog>
-      </PopoverContent>
-    </Popover>
+          )}
+          {kind === "spouse" && (
+            <div className="space-y-2">
+              <Select
+                aria-label="Union status"
+                value={unionStatus}
+                onChange={(value) => {
+                  if (value) setUnionStatus(unionStatusSchema.parse(value));
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {optionsFor(allOptions, "union_status").map((option) => (
+                    <SelectItem key={option.key} id={option.key}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <HistoricalDateInput
+                placeholder="Marriage date, e.g. 12 JUN 1920"
+                value={unionDate}
+                onChange={setUnionDate}
+                preview={historicalDatePreview(unionDate)}
+              />
+              <Input
+                placeholder="Marriage place"
+                value={unionPlace}
+                onChange={(event) => setUnionPlace(event.target.value)}
+              />
+            </div>
+          )}
+          {mode === "search" ? (
+            <>
+              <Combobox<PersonRow>
+                aria-label="Search people"
+                items={options}
+                inputValue={query}
+                onInputChange={setQuery}
+                onChange={(value) => {
+                  const target = options.find((candidate) => candidate.id === value);
+                  if (target) void link(target);
+                }}
+              >
+                <ComboboxInput placeholder="Search people…" />
+                <ComboboxContent<PersonRow>
+                  renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
+                >
+                  {(item) => (
+                    <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
+                      {formatPersonName(item)}
+                      {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
+                    </ComboboxItem>
+                  )}
+                </ComboboxContent>
+              </Combobox>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full"
+                onPress={() => setMode("create")}
+              >
+                + Create new person
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" onPress={() => setMode("search")}>
+                ← Search instead
+              </Button>
+              <CreateAndLinkForm
+                kind={kind}
+                personId={personId}
+                parentage={parentage}
+                unionStatus={unionStatus}
+                unionDate={unionDate}
+                unionPlace={unionPlace}
+                onDone={async () => {
+                  setOpen(false);
+                  await onChanged();
+                }}
+              />
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1104,6 +1115,9 @@ function CreateAndLinkForm({
     },
   });
 
+  const isDirty = useStore(form.store, (state) => state.isDirty);
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+
   return (
     <form
       className="space-y-3"
@@ -1115,7 +1129,7 @@ function CreateAndLinkForm({
       <form.Field name="given">
         {(field) => (
           <Input
-            placeholder="Given names"
+            placeholder="First names"
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
@@ -1124,16 +1138,16 @@ function CreateAndLinkForm({
       <form.Field name="surname">
         {(field) => (
           <Input
-            placeholder="Last name"
+            placeholder="Last names"
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
         )}
       </form.Field>
       <DialogFooter>
-        <Button type="submit" isDisabled={createPerson.isPending}>
-          {createPerson.isPending ? "Creating…" : "Create and link"}
-        </Button>
+        <SaveButton isDirty={isDirty} isPending={isSubmitting}>
+          {isSubmitting ? "Creating…" : "Create and link"}
+        </SaveButton>
       </DialogFooter>
     </form>
   );
@@ -1151,11 +1165,13 @@ function ParentsSection({
   personId,
   parents,
   excludeIds,
+  options,
   onChanged,
 }: {
   personId: string;
   parents: ParentRow[];
   excludeIds: Set<string>;
+  options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
   const trpc = useTRPC();
@@ -1199,7 +1215,12 @@ function ParentsSection({
         <div className="space-y-2 border-t pt-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm text-muted-foreground">Other parents</span>
-            <AddOtherParent personId={personId} excludeIds={excludeIds} onChanged={onChanged} />
+            <AddOtherParent
+              personId={personId}
+              excludeIds={excludeIds}
+              options={options}
+              onChanged={onChanged}
+            />
           </div>
           {others.map((parent) => (
             <div key={parent.id} className="flex items-center justify-between gap-2 text-sm">
@@ -1214,7 +1235,7 @@ function ParentsSection({
                     <span className="ml-1 text-muted-foreground">({formatLifespan(parent)})</span>
                   )}
                 </Link>
-                <Badge variant="outline">{PARENTAGE_LABELS[parent.parentage]}</Badge>
+                <Badge variant="outline">{labelFor(options, "parentage", parent.parentage)}</Badge>
               </div>
               <RemoveButton
                 itemLabel={`the relationship with ${formatPersonName(parent)}`}
@@ -1374,10 +1395,12 @@ function AddParentSlot({
 function AddOtherParent({
   personId,
   excludeIds,
+  options: allOptions,
   onChanged,
 }: {
   personId: string;
   excludeIds: Set<string>;
+  options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
   const trpc = useTRPC();
@@ -1422,9 +1445,9 @@ function AddOtherParent({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {parentageSchema.options.map((option) => (
-              <SelectItem key={option} id={option}>
-                {PARENTAGE_LABELS[option]}
+            {optionsFor(allOptions, "parentage").map((option) => (
+              <SelectItem key={option.key} id={option.key}>
+                {option.label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -1503,6 +1526,9 @@ function CreateAndLinkParentForm({
     },
   });
 
+  const isDirty = useStore(form.store, (state) => state.isDirty);
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+
   return (
     <form
       className="space-y-3"
@@ -1514,7 +1540,7 @@ function CreateAndLinkParentForm({
       <form.Field name="given">
         {(field) => (
           <Input
-            placeholder="Given names"
+            placeholder="First names"
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
@@ -1523,85 +1549,31 @@ function CreateAndLinkParentForm({
       <form.Field name="surname">
         {(field) => (
           <Input
-            placeholder="Last name"
+            placeholder="Last names"
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
         )}
       </form.Field>
       <DialogFooter>
-        <Button type="submit" isDisabled={createPerson.isPending}>
-          {createPerson.isPending ? "Creating…" : "Create and link"}
-        </Button>
+        <SaveButton isDirty={isDirty} isPending={isSubmitting}>
+          {isSubmitting ? "Creating…" : "Create and link"}
+        </SaveButton>
       </DialogFooter>
     </form>
-  );
-}
-
-function NamesSection({
-  personId,
-  names,
-  onChanged,
-}: {
-  personId: string;
-  names: NameVariantRow[];
-  onChanged: () => Promise<void>;
-}) {
-  const trpc = useTRPC();
-  const removeName = useMutation(trpc.person.removeName.mutationOptions());
-  const [addOpen, setAddOpen] = useState(false);
-
-  const remove = async (id: string) => {
-    await removeName.mutateAsync({ id });
-    await onChanged();
-  };
-
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle className="text-base">Alternate names</CardTitle>
-        <Dialog isOpen={addOpen} onOpenChange={setAddOpen}>
-          <Button variant="outline" size="sm">
-            + Add
-          </Button>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add alternate name</DialogTitle>
-            </DialogHeader>
-            <NameForm
-              personId={personId}
-              name={null}
-              onDone={async () => {
-                setAddOpen(false);
-                await onChanged();
-              }}
-            />
-          </DialogContent>
-        </Dialog>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {names.map((name) => (
-          <NameRow
-            key={name.id}
-            personId={personId}
-            name={name}
-            onChanged={onChanged}
-            onRemove={() => void remove(name.id)}
-          />
-        ))}
-      </CardContent>
-    </Card>
   );
 }
 
 function NameRow({
   personId,
   name,
+  options,
   onChanged,
   onRemove,
 }: {
   personId: string;
   name: NameVariantRow;
+  options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
   onRemove: () => void;
 }) {
@@ -1611,15 +1583,20 @@ function NameRow({
     <div className="flex items-center justify-between gap-2 text-sm">
       <div>
         <Badge variant="outline" className="mr-2">
-          {name.nameType}
+          {labelFor(options, "name_variant_type", name.nameType)}
         </Badge>
         <span>{[name.given, name.surname].filter(Boolean).join(" ")}</span>
+        {name.since && (
+          <span className="ml-1 text-muted-foreground">
+            (since {formatDisplayDate(name.since)})
+          </span>
+        )}
         {name.notes && <p className="text-xs text-muted-foreground">{name.notes}</p>}
       </div>
       <div className="flex items-center gap-1">
         <Dialog isOpen={editOpen} onOpenChange={setEditOpen}>
-          <Button variant="ghost" size="sm">
-            Edit
+          <Button type="button" variant="ghost" size="icon" aria-label="Edit alternate name">
+            <PencilIcon className="size-4" />
           </Button>
           <DialogContent>
             <DialogHeader>
@@ -1628,6 +1605,7 @@ function NameRow({
             <NameForm
               personId={personId}
               name={name}
+              options={options}
               onDone={async () => {
                 setEditOpen(false);
                 await onChanged();
@@ -1638,6 +1616,11 @@ function NameRow({
         <RemoveButton
           itemLabel={`the alternate name "${[name.given, name.surname].filter(Boolean).join(" ")}"`}
           onConfirm={onRemove}
+          trigger={
+            <Button type="button" variant="ghost" size="icon" aria-label="Remove alternate name">
+              <Trash2Icon className="size-4" />
+            </Button>
+          }
         />
       </div>
     </div>
@@ -1647,21 +1630,25 @@ function NameRow({
 function NameForm({
   personId,
   name,
+  options,
   onDone,
 }: {
   personId: string;
   name: NameVariantRow | null;
+  options: ConfigurableOptionRow[];
   onDone: () => Promise<void>;
 }) {
   const trpc = useTRPC();
   const addName = useMutation(trpc.person.addName.mutationOptions());
   const updateName = useMutation(trpc.person.updateName.mutationOptions());
-  const [nameType, setNameType] = useState<NameVariantType>(name?.nameType ?? "maiden");
+  const initialNameType: NameVariantType = name?.nameType ?? "birth";
+  const [nameType, setNameType] = useState(initialNameType);
 
   const form = useForm({
     defaultValues: {
       given: name?.given ?? "",
       surname: name?.surname ?? "",
+      sinceOriginal: name?.since?.original ?? "",
       notes: name?.notes ?? "",
     },
     onSubmit: async ({ value }) => {
@@ -1669,6 +1656,13 @@ function NameForm({
         nameType,
         given: value.given,
         surname: value.surname,
+        since:
+          value.sinceOriginal.trim() === ""
+            ? null
+            : {
+                original: value.sinceOriginal.trim(),
+                ...parseHistoricalDate(value.sinceOriginal.trim()),
+              },
         notes: value.notes.trim() === "" ? null : value.notes,
       };
       if (name) {
@@ -1680,7 +1674,11 @@ function NameForm({
     },
   });
 
-  const pending = addName.isPending || updateName.isPending;
+  const formIsDirty = useStore(form.store, (state) => state.isDirty);
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+  // nameType is tracked outside the form (it drives a Select, not a form.Field),
+  // so the form's own isDirty misses a type-only change — combine both.
+  const isDirty = formIsDirty || nameType !== initialNameType;
 
   return (
     <form
@@ -1701,9 +1699,9 @@ function NameForm({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {nameVariantTypeSchema.options.map((option) => (
-            <SelectItem key={option} id={option}>
-              {option}
+          {optionsFor(options, "name_variant_type").map((option) => (
+            <SelectItem key={option.key} id={option.key}>
+              {option.label}
             </SelectItem>
           ))}
         </SelectContent>
@@ -1711,7 +1709,7 @@ function NameForm({
       <form.Field name="given">
         {(field) => (
           <Input
-            placeholder="Given names"
+            placeholder="First names"
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
@@ -1720,9 +1718,20 @@ function NameForm({
       <form.Field name="surname">
         {(field) => (
           <Input
-            placeholder="Last name"
+            placeholder="Last names"
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
+          />
+        )}
+      </form.Field>
+      <form.Field name="sinceOriginal">
+        {(field) => (
+          <HistoricalDateInput
+            placeholder="Since, e.g. 12 JUN 1998"
+            value={field.state.value}
+            onBlur={field.handleBlur}
+            onChange={field.handleChange}
+            preview={historicalDatePreview(field.state.value)}
           />
         )}
       </form.Field>
@@ -1736,9 +1745,9 @@ function NameForm({
         )}
       </form.Field>
       <DialogFooter>
-        <Button type="submit" isDisabled={pending}>
-          {pending ? "Saving…" : name ? "Save" : "Add"}
-        </Button>
+        <SaveButton isDirty={isDirty} isPending={isSubmitting}>
+          {name ? "Save" : "Add"}
+        </SaveButton>
       </DialogFooter>
     </form>
   );
@@ -1747,10 +1756,12 @@ function NameForm({
 function EventsSection({
   personId,
   events,
+  options,
   onChanged,
 }: {
   personId: string;
   events: PersonEventRow[];
+  options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
   const trpc = useTRPC();
@@ -1777,6 +1788,7 @@ function EventsSection({
             <EventForm
               personId={personId}
               event={null}
+              options={options}
               onDone={async () => {
                 setAddOpen(false);
                 await onChanged();
@@ -1791,6 +1803,7 @@ function EventsSection({
             key={event.id}
             personId={personId}
             event={event}
+            options={options}
             onChanged={onChanged}
             onRemove={() => void remove(event.id)}
           />
@@ -1803,11 +1816,13 @@ function EventsSection({
 function EventRow({
   personId,
   event,
+  options,
   onChanged,
   onRemove,
 }: {
   personId: string;
   event: PersonEventRow;
+  options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
   onRemove: () => void;
 }) {
@@ -1817,7 +1832,7 @@ function EventRow({
     <div className="flex items-center justify-between gap-2 text-sm">
       <div>
         <Badge variant="outline" className="mr-2">
-          {event.eventType}
+          {labelFor(options, "event_type", event.eventType)}
         </Badge>
         {event.eventType === "other" && event.label && (
           <span className="mr-1 font-medium">{event.label}</span>
@@ -1850,6 +1865,7 @@ function EventRow({
             <EventForm
               personId={personId}
               event={event}
+              options={options}
               onDone={async () => {
                 setEditOpen(false);
                 await onChanged();
@@ -1857,7 +1873,10 @@ function EventRow({
             />
           </DialogContent>
         </Dialog>
-        <RemoveButton itemLabel={`this ${event.eventType} event`} onConfirm={onRemove} />
+        <RemoveButton
+          itemLabel={`this ${labelFor(options, "event_type", event.eventType)} event`}
+          onConfirm={onRemove}
+        />
       </div>
     </div>
   );
@@ -1866,17 +1885,21 @@ function EventRow({
 function EventForm({
   personId,
   event,
+  options,
   onDone,
 }: {
   personId: string;
   event: PersonEventRow | null;
+  options: ConfigurableOptionRow[];
   onDone: () => Promise<void>;
 }) {
   const trpc = useTRPC();
   const addEvent = useMutation(trpc.person.addEvent.mutationOptions());
   const updateEvent = useMutation(trpc.person.updateEvent.mutationOptions());
-  const [eventType, setEventType] = useState<EventType>(event?.eventType ?? "residence");
-  const [details, setDetails] = useState<Record<string, string>>(event?.details ?? {});
+  const initialEventType: EventType = event?.eventType ?? "residence";
+  const initialDetails = event?.details ?? {};
+  const [eventType, setEventType] = useState(initialEventType);
+  const [details, setDetails] = useState<Record<string, string>>(initialDetails);
 
   const form = useForm({
     defaultValues: {
@@ -1913,9 +1936,17 @@ function EventForm({
     },
   });
 
-  const pending = addEvent.isPending || updateEvent.isPending;
+  const formIsDirty = useStore(form.store, (state) => state.isDirty);
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
   const label = useStore(form.store, (state) => state.values.label);
   const needsLabel = eventType === "other" && label.trim() === "";
+  // eventType/details are tracked outside the form (a Select and per-type
+  // detail inputs, not form.Fields), so the form's own isDirty misses a
+  // change to either one — combine both.
+  const isDirty =
+    formIsDirty ||
+    eventType !== initialEventType ||
+    JSON.stringify(details) !== JSON.stringify(initialDetails);
 
   return (
     <form
@@ -1936,9 +1967,9 @@ function EventForm({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {eventTypeSchema.options.map((option) => (
-            <SelectItem key={option} id={option}>
-              {option}
+          {optionsFor(options, "event_type").map((option) => (
+            <SelectItem key={option.key} id={option.key}>
+              {option.label}
             </SelectItem>
           ))}
         </SelectContent>
@@ -1993,9 +2024,9 @@ function EventForm({
         )}
       </form.Field>
       <DialogFooter>
-        <Button type="submit" isDisabled={pending || needsLabel}>
-          {pending ? "Saving…" : event ? "Save" : "Add"}
-        </Button>
+        <SaveButton isDirty={isDirty} isPending={isSubmitting} isDisabled={needsLabel}>
+          {event ? "Save" : "Add"}
+        </SaveButton>
       </DialogFooter>
     </form>
   );
@@ -2015,6 +2046,7 @@ function CitationsSection({
   names,
   events,
   unions,
+  options,
   onChanged,
 }: {
   personId: string;
@@ -2023,6 +2055,7 @@ function CitationsSection({
   names: NameVariantRow[];
   events: PersonEventRow[];
   unions: UnionRow[];
+  options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
   const trpc = useTRPC();
@@ -2053,12 +2086,12 @@ function CitationsSection({
       case "event": {
         const event = events.find((candidate) => candidate.id === citation.factId);
         return event
-          ? `Event: ${event.eventType}${event.label ? ` (${event.label})` : ""}`
+          ? `Event: ${labelFor(options, "event_type", event.eventType)}${event.label ? ` (${event.label})` : ""}`
           : "Event";
       }
       case "union": {
         const union = unions.find((candidate) => candidate.id === citation.factId);
-        return union ? `Union (${union.status})` : "Union";
+        return union ? `Union (${labelFor(options, "union_status", union.status)})` : "Union";
       }
     }
   };
@@ -2081,6 +2114,7 @@ function CitationsSection({
               names={names}
               events={events}
               unions={unions}
+              options={options}
               onDone={async () => {
                 setAddOpen(false);
                 await onChanged();
@@ -2096,7 +2130,7 @@ function CitationsSection({
             <div key={citation.id} className="flex items-center justify-between gap-2 text-sm">
               <div>
                 <Badge variant="outline" className="mr-2">
-                  {citation.confidence}
+                  {labelFor(options, "confidence", citation.confidence)}
                 </Badge>
                 <span className="font-medium">{source?.title ?? "Unknown source"}</span>
                 <p className="text-xs text-muted-foreground">
@@ -2123,6 +2157,7 @@ function CitationForm({
   names,
   events,
   unions,
+  options,
   onDone,
 }: {
   personId: string;
@@ -2130,6 +2165,7 @@ function CitationForm({
   names: NameVariantRow[];
   events: PersonEventRow[];
   unions: UnionRow[];
+  options: ConfigurableOptionRow[];
   onDone: () => Promise<void>;
 }) {
   const trpc = useTRPC();
@@ -2150,13 +2186,13 @@ function CitationForm({
       key: `event|${event.id}`,
       factType: "event" as const,
       factId: event.id,
-      label: `Event: ${event.eventType}${event.label ? ` (${event.label})` : ""}`,
+      label: `Event: ${labelFor(options, "event_type", event.eventType)}${event.label ? ` (${event.label})` : ""}`,
     })),
     ...unions.map((union) => ({
       key: `union|${union.id}`,
       factType: "union" as const,
       factId: union.id,
-      label: `Union (${union.status})`,
+      label: `Union (${labelFor(options, "union_status", union.status)})`,
     })),
   ];
 
@@ -2174,6 +2210,31 @@ function CitationForm({
   const selectedFact = factOptions.find((option) => option.key === factKey) ?? factOptions[0]!;
   const pending = createSource.isPending || addCitation.isPending;
   const canSubmit = sourceMode === "existing" ? sourceId !== "" : newSourceTitle.trim() !== "";
+
+  // This form has no TanStack Form to track dirtiness for it — it's always a
+  // fresh "add" with no saved record to diff against, so every field is
+  // plain useState. Snapshot each one's starting value once via a lazy
+  // initializer (the dialog unmounts this component on close, so this only
+  // ever captures a fresh mount) and compare against it directly.
+  const [initial] = useState({
+    factKey,
+    sourceMode,
+    sourceId,
+    newSourceTitle,
+    newSourceAuthor,
+    confidence,
+    page,
+    note,
+  });
+  const isDirty =
+    factKey !== initial.factKey ||
+    sourceMode !== initial.sourceMode ||
+    sourceId !== initial.sourceId ||
+    newSourceTitle !== initial.newSourceTitle ||
+    newSourceAuthor !== initial.newSourceAuthor ||
+    confidence !== initial.confidence ||
+    page !== initial.page ||
+    note !== initial.note;
 
   const submit = async () => {
     const resolvedSourceId =
@@ -2293,9 +2354,9 @@ function CitationForm({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {confidenceSchema.options.map((option) => (
-            <SelectItem key={option} id={option}>
-              {option}
+          {optionsFor(options, "confidence").map((option) => (
+            <SelectItem key={option.key} id={option.key}>
+              {option.label}
             </SelectItem>
           ))}
         </SelectContent>
@@ -2312,9 +2373,9 @@ function CitationForm({
       />
 
       <DialogFooter>
-        <Button type="submit" isDisabled={pending || !canSubmit}>
-          {pending ? "Adding…" : "Add"}
-        </Button>
+        <SaveButton isDirty={isDirty} isPending={pending} isDisabled={!canSubmit}>
+          Add
+        </SaveButton>
       </DialogFooter>
     </form>
   );
