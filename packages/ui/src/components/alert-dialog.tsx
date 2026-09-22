@@ -26,10 +26,14 @@ const MotionModal = motion.create(Modal);
  * requires an explicit choice: no close button, and outside clicks or Escape
  * don't dismiss it — see `AlertDialogContent`.
  */
-export function AlertDialog({ onOpenChange, children, ...props }: DialogTriggerProps) {
-  const { contextValue, handleOpenChange } = useOverlayTransition(onOpenChange);
+export function AlertDialog({ isOpen, onOpenChange, children, ...props }: DialogTriggerProps) {
+  const { contextValue, handleOpenChange } = useOverlayTransition(isOpen, onOpenChange);
   return (
-    <DialogTrigger {...props} onOpenChange={handleOpenChange}>
+    <DialogTrigger
+      {...props}
+      {...(isOpen !== undefined ? { isOpen } : {})}
+      onOpenChange={handleOpenChange}
+    >
       <OverlayTransitionProvider value={contextValue}>{children}</OverlayTransitionProvider>
     </DialogTrigger>
   );

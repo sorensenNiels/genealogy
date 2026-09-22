@@ -22,10 +22,14 @@ import { cn } from "../lib/utils";
 const MotionModalOverlay = motion.create(ModalOverlay);
 const MotionModal = motion.create(Modal);
 
-export function Dialog({ onOpenChange, children, ...props }: DialogTriggerProps) {
-  const { contextValue, handleOpenChange } = useOverlayTransition(onOpenChange);
+export function Dialog({ isOpen, onOpenChange, children, ...props }: DialogTriggerProps) {
+  const { contextValue, handleOpenChange } = useOverlayTransition(isOpen, onOpenChange);
   return (
-    <DialogTrigger {...props} onOpenChange={handleOpenChange}>
+    <DialogTrigger
+      {...props}
+      {...(isOpen !== undefined ? { isOpen } : {})}
+      onOpenChange={handleOpenChange}
+    >
       <OverlayTransitionProvider value={contextValue}>{children}</OverlayTransitionProvider>
     </DialogTrigger>
   );

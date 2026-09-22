@@ -22,6 +22,7 @@ import { cn } from "../lib/utils";
 const MotionDiv = motion.create("div");
 
 export function Select<T extends object>({
+  isOpen,
   onOpenChange,
   children,
   ...props
@@ -29,9 +30,13 @@ export function Select<T extends object>({
   children: React.ReactNode;
   onOpenChange?: (isOpen: boolean) => void;
 }) {
-  const { contextValue, handleOpenChange } = useOverlayTransition(onOpenChange);
+  const { contextValue, handleOpenChange } = useOverlayTransition(isOpen, onOpenChange);
   return (
-    <RACSelect {...props} onOpenChange={handleOpenChange}>
+    <RACSelect
+      {...props}
+      {...(isOpen !== undefined ? { isOpen } : {})}
+      onOpenChange={handleOpenChange}
+    >
       <OverlayTransitionProvider value={contextValue}>{children}</OverlayTransitionProvider>
     </RACSelect>
   );

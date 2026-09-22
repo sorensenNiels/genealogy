@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 export type OverlayAnimationState = "unmounted" | "hidden" | "visible";
 
@@ -37,16 +37,45 @@ export function useOverlayTransitionState(): OverlayTransitionContextValue {
  * the state machine is written once instead of once per component, and
  * consumers of `Popover`/`Dialog`/`Select`/`Combobox` never see it at all.
  */
-export function useOverlayTransition(onOpenChange?: (isOpen: boolean) => void) {
-  const [animation, setAnimation] = useState<OverlayAnimationState>("unmounted");
+export function useOverlayTransition(isOpen?: boolean, onOpenChange?: (isOpen: boolean) => void) {
+  const [animation, setAnimation] = useState<OverlayAnimationState>(
+    isOpen ? "visible" : "unmounted",
+  );
 
   const handleOpenChange = useCallback(
-    (isOpen: boolean) => {
-      setAnimation(isOpen ? "visible" : "hidden");
-      onOpenChange?.(isOpen);
+    (nextIsOpen: boolean) => {
+      setAnimation(nextIsOpen ? "visible" : "hidden");
+      onOpenChange?.(nextIsOpen);
     },
     [onOpenChange],
   );
+
+  // For a *controlled* trigger (`isOpen` passed by the caller, e.g. a Save
+  // handler that closes the dialog itself once its mutation succeeds),
+  // `isOpen` can change without ever going through `handleOpenChange` above —
+  // that callback only fires for changes React Aria itself initiates
+  // (pressing the trigger, Escape, an outside click). Without this effect,
+  // `animation` would get stuck at "visible" after such a close: React
+  // Aria's own trigger sees the real, now-false `isOpen` and tears itself
+  // down, but this hook's `animation` state — which is what actually gates
+  // whether Content renders the Modal/Popover at all — never leaves
+  // "visible", so the next open reactivates an instance RAC already
+  // considers closed instead of mounting a fresh one, corrupting its
+  // internal focus-trap/overlay-stack bookkeeping.
+  useEffect(() => {
+    if (isOpen === undefined) return;
+    // Syncing to a prop from a controlling parent is exactly the "external
+    // system" this rule expects an effect for — `animation` can't be derived
+    // during render because it also depends on the exit-animation-complete
+    // callback below, and it can't be set from the event that changed
+    // `isOpen` because that event happens in a different component (or
+    // isn't an event at all — see the comment above).
+    // eslint-disable-next-line react/set-state-in-effect
+    setAnimation((current) => {
+      if (isOpen) return current === "unmounted" ? "visible" : current;
+      return current === "visible" ? "hidden" : current;
+    });
+  }, [isOpen]);
 
   const handleAnimationComplete = useCallback((state: OverlayAnimationState) => {
     setAnimation((current) => (state === "hidden" && current === "hidden" ? "unmounted" : current));

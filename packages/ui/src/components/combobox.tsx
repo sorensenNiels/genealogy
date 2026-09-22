@@ -35,7 +35,11 @@ export function Combobox<T extends object>({
   children: React.ReactNode;
   onOpenChange?: (isOpen: boolean) => void;
 }) {
-  const { contextValue, handleOpenChange } = useOverlayTransition(onOpenChange);
+  // RAC's ComboBox has no controlled `isOpen` prop (its menu opens from
+  // focus/typing, not an external toggle — see `menuTrigger` below), so
+  // unlike Dialog/Popover/Select there's no controlled-close path here for
+  // `animation` to desync from.
+  const { contextValue, handleOpenChange } = useOverlayTransition(undefined, onOpenChange);
   return (
     <RACComboBox
       allowsEmptyCollection

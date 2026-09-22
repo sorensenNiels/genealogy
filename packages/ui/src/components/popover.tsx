@@ -18,10 +18,14 @@ import { cn } from "../lib/utils";
 const MotionPopover = motion.create(RACPopover);
 
 /** The trigger goes directly inside as the first child — no separate Trigger component needed. */
-export function Popover({ onOpenChange, children, ...props }: DialogTriggerProps) {
-  const { contextValue, handleOpenChange } = useOverlayTransition(onOpenChange);
+export function Popover({ isOpen, onOpenChange, children, ...props }: DialogTriggerProps) {
+  const { contextValue, handleOpenChange } = useOverlayTransition(isOpen, onOpenChange);
   return (
-    <DialogTrigger {...props} onOpenChange={handleOpenChange}>
+    <DialogTrigger
+      {...props}
+      {...(isOpen !== undefined ? { isOpen } : {})}
+      onOpenChange={handleOpenChange}
+    >
       <OverlayTransitionProvider value={contextValue}>{children}</OverlayTransitionProvider>
     </DialogTrigger>
   );
