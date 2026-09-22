@@ -99,6 +99,7 @@ import {
   removeEvent,
   removeName,
   removePerson,
+  removeUnion,
   unlinkParent,
   unlinkSpouse,
   updateEvent,
@@ -904,6 +905,19 @@ function RelativesSection({
     await onChanged();
   };
 
+  // unlinkSpouse deliberately leaves the union record behind (see its
+  // comment in person.service.ts) — divorcing someone shouldn't erase the
+  // marriage record. That means a union can point at someone no longer in
+  // `relatives` at all: this page's own "Delete person" guard blocks on any
+  // union regardless, so without surfacing these, a person can end up
+  // impossible to delete with no visible reason why.
+  const orphanedUnions =
+    kind === "spouse"
+      ? unions.filter(
+          (union) => !relatives.some((r) => r.id === union.personAId || r.id === union.personBId),
+        )
+      : [];
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -951,8 +965,68 @@ function RelativesSection({
             </div>
           );
         })}
+        {orphanedUnions.map((union) => (
+          <OrphanedUnionRow
+            key={union.id}
+            personId={personId}
+            union={union}
+            options={options}
+            onChanged={onChanged}
+          />
+        ))}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * A union whose other side is no longer a linked spouse (see
+ * `orphanedUnions` above) — still blocks deleting either person in it, so
+ * this is the only place a user can find and remove one. `union` only has
+ * the other person's id, not their name, so this fetches it directly rather
+ * than widening `listUnions`'s response shape for a rarely-hit case.
+ */
+function OrphanedUnionRow({
+  personId,
+  union,
+  options,
+  onChanged,
+}: {
+  personId: string;
+  union: UnionRow;
+  options: ConfigurableOptionRow[];
+  onChanged: () => Promise<void>;
+}) {
+  const otherId = union.personAId === personId ? union.personBId : union.personAId;
+  const other = useQuery({
+    queryKey: ["person", "byId", otherId],
+    queryFn: () => getPersonById({ data: { id: otherId } }),
+  });
+  const removeUnionMutation = useMutation({ mutationFn: removeUnion });
+
+  const remove = async () => {
+    await removeUnionMutation.mutateAsync({ data: { id: union.id } });
+    await onChanged();
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-2 text-sm">
+      <div>
+        {other.data ? (
+          <Link to="/people/$personId" params={{ personId: otherId }} className="hover:underline">
+            {formatPersonName(other.data)}
+          </Link>
+        ) : (
+          <span className="text-muted-foreground">Unknown person</span>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {labelFor(options, "union_status", union.status)} · no longer linked
+          {union.startDate ? ` · ${formatDisplayDate(union.startDate)}` : ""}
+          {union.startPlace ? ` in ${union.startPlace}` : ""}
+        </p>
+      </div>
+      <RemoveButton itemLabel="this union record" onConfirm={() => void remove()} />
+    </div>
   );
 }
 
