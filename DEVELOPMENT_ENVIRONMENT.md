@@ -20,10 +20,12 @@ sync.
    needed.
 5. Run `pnpm dev`.
 
-The frontend is on <http://localhost:5173>, the backend on
-<http://localhost:3000/trpc>, and Postgres on `localhost:5432`. All three are
-forwarded to the host, so host-side tools such as DBeaver can reach the database
-directly with user/password/database all set to `genealogy`.
+The app (`apps/frontend`) is on <http://localhost:5173> — open this and nothing
+else; its server side proxies data and auth calls to the backend for you. The
+backend is on <http://localhost:3000/trpc> for API inspection, and Postgres on
+`localhost:5432`. All three are forwarded to the host, so host-side tools such
+as DBeaver can reach the database directly with user/password/database all
+set to `genealogy`.
 
 ## What the container gives you
 
@@ -80,7 +82,7 @@ container. Three don't, and the app refuses to boot without them:
 
 | Command            | What it does                                              |
 | ------------------ | --------------------------------------------------------- |
-| `pnpm dev`         | Backend, frontend and package watchers together           |
+| `pnpm dev`         | Backend, frontend app and package watchers together       |
 | `pnpm build`       | Build everything in dependency order                      |
 | `pnpm check`       | Format check, lint and typecheck — the gate CI should run |
 | `pnpm test`        | Vitest across the workspace                               |
@@ -120,8 +122,10 @@ normalises `package.json` key order — so expect it to touch more than whitespa
 on first run.
 
 **Generated files** are not committed and not linted:
-`apps/frontend/src/routeTree.gen.ts` is produced by the `routes` turbo task,
-which `build`, `dev` and `typecheck` all depend on.
+`apps/frontend/src/routeTree.gen.ts` is produced by `@tanstack/react-start`'s own
+Vite plugin as a side effect of `vite dev`/`vite build` — run
+`pnpm --filter @genealogy/frontend dev` (or `build`) at least once after adding a
+new route file if `typecheck` complains it can't find `./routeTree.gen`.
 
 ## Troubleshooting
 

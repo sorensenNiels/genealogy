@@ -2,7 +2,7 @@ import { User } from "@react-aria/test-utils";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { Autocomplete } from "./autocomplete";
 
@@ -34,9 +34,27 @@ function TitleAutocomplete({
 }
 
 describe("Autocomplete", () => {
+  it("does not warn about a missing label when aria-label is provided", () => {
+    // Regression check: aria-label was previously spread onto the inner
+    // <input> only, never passed to RAC's ComboBox itself. The DOM still
+    // ends up with a technically-valid accessible name either way (the raw
+    // HTML attribute lands on the <input> regardless), so a query like
+    // `getByRole("combobox", { name: "Title" })` passes in both cases and
+    // would not have caught this — only React Aria's own internal check,
+    // which looks at the props actually passed to ComboBox, does. That
+    // check logs exactly this console.warn when it thinks no label was
+    // given, independent of what the rendered DOM looks like.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    render(<TitleAutocomplete />);
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining("visible label"));
+    warn.mockRestore();
+  });
+
   it("suggests every option once opened", async () => {
     render(<TitleAutocomplete />);
-    const tester = testUtilUser.createTester("ComboBox", { root: screen.getByRole("combobox") });
+    const tester = testUtilUser.createTester("ComboBox", {
+      root: screen.getByRole("combobox", { name: "Title" }),
+    });
 
     await tester.open();
     expect(tester.getOptions().map((option) => option.textContent)).toEqual(OPTIONS);

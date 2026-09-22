@@ -28,7 +28,7 @@
   "forwardPorts": [3000, 5173],
   "portsAttributes": {
     "3000": { "label": "backend (NestJS + tRPC)", "onAutoForward": "notify" },
-    "5173": { "label": "frontend (Vite)", "onAutoForward": "openBrowser" }
+    "5173": { "label": "frontend (TanStack Start)", "onAutoForward": "openBrowser" }
   },
 
   "postCreateCommand": "bash .devcontainer/post-create.sh",

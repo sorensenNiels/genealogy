@@ -28,7 +28,13 @@ import type { inferRouterOutputs } from "@trpc/server";
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { useState } from "react";
 
-import { useTRPC } from "../lib/trpc";
+import {
+  addOption,
+  listOptions,
+  moveOption,
+  removeOption,
+  updateOption,
+} from "../server/functions/settings.functions";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsRoute,
@@ -37,13 +43,14 @@ export const Route = createFileRoute("/settings")({
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type ConfigurableOptionRow = RouterOutputs["settings"]["listOptions"][number];
 
+const LIST_OPTIONS_KEY = ["settings", "listOptions"];
+
 function SettingsRoute() {
-  const trpc = useTRPC();
   const queryClient = useQueryClient();
-  const options = useQuery(trpc.settings.listOptions.queryOptions());
+  const options = useQuery({ queryKey: LIST_OPTIONS_KEY, queryFn: () => listOptions() });
 
   const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: trpc.settings.listOptions.queryKey() });
+    await queryClient.invalidateQueries({ queryKey: LIST_OPTIONS_KEY });
   };
 
   return (
@@ -129,18 +136,17 @@ function OptionRow({
   isLast: boolean;
   onChanged: () => Promise<void>;
 }) {
-  const trpc = useTRPC();
-  const moveOption = useMutation(trpc.settings.moveOption.mutationOptions());
-  const removeOption = useMutation(trpc.settings.removeOption.mutationOptions());
+  const moveOptionMutation = useMutation({ mutationFn: moveOption });
+  const removeOptionMutation = useMutation({ mutationFn: removeOption });
   const [editOpen, setEditOpen] = useState(false);
 
   const move = async (direction: "up" | "down") => {
-    await moveOption.mutateAsync({ id: option.id, direction });
+    await moveOptionMutation.mutateAsync({ data: { id: option.id, direction } });
     await onChanged();
   };
 
   const remove = async () => {
-    await removeOption.mutateAsync({ id: option.id });
+    await removeOptionMutation.mutateAsync({ data: { id: option.id } });
     await onChanged();
   };
 
@@ -214,8 +220,8 @@ function OptionRow({
           closes the dialog on press (slot="close") independently of whether
           `remove()` throws, so an error shown inside it would flash and
           vanish before it could be read. */}
-      {removeOption.isError && (
-        <p className="text-right text-sm text-destructive">{removeOption.error.message}</p>
+      {removeOptionMutation.isError && (
+        <p className="text-right text-sm text-destructive">{removeOptionMutation.error.message}</p>
       )}
     </div>
   );
@@ -228,13 +234,14 @@ function AddOptionForm({
   topic: ConfigurableTopic;
   onDone: () => Promise<void>;
 }) {
-  const trpc = useTRPC();
-  const addOption = useMutation(trpc.settings.addOption.mutationOptions());
+  const addOptionMutation = useMutation({ mutationFn: addOption });
 
   const form = useForm({
     defaultValues: { key: "", label: "" },
     onSubmit: async ({ value }) => {
-      await addOption.mutateAsync({ topic, key: value.key.trim(), label: value.label.trim() });
+      await addOptionMutation.mutateAsync({
+        data: { topic, key: value.key.trim(), label: value.label.trim() },
+      });
       await onDone();
     },
   });
@@ -268,7 +275,9 @@ function AddOptionForm({
           />
         )}
       </form.Field>
-      {addOption.isError && <p className="text-sm text-destructive">{addOption.error.message}</p>}
+      {addOptionMutation.isError && (
+        <p className="text-sm text-destructive">{addOptionMutation.error.message}</p>
+      )}
       <DialogFooter>
         <SaveButton isDirty={isDirty} isPending={isSubmitting}>
           Add
@@ -285,13 +294,14 @@ function EditOptionForm({
   option: ConfigurableOptionRow;
   onDone: () => Promise<void>;
 }) {
-  const trpc = useTRPC();
-  const updateOption = useMutation(trpc.settings.updateOption.mutationOptions());
+  const updateOptionMutation = useMutation({ mutationFn: updateOption });
 
   const form = useForm({
     defaultValues: { label: option.label },
     onSubmit: async ({ value }) => {
-      await updateOption.mutateAsync({ id: option.id, label: value.label.trim() });
+      await updateOptionMutation.mutateAsync({
+        data: { id: option.id, label: value.label.trim() },
+      });
       await onDone();
     },
   });
@@ -317,8 +327,8 @@ function EditOptionForm({
           />
         )}
       </form.Field>
-      {updateOption.isError && (
-        <p className="text-sm text-destructive">{updateOption.error.message}</p>
+      {updateOptionMutation.isError && (
+        <p className="text-sm text-destructive">{updateOptionMutation.error.message}</p>
       )}
       <DialogFooter>
         <SaveButton isDirty={isDirty} isPending={isSubmitting}>

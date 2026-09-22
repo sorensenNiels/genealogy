@@ -48,6 +48,8 @@ export function Autocomplete({
   options,
   className,
   isClearable,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledby,
   ...props
 }: AutocompleteProps) {
   const { contextValue, handleOpenChange } = useOverlayTransition();
@@ -64,6 +66,11 @@ export function Autocomplete({
   );
 
   return (
+    // aria-label/aria-labelledby are pulled out and applied here rather than
+    // left in the `{...props}` spread below — RACComboBox is the field React
+    // Aria's own runtime label check inspects, and that spread lands on the
+    // inner <input> instead, which the check doesn't look at. A caller
+    // passing aria-label without this would see it silently do nothing.
     <RACComboBox
       allowsCustomValue
       menuTrigger="focus"
@@ -71,6 +78,8 @@ export function Autocomplete({
       onInputChange={onChange}
       items={items}
       onOpenChange={handleOpenChange}
+      {...(ariaLabel !== undefined ? { "aria-label": ariaLabel } : {})}
+      {...(ariaLabelledby !== undefined ? { "aria-labelledby": ariaLabelledby } : {})}
     >
       <OverlayTransitionProvider value={contextValue}>
         <Group

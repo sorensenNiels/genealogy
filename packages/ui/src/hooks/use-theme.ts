@@ -8,14 +8,6 @@ export type Theme = "light" | "dark";
 // first paint never flashes the wrong theme.
 const STORAGE_KEY = "genealogy-theme";
 
-function systemPrefersDark(): boolean {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
-
-function resolveTheme(preference: ThemePreference | null): Theme {
-  return preference ?? (systemPrefersDark() ? "dark" : "light");
-}
-
 function readStoredPreference(): ThemePreference | null {
   const stored = localStorage.getItem(STORAGE_KEY);
   return stored === "light" || stored === "dark" ? stored : null;
@@ -35,24 +27,45 @@ export interface UseThemeResult {
  * OS setting live via `matchMedia`.
  */
 export function useTheme(): UseThemeResult {
-  const [preference, setPreferenceState] = useState<ThemePreference | null>(readStoredPreference);
-  const [theme, setTheme] = useState<Theme>(() => resolveTheme(preference));
+  // Both start from a placeholder rather than reading localStorage/matchMedia
+  // synchronously, since this hook now also renders under TanStack Start's
+  // SSR (apps/frontend) where neither exists — the mount effect below (client
+  // -only, never run during SSR) corrects them immediately after mount, and
+  // `theme` is derived from the two rather than stored separately, so that
+  // effect is a single setState rather than several in cascade. The inline
+  // script in the document head already applies the right class to <html>
+  // before hydration, so there's no flash of the wrong page background;
+  // only a component that renders differently by theme (ThemeToggle's own
+  // icon) can show the wrong one for one frame, which self-corrects here.
+  const [preference, setPreferenceState] = useState<ThemePreference | null>(null);
+  const [systemDark, setSystemDark] = useState(false);
+  const theme: Theme = preference ?? (systemDark ? "dark" : "light");
+
+  useEffect(() => {
+    // Reads an external system (localStorage) that doesn't exist during SSR
+    // — not a value derivable during render, so the lint rule's usual
+    // "derive it instead" advice doesn't apply here.
+    // eslint-disable-next-line react/set-state-in-effect
+    setPreferenceState(readStoredPreference());
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
 
   useEffect(() => {
-    if (preference !== null) return;
+    // Same as above: matchMedia doesn't exist during SSR.
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = () => setTheme(resolveTheme(null));
+    // eslint-disable-next-line react/set-state-in-effect
+    setSystemDark(media.matches);
+    if (preference !== null) return;
+    const onChange = () => setSystemDark(media.matches);
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
   }, [preference]);
 
   const setPreference = useCallback((next: ThemePreference | null) => {
     setPreferenceState(next);
-    setTheme(resolveTheme(next));
     if (next === null) {
       localStorage.removeItem(STORAGE_KEY);
     } else {

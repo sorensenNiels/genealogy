@@ -18,7 +18,7 @@ the stack was assembled (September 2026).
 | API contract                    | tRPC + superjson + Zod              | 11.19.0 / 2.2.6 / 4.6.5    |
 | Relational ORM                  | Drizzle ORM + drizzle-kit           | 0.45.2 / 0.31.10           |
 | Database                        | PostgreSQL + Apache AGE             | 18 / 1.8.0                 |
-| Frontend                        | React + Vite                        | 19.3.0 / 8.3.0             |
+| Frontend                        | React + TanStack Start (Vite)       | 19.3.0 / 1.168 / 8.3.0     |
 | Routing / data / tables / forms | TanStack Router, Query, Table, Form | 1.170 / 5.103 / 9.2 / 1.33 |
 | Components                      | shadcn/ui (React Aria) on Tailwind  | new-york, slate / 4.3.3    |
 | Animation                       | motion                              | 13.4.0                     |
@@ -28,16 +28,18 @@ the stack was assembled (September 2026).
 
 ```
 apps/backend      NestJS + tRPC over Express
-apps/frontend     React SPA
+apps/frontend     TanStack Start — renders every page; its server side proxies
+                  data/auth calls to apps/backend over HTTP (see below)
 packages/core     Domain model, no framework dependencies
 packages/db       Drizzle schema + Apache AGE access layer
 packages/ui       shadcn/ui components + shared Tailwind theme
 ```
 
 `apps/` holds things you can run; `packages/` holds things they share.
-Dependencies point one way: `frontend → ui`, `frontend → core`,
-`backend → db → core`. The frontend additionally takes a **type-only** dependency
-on the backend to obtain `AppRouter`.
+Dependencies point one way: `frontend → ui`, `frontend → core`, `backend → db → core`.
+`apps/frontend` has no dependency on `packages/db` at all — see "TanStack Start,
+apps/frontend as a proxy" below. It takes a **type-only** dependency on the backend
+to obtain `AppRouter`.
 
 `packages/core` is intentionally free of React, Nest, Drizzle and pg. It is where
 genealogical rules live — name formatting, lifespan rendering, what a
@@ -100,12 +102,83 @@ export type AppRouter = ReturnType<TrpcRouter["build"]>;
 ```
 
 Nothing is hand-written or code-generated, so renaming a procedure or changing an
-input shape is a compile error in the frontend rather than a runtime 400. Packages
-such as `nestjs-trpc` were deliberately skipped: the integration is about thirty
-lines, and owning it avoids a dependency between two fast-moving frameworks.
+input shape is a compile error rather than a runtime 400 — still true after the
+TanStack Start migration below, since `apps/frontend`'s server-side proxy client is
+built against this same `AppRouter` type. Packages such as `nestjs-trpc` were
+deliberately skipped: the integration is about thirty lines, and owning it
+avoids a dependency between two fast-moving frameworks.
 
 superjson is configured as the transformer on both ends, so `Date` values survive
 the wire — genealogical payloads are full of them.
+
+### TanStack Start, apps/frontend as a proxy to apps/backend
+
+The original `apps/frontend` (a plain Vite SPA) was migrated to TanStack
+Start, requested specifically — the user runs it in production elsewhere
+already — rather than something this project went looking for. The new app
+was built from scratch alongside the old one under a temporary name
+(`apps/web`) and took over the `apps/frontend` name only once every page was
+ported and verified and the old SPA was deleted; anywhere below that
+compares "the old SPA" against `apps/frontend`, they were, briefly, two
+different directories. Two decisions made explicit at the start shaped
+everything else: **apps/backend keeps sole ownership of the database**
+(nothing in it changed, moved, or was rewritten), and **apps/frontend's
+server side is a proxy in front of it**, not a second place business logic
+can live. See "The proxy architecture" in [CLAUDE.md](CLAUDE.md) for the
+concrete mechanics (the tRPC vanilla client, the auth pass-through route, the
+photo-upload route, the two-file env split); this section is about why.
+
+That framing turned what could have been a full backend rewrite into a
+frontend-shape change plus a thin proxy layer, which is why it was safe to do
+incrementally: the highest-consequence code (the seven graph-transactional
+person mutations, session/auth logic) never moved, so the old SPA and the new
+TanStack Start app could run side by side against the exact same live backend
+for the whole migration with no risk of the two drifting on business logic —
+there was only ever one implementation of it.
+
+Two protocol-layer choices, each checked against an alternative:
+
+- **Keep tRPC, call it server-side, rather than converting apps/backend to
+  REST.** apps/frontend's server functions use a plain `@trpc/client` vanilla
+  client from server-side code only — the browser never talks to tRPC
+  directly. This kept apps/backend's 30 existing procedures, their Zod
+  validation, and `protectedProcedure`'s auth gating completely untouched,
+  against the cost of every server function being a thin, slightly
+  boilerplate-y wrapper (see CLAUDE.md). Converting to REST would have meant
+  touching the one part of the system this migration was explicitly trying
+  not to touch, for a protocol-shape preference with no functional benefit
+  here — apps/frontend's own components never see tRPC's types either way.
+- **Proxy `/api/auth/*` through apps/frontend too, rather than leaving it
+  cross-origin.** The alternative — pages proxied, auth left pointed directly
+  at apps/backend — would have kept exactly the cross-origin cookie
+  machinery (`CORS_ORIGINS`, `credentials: "include"`, `trustedOrigins`) that
+  caused real, multi-session debugging pain earlier in this project (hung
+  Save/login requests eventually traced to devcontainer port-forwarding
+  across the frontend/backend origin split). Proxying auth too means the
+  browser has exactly one origin for everything, which is what actually
+  removes that class of bug rather than just working around one instance of
+  it.
+
+One gap found and deliberately not worked around: `createServerFn` buffers an
+entire multipart request body into memory before the handler runs, with no
+streaming and no way to reject an oversized upload before the bytes have
+already arrived — an open, unaddressed upstream issue as of this migration.
+The photo upload/delete endpoint is a Start **API route**
+(`server.handlers`) instead, which forwards the raw, unparsed request the
+same way `fetch` would — sidestepping the limitation entirely rather than
+accepting degraded behavior or reaching for a streaming-multipart dependency
+this app's 5MB cap doesn't actually need.
+
+Checked against the "Recommending or adding a library" rule in
+[CLAUDE.md](CLAUDE.md) before committing to this: `@tanstack/react-start` was,
+at the time of the migration, still formally in Release Candidate status
+(confirmed directly against the live docs, not inferred from its version
+number) roughly a year after reaching RC, though shipping multiple releases a
+week with healthy issue triage — actively developed, not abandoned, but not
+a library that had graduated its own stated maturity bar either. Named
+explicitly rather than glossed over, and weighed against the user's own
+direct production experience running it elsewhere, which is what tipped the
+decision — not a claim that the RC label stopped mattering.
 
 ### Postgres + Apache AGE: two stores, one database
 
@@ -168,9 +241,12 @@ packaging (still 🚧, see [FEATURES.md](FEATURES.md)) so uploads survive a
 container recreate, the same way `postgres-data` already does.
 
 The `persons.photo_path` column stores just the filename, never a URL — the
-frontend joins it with the backend's own origin (`apiUrl` from
-`apps/frontend/src/lib/env.ts`) at render time, so nothing in the database is
-tied to a specific host or port.
+frontend joins it with the backend's own origin (`publicBackendUrl` from
+`apps/frontend/src/lib/env.ts`) at render time, so nothing in the database is tied
+to a specific host or port. This one endpoint is also the reason
+`apps/frontend/src/routes/api/people/$id/photo.ts` exists as a raw Start API
+route rather than a `createServerFn`: see "TanStack Start, apps/frontend as a
+proxy" below.
 
 ### A second, human-readable id per person
 
@@ -263,17 +339,22 @@ wins; absent one, the resolved theme follows `prefers-color-scheme` live via a
 ready-made toggle button built on the hook; `apps/frontend/src/routes/__root.tsx`
 places it in the header.
 
-`next-themes` was deliberately not used — it exists to solve Next.js's
-server/client hydration mismatch for theme state, and this is a Vite SPA with
-no server-rendered HTML to mismatch against. The one piece that pattern still
-needs here is FOUC prevention: `apps/frontend/index.html` has a small inline
-`<script>` in `<head>`, before any stylesheet, that reads the same
+`next-themes` was deliberately not used, even though `apps/frontend` now does
+render server-side (see "TanStack Start, apps/frontend as a proxy" below) — the
+FOUC-prevention need `next-themes` solves is met by the same hand-rolled inline
+`<script>` this project already had (see below), and `use-theme.ts` itself was
+made SSR-safe directly (start from a placeholder, read the real
+`localStorage`/`matchMedia` value in a client-only `useEffect`) rather than
+reaching for a library for it. The inline `<script>` in `<head>`, before any
+stylesheet — now rendered by `__root.tsx`'s document shell rather than a
+static `index.html`, since Start owns the whole document — reads the same
 `localStorage` key (falling back to `matchMedia`) and sets `.dark`
-synchronously. It duplicates the hook's resolution logic by hand — there's no
-way to share code between an inline HTML script and a TypeScript module, so
-keep the two in sync by hand if the storage key or resolution rule ever
-changes. No new CSS was needed: `packages/ui/src/styles.css` already defined
-full `:root`/`.dark` variables from day one, they were just never reachable.
+synchronously, before React hydrates. It duplicates the hook's resolution
+logic by hand — there's no way to share code between an inline script and a
+TypeScript module, so keep the two in sync by hand if the storage key or
+resolution rule ever changes. No new CSS was needed: `packages/ui/src/styles.css`
+already defined full `:root`/`.dark` variables from day one, they were just
+never reachable.
 
 ### Motion for animation, applied by hand to React Aria components
 
@@ -407,9 +488,11 @@ is ever found in one, same as any other component.
 Authentication (email/password + Google OAuth) is better-auth, mounted as an
 Express handler inside the NestJS backend (`apps/backend/src/auth/`) rather than
 split across frontend and backend. The frontend has no auth logic of its own —
-`apps/frontend/src/lib/auth.ts` is a `better-auth/react` client that talks to
-`/api/auth` on the backend's origin, the same relationship the tRPC client
-already has with `/trpc`.
+`apps/frontend/src/lib/auth-client.ts` is a `better-auth/react` client that talks to
+`/api/auth` on **its own** origin now, not the backend's: `apps/frontend/src/routes/
+api/auth/$.ts` proxies every request through to the backend unmodified (see
+"TanStack Start, apps/frontend as a proxy" below), the same relationship the
+server-side tRPC client has with `/trpc`.
 
 The NestJS integration is hand-rolled rather than built on the community
 `@thallesp/nestjs-better-auth` package (which better-auth's own docs point to):
@@ -441,8 +524,12 @@ programmatically, and `.env.example` documents the redirect URI Google needs.
 
 Router (file-based, with automatic code splitting via the Vite plugin), Query for
 server state, Table for grids, Form for input. One family, one set of
-conventions, and Query is what the tRPC client integrates with natively through
-`@trpc/tanstack-react-query`.
+conventions. `@trpc/tanstack-react-query` — the hook-based `useTRPC()` +
+`.queryOptions()`/`.mutationOptions()` integration the pre-migration SPA used —
+is gone along with the pre-migration SPA: `apps/frontend`'s server functions
+call tRPC server-side only (see "TanStack Start, apps/frontend as a proxy" below), so route
+components use plain `useQuery`/`useMutation` with hand-written query keys,
+same as they would for any other data source.
 
 TanStack Table v9 is a substantial departure from v8: `useTable` replaces
 `useReactTable`, and optional row models are registered as feature slots inside
@@ -456,19 +543,26 @@ points the CLI at that package, so `shadcn add` lands components in the right
 place.
 
 **File-based routes nest purely on path prefix, regardless of whether the
-"parent" file renders an `<Outlet />`.** `people.$personId.print.tsx` was
-first added expecting a route independent of `people.$personId.tsx` — same
-URL prefix, unrelated page. Instead, the generator's `RoutePrefixMap` (longest
-matching existing route path wins) made it a _child_ of `people.$personId`
-automatically, and since that route's component returns its own full JSX with
-no `<Outlet />`, the child silently never rendered: the URL changed on
-navigation but the parent's content stayed on screen, with no console error.
-Fixed with the Remix-style trailing-underscore escape — the file is
-`people.$personId_.print.tsx` — which only changes the route's internal `id`
-(and what `tsr generate` writes as the first argument to `createFileRoute`);
-the actual URL (`/people/$personId/print`) and every `<Link to="...">` calling
-it are unaffected. Reach for this any time a new route needs to share a URL
-prefix with an existing route file but not its layout.
+"parent" file renders an `<Outlet />`.** `people.$personId.print.tsx` (the
+original, pre-migration SPA's flat-file naming) was first added expecting a
+route independent of `people.$personId.tsx` — same URL prefix, unrelated page.
+Instead, the generator's `RoutePrefixMap` (longest matching existing route path
+wins) made it a _child_ of `people.$personId` automatically, and since that
+route's component returns its own full JSX with no `<Outlet />`, the child
+silently never rendered: the URL changed on navigation but the parent's
+content stayed on screen, with no console error. Fixed with the Remix-style
+trailing-underscore escape — the file is `people.$personId_.print.tsx` — which
+only changes the route's internal `id` (and what the file-route generator
+writes as the first argument to `createFileRoute`); the actual URL
+(`/people/$personId/print`) and every `<Link to="...">` calling it are
+unaffected. `apps/frontend` ported this into a directory layout
+(`routes/people/$personId_.print.tsx` alongside `routes/people/$personId.tsx`)
+and the same escape hatch still applies unchanged — `@tanstack/react-start`'s
+Vite plugin generates the route tree now instead of the old SPA's
+`@tanstack/router-cli` (`tsr generate`), but both are the same underlying
+`@tanstack/react-router` file-route convention. Reach for the trailing
+underscore any time a new route needs to share a URL prefix with an existing
+route file but not its layout.
 
 ### Person names: "First names" and "Last names", nowhere else
 
@@ -555,20 +649,24 @@ builds, `pnpm install` is clean, `pnpm check` (format, lint, typecheck) and
 `pnpm test` pass, `pnpm build` produces backend and frontend bundles, `pnpm dev`
 starts both servers, migrations apply into `public`, and a three-generation tree
 created over tRPC returns the correct ancestors and descendants from Cypher
-traversal.
+traversal. Re-verified after the TanStack Start migration: signing in, every
+page, and the seven graph-transactional person mutations were exercised
+against the real dev database through `apps/frontend`'s proxy layer, confirmed
+byte-for-byte equivalent to calling apps/backend's tRPC router directly (which
+it always was — the proxy forwards the request, it doesn't reinterpret it).
 
 ## Not decided yet
 
 These are open, and nothing in the code presumes an answer:
 
-- **Which routes require login.** `protectedProcedure` exists but isn't applied
-  anywhere yet — `person.router.ts` stays public until gating specific data is
-  a deliberate product decision, not a side effect of adding auth.
-- **Production cookie/domain handling.** better-auth's session cookie setup
-  today only needs to work for same-site `localhost` ports in dev (the browser
-  treats `:5173` and `:3000` as same-site); a real deployment with separate
-  frontend/backend domains needs revisiting `trustedOrigins` and cookie
-  attributes.
+- **Production cookie/domain handling.** In dev, `apps/frontend`'s server-side proxy
+  means the browser only ever has one origin (`:5173`) for pages and auth
+  alike, so the cross-origin cookie questions a separate frontend/backend
+  deployment would otherwise raise don't currently arise. A real deployment
+  still needs to decide where `apps/frontend` and `apps/backend` actually run
+  relative to each other (same host/reverse proxy vs. genuinely separate
+  services) and revisit `trustedOrigins`/cookie attributes accordingly if
+  they end up on different domains.
 - **GEDCOM import and export.** The domain model is shaped for it —
   `HistoricalDate` keeps the source's own wording, and `sex` uses the GEDCOM
   vocabulary — but no importer/exporter exists. Date parsing/display

@@ -79,10 +79,40 @@ import { Cake, CameraIcon, Cross, PencilIcon, PlusIcon, Trash2Icon } from "lucid
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 
-import { apiUrl } from "../lib/env";
-import { formatDisplayDate } from "../lib/format-date";
-import { GenderIcon, initials, labelFor, optionsFor, SEX_LABELS } from "../lib/person-display";
-import { useTRPC } from "../lib/trpc";
+import { publicBackendUrl } from "../../lib/env";
+import { formatDisplayDate } from "../../lib/format-date";
+import { GenderIcon, initials, labelFor, optionsFor, SEX_LABELS } from "../../lib/person-display";
+import {
+  addEvent,
+  addName,
+  addUnion,
+  createPerson,
+  getPersonById,
+  getRelatives,
+  linkParent,
+  listEvents,
+  listNames,
+  listPersons,
+  listSuffixes,
+  listTitlePrefixes,
+  listUnions,
+  removeEvent,
+  removeName,
+  removePerson,
+  unlinkParent,
+  unlinkSpouse,
+  updateEvent,
+  updateName,
+  updatePerson,
+} from "../../server/functions/person.functions";
+import { listOptions } from "../../server/functions/settings.functions";
+import {
+  addCitation,
+  createSource,
+  listCitations,
+  listSources,
+  removeCitation,
+} from "../../server/functions/source.functions";
 
 export const Route = createFileRoute("/people/$personId")({
   component: PersonDetailRoute,
@@ -177,35 +207,51 @@ const EVENT_DETAIL_FIELDS: Partial<Record<EventType, { key: string; label: strin
 
 function PersonDetailRoute() {
   const { personId } = Route.useParams();
-  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const person = useQuery(trpc.person.byId.queryOptions({ id: personId }));
-  const relatives = useQuery(trpc.person.relatives.queryOptions({ id: personId }));
-  const names = useQuery(trpc.person.listNames.queryOptions({ personId }));
-  const events = useQuery(trpc.person.listEvents.queryOptions({ personId }));
-  const unions = useQuery(trpc.person.listUnions.queryOptions({ personId }));
-  const sourcesList = useQuery(trpc.source.listSources.queryOptions());
-  const citationsList = useQuery(trpc.source.listCitations.queryOptions({ personId }));
-  const options = useQuery(trpc.settings.listOptions.queryOptions());
+  const person = useQuery({
+    queryKey: ["person", "byId", personId],
+    queryFn: () => getPersonById({ data: { id: personId } }),
+  });
+  const relatives = useQuery({
+    queryKey: ["person", "relatives", personId],
+    queryFn: () => getRelatives({ data: { id: personId } }),
+  });
+  const names = useQuery({
+    queryKey: ["person", "listNames", personId],
+    queryFn: () => listNames({ data: { personId } }),
+  });
+  const events = useQuery({
+    queryKey: ["person", "listEvents", personId],
+    queryFn: () => listEvents({ data: { personId } }),
+  });
+  const unions = useQuery({
+    queryKey: ["person", "listUnions", personId],
+    queryFn: () => listUnions({ data: { personId } }),
+  });
+  const sourcesList = useQuery({
+    queryKey: ["source", "listSources"],
+    queryFn: () => listSources(),
+  });
+  const citationsList = useQuery({
+    queryKey: ["source", "listCitations", personId],
+    queryFn: () => listCitations({ data: { personId } }),
+  });
+  const options = useQuery({ queryKey: ["settings", "listOptions"], queryFn: () => listOptions() });
 
   const refresh = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: trpc.person.byId.queryKey({ id: personId }) }),
-      queryClient.invalidateQueries({
-        queryKey: trpc.person.relatives.queryKey({ id: personId }),
-      }),
-      queryClient.invalidateQueries({ queryKey: trpc.person.list.queryKey() }),
-      queryClient.invalidateQueries({ queryKey: trpc.person.listTitlePrefixes.queryKey() }),
-      queryClient.invalidateQueries({ queryKey: trpc.person.listSuffixes.queryKey() }),
-      queryClient.invalidateQueries({ queryKey: trpc.person.listNames.queryKey({ personId }) }),
-      queryClient.invalidateQueries({ queryKey: trpc.person.listEvents.queryKey({ personId }) }),
-      queryClient.invalidateQueries({ queryKey: trpc.person.listUnions.queryKey({ personId }) }),
-      queryClient.invalidateQueries({ queryKey: trpc.source.listSources.queryKey() }),
-      queryClient.invalidateQueries({
-        queryKey: trpc.source.listCitations.queryKey({ personId }),
-      }),
+      queryClient.invalidateQueries({ queryKey: ["person", "byId", personId] }),
+      queryClient.invalidateQueries({ queryKey: ["person", "relatives", personId] }),
+      queryClient.invalidateQueries({ queryKey: ["person", "list"] }),
+      queryClient.invalidateQueries({ queryKey: ["person", "listTitlePrefixes"] }),
+      queryClient.invalidateQueries({ queryKey: ["person", "listSuffixes"] }),
+      queryClient.invalidateQueries({ queryKey: ["person", "listNames", personId] }),
+      queryClient.invalidateQueries({ queryKey: ["person", "listEvents", personId] }),
+      queryClient.invalidateQueries({ queryKey: ["person", "listUnions", personId] }),
+      queryClient.invalidateQueries({ queryKey: ["source", "listSources"] }),
+      queryClient.invalidateQueries({ queryKey: ["source", "listCitations", personId] }),
     ]);
   };
 
@@ -319,18 +365,23 @@ function PersonFields({
   canDelete: boolean;
   onDeleted: () => void;
 }) {
-  const trpc = useTRPC();
-  const update = useMutation(trpc.person.update.mutationOptions({ onSuccess: onChanged }));
-  const removePerson = useMutation(trpc.person.remove.mutationOptions({ onSuccess: onDeleted }));
-  const removeName = useMutation(trpc.person.removeName.mutationOptions());
-  const titlePrefixesQuery = useQuery(trpc.person.listTitlePrefixes.queryOptions());
-  const suffixesQuery = useQuery(trpc.person.listSuffixes.queryOptions());
+  const updatePersonMutation = useMutation({ mutationFn: updatePerson, onSuccess: onChanged });
+  const removePersonMutation = useMutation({ mutationFn: removePerson, onSuccess: onDeleted });
+  const removeNameMutation = useMutation({ mutationFn: removeName });
+  const titlePrefixesQuery = useQuery({
+    queryKey: ["person", "listTitlePrefixes"],
+    queryFn: () => listTitlePrefixes(),
+  });
+  const suffixesQuery = useQuery({
+    queryKey: ["person", "listSuffixes"],
+    queryFn: () => listSuffixes(),
+  });
   const titlePrefixOptions = mergeOptions(STANDARD_TITLE_PREFIXES, titlePrefixesQuery.data);
   const suffixOptions = mergeOptions(STANDARD_SUFFIXES, suffixesQuery.data);
   const [addNameOpen, setAddNameOpen] = useState(false);
 
   const removeNameById = async (id: string) => {
-    await removeName.mutateAsync({ id });
+    await removeNameMutation.mutateAsync({ data: { id } });
     await onChanged();
   };
 
@@ -349,35 +400,37 @@ function PersonFields({
       isLiving: person.isLiving,
     },
     onSubmit: async ({ value, formApi }) => {
-      await update.mutateAsync({
-        id: person.id,
-        given: value.given,
-        surname: value.surname,
-        sex: value.sex,
-        titlePrefix: value.titlePrefix.trim() === "" ? null : value.titlePrefix,
-        suffix: value.suffix.trim() === "" ? null : value.suffix,
-        // Bounds are recomputed from the current wording on every save, not
-        // carried over from what was previously stored — otherwise editing
-        // the text alone (without it happening to still parse to the same
-        // bounds) would leave a stale earliest/latest attached to new words.
-        birth:
-          value.birthOriginal.trim() === ""
-            ? null
-            : {
-                original: value.birthOriginal.trim(),
-                ...parseHistoricalDate(value.birthOriginal.trim()),
-              },
-        birthPlace: value.birthPlace.trim() === "" ? null : value.birthPlace,
-        death:
-          value.deathOriginal.trim() === ""
-            ? null
-            : {
-                original: value.deathOriginal.trim(),
-                ...parseHistoricalDate(value.deathOriginal.trim()),
-              },
-        deathPlace: value.deathPlace.trim() === "" ? null : value.deathPlace,
-        notes: value.notes.trim() === "" ? null : value.notes,
-        isLiving: value.isLiving,
+      await updatePersonMutation.mutateAsync({
+        data: {
+          id: person.id,
+          given: value.given,
+          surname: value.surname,
+          sex: value.sex,
+          titlePrefix: value.titlePrefix.trim() === "" ? null : value.titlePrefix,
+          suffix: value.suffix.trim() === "" ? null : value.suffix,
+          // Bounds are recomputed from the current wording on every save, not
+          // carried over from what was previously stored — otherwise editing
+          // the text alone (without it happening to still parse to the same
+          // bounds) would leave a stale earliest/latest attached to new words.
+          birth:
+            value.birthOriginal.trim() === ""
+              ? null
+              : {
+                  original: value.birthOriginal.trim(),
+                  ...parseHistoricalDate(value.birthOriginal.trim()),
+                },
+          birthPlace: value.birthPlace.trim() === "" ? null : value.birthPlace,
+          death:
+            value.deathOriginal.trim() === ""
+              ? null
+              : {
+                  original: value.deathOriginal.trim(),
+                  ...parseHistoricalDate(value.deathOriginal.trim()),
+                },
+          deathPlace: value.deathPlace.trim() === "" ? null : value.deathPlace,
+          notes: value.notes.trim() === "" ? null : value.notes,
+          isLiving: value.isLiving,
+        },
       });
       // Rebaselines dirty-tracking against what was just saved — the values
       // themselves don't change, only the "clean" snapshot they're compared to.
@@ -537,6 +590,7 @@ function PersonFields({
             {(field) => (
               <LabeledField label="Title / prefix">
                 <Autocomplete
+                  aria-label="Title / prefix"
                   placeholder="e.g. Dr., Rev."
                   value={field.state.value}
                   onBlur={field.handleBlur}
@@ -551,6 +605,7 @@ function PersonFields({
             {(field) => (
               <LabeledField label="Suffix">
                 <Autocomplete
+                  aria-label="Suffix"
                   placeholder="e.g. Jr., III"
                   value={field.state.value}
                   onBlur={field.handleBlur}
@@ -645,7 +700,9 @@ function PersonFields({
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onPress={() => removePerson.mutate({ id: person.id })}>
+                    <AlertDialogAction
+                      onPress={() => removePersonMutation.mutate({ data: { id: person.id } })}
+                    >
                       Delete
                     </AlertDialogAction>
                   </AlertDialogFooter>
@@ -653,11 +710,15 @@ function PersonFields({
               </AlertDialog>
             )}
           </div>
-          {update.isError && (
-            <p className="text-sm text-destructive sm:col-span-2">{update.error.message}</p>
+          {updatePersonMutation.isError && (
+            <p className="text-sm text-destructive sm:col-span-2">
+              {updatePersonMutation.error.message}
+            </p>
           )}
-          {removePerson.isError && (
-            <p className="text-sm text-destructive sm:col-span-2">{removePerson.error.message}</p>
+          {removePersonMutation.isError && (
+            <p className="text-sm text-destructive sm:col-span-2">
+              {removePersonMutation.error.message}
+            </p>
           )}
         </form>
       </CardContent>
@@ -689,19 +750,26 @@ function historicalDatePreview(text: string): HistoricalDatePreview | null {
   return display ? { text: display, status: "parsed" } : { text: trimmed, status: "unparsed" };
 }
 
+/**
+ * Upload/delete go through this app's own /api/people/$id/photo proxy route
+ * (same-origin, cookies ride along automatically) — see
+ * routes/api/people/$id/photo.ts. The `<img>` read below still points
+ * directly at apps/backend: it's an unauthenticated static file, and a plain
+ * `<img src>` isn't subject to CORS regardless, so proxying it would add
+ * nothing. See `publicBackendUrl`'s doc comment in lib/env.ts.
+ */
 function PersonPhoto({ person, onChanged }: { person: PersonRow; onChanged: () => Promise<void> }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const photoUrl = person.photoPath ? `${apiUrl}/uploads/${person.photoPath}` : null;
+  const photoUrl = person.photoPath ? `${publicBackendUrl}/uploads/${person.photoPath}` : null;
 
   const upload = async (file: File) => {
     setUploading(true);
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const response = await fetch(`${apiUrl}/people/${person.id}/photo`, {
+      const response = await fetch(`/api/people/${person.id}/photo`, {
         method: "POST",
-        credentials: "include",
         body: formData,
       });
       if (!response.ok) {
@@ -714,10 +782,7 @@ function PersonPhoto({ person, onChanged }: { person: PersonRow; onChanged: () =
   };
 
   const remove = async () => {
-    await fetch(`${apiUrl}/people/${person.id}/photo`, {
-      method: "DELETE",
-      credentials: "include",
-    });
+    await fetch(`/api/people/${person.id}/photo`, { method: "DELETE" });
     await onChanged();
   };
 
@@ -827,15 +892,14 @@ function RelativesSection({
   /** Only meaningful for the Spouses section — shown alongside each spouse row. */
   unions?: UnionRow[];
 }) {
-  const trpc = useTRPC();
-  const unlinkParent = useMutation(trpc.person.unlinkParent.mutationOptions());
-  const unlinkSpouse = useMutation(trpc.person.unlinkSpouse.mutationOptions());
+  const unlinkParentMutation = useMutation({ mutationFn: unlinkParent });
+  const unlinkSpouseMutation = useMutation({ mutationFn: unlinkSpouse });
 
   const remove = async (relativeId: string) => {
     if (kind === "spouse") {
-      await unlinkSpouse.mutateAsync({ aId: personId, bId: relativeId });
+      await unlinkSpouseMutation.mutateAsync({ data: { aId: personId, bId: relativeId } });
     } else {
-      await unlinkParent.mutateAsync({ parentId: personId, childId: relativeId });
+      await unlinkParentMutation.mutateAsync({ data: { parentId: personId, childId: relativeId } });
     }
     await onChanged();
   };
@@ -905,7 +969,6 @@ function AddRelative({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
-  const trpc = useTRPC();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"search" | "create">("search");
   const [query, setQuery] = useState("");
@@ -914,34 +977,37 @@ function AddRelative({
   const [unionDate, setUnionDate] = useState("");
   const [unionPlace, setUnionPlace] = useState("");
 
+  const trimmedQuery = query.trim();
+  const searchInput = { limit: 10, offset: 0, search: trimmedQuery === "" ? null : trimmedQuery };
   const search = useQuery({
-    ...trpc.person.list.queryOptions({
-      limit: 10,
-      offset: 0,
-      search: query.trim() === "" ? null : query.trim(),
-    }),
+    queryKey: ["person", "list", searchInput],
+    queryFn: () => listPersons({ data: searchInput }),
     enabled: open && mode === "search",
   });
 
-  const linkParent = useMutation(trpc.person.linkParent.mutationOptions());
-  const addUnion = useMutation(trpc.person.addUnion.mutationOptions());
+  const linkParentMutation = useMutation({ mutationFn: linkParent });
+  const addUnionMutation = useMutation({ mutationFn: addUnion });
 
   const options = (search.data?.items ?? []).filter((candidate) => !excludeIds.has(candidate.id));
 
   const link = async (target: PersonRow) => {
     if (kind === "spouse") {
-      await addUnion.mutateAsync({
-        personAId: personId,
-        personBId: target.id,
-        status: unionStatus,
-        startDate:
-          unionDate.trim() === ""
-            ? null
-            : { original: unionDate.trim(), ...parseHistoricalDate(unionDate.trim()) },
-        startPlace: unionPlace.trim() === "" ? null : unionPlace,
+      await addUnionMutation.mutateAsync({
+        data: {
+          personAId: personId,
+          personBId: target.id,
+          status: unionStatus,
+          startDate:
+            unionDate.trim() === ""
+              ? null
+              : { original: unionDate.trim(), ...parseHistoricalDate(unionDate.trim()) },
+          startPlace: unionPlace.trim() === "" ? null : unionPlace,
+        },
       });
     } else {
-      await linkParent.mutateAsync({ parentId: personId, childId: target.id, parentage });
+      await linkParentMutation.mutateAsync({
+        data: { parentId: personId, childId: target.id, parentage },
+      });
     }
     setOpen(false);
     await onChanged();
@@ -1094,28 +1160,31 @@ function CreateAndLinkForm({
   unionPlace: string;
   onDone: () => Promise<void>;
 }) {
-  const trpc = useTRPC();
-  const createPerson = useMutation(trpc.person.create.mutationOptions());
-  const linkParent = useMutation(trpc.person.linkParent.mutationOptions());
-  const addUnion = useMutation(trpc.person.addUnion.mutationOptions());
+  const createPersonMutation = useMutation({ mutationFn: createPerson });
+  const linkParentMutation = useMutation({ mutationFn: linkParent });
+  const addUnionMutation = useMutation({ mutationFn: addUnion });
 
   const form = useForm({
     defaultValues: { given: "", surname: "" },
     onSubmit: async ({ value, formApi }) => {
-      const created = await createPerson.mutateAsync(value);
+      const created = await createPersonMutation.mutateAsync({ data: value });
       if (kind === "spouse") {
-        await addUnion.mutateAsync({
-          personAId: personId,
-          personBId: created.id,
-          status: unionStatus,
-          startDate:
-            unionDate.trim() === ""
-              ? null
-              : { original: unionDate.trim(), ...parseHistoricalDate(unionDate.trim()) },
-          startPlace: unionPlace.trim() === "" ? null : unionPlace,
+        await addUnionMutation.mutateAsync({
+          data: {
+            personAId: personId,
+            personBId: created.id,
+            status: unionStatus,
+            startDate:
+              unionDate.trim() === ""
+                ? null
+                : { original: unionDate.trim(), ...parseHistoricalDate(unionDate.trim()) },
+            startPlace: unionPlace.trim() === "" ? null : unionPlace,
+          },
         });
       } else {
-        await linkParent.mutateAsync({ parentId: personId, childId: created.id, parentage });
+        await linkParentMutation.mutateAsync({
+          data: { parentId: personId, childId: created.id, parentage },
+        });
       }
       formApi.reset();
       await onDone();
@@ -1181,11 +1250,10 @@ function ParentsSection({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
-  const trpc = useTRPC();
-  const unlinkParent = useMutation(trpc.person.unlinkParent.mutationOptions());
+  const unlinkParentMutation = useMutation({ mutationFn: unlinkParent });
 
   const remove = async (parentId: string) => {
-    await unlinkParent.mutateAsync({ parentId, childId: personId });
+    await unlinkParentMutation.mutateAsync({ data: { parentId, childId: personId } });
     await onChanged();
   };
 
@@ -1318,25 +1386,25 @@ function AddParentSlot({
   excludeIds: Set<string>;
   onChanged: () => Promise<void>;
 }) {
-  const trpc = useTRPC();
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [query, setQuery] = useState("");
 
+  const trimmedQuery = query.trim();
+  const searchInput = { limit: 10, offset: 0, search: trimmedQuery === "" ? null : trimmedQuery };
   const search = useQuery({
-    ...trpc.person.list.queryOptions({
-      limit: 10,
-      offset: 0,
-      search: query.trim() === "" ? null : query.trim(),
-    }),
+    queryKey: ["person", "list", searchInput],
+    queryFn: () => listPersons({ data: searchInput }),
     enabled: open,
   });
 
-  const linkParent = useMutation(trpc.person.linkParent.mutationOptions());
+  const linkParentMutation = useMutation({ mutationFn: linkParent });
   const options = (search.data?.items ?? []).filter((candidate) => !excludeIds.has(candidate.id));
 
   const link = async (target: PersonRow) => {
-    await linkParent.mutateAsync({ parentId: target.id, childId: personId, parentage: "birth" });
+    await linkParentMutation.mutateAsync({
+      data: { parentId: target.id, childId: personId, parentage: "birth" },
+    });
     setOpen(false);
     setQuery("");
     await onChanged();
@@ -1410,26 +1478,26 @@ function AddOtherParent({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
-  const trpc = useTRPC();
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [parentage, setParentage] = useState<Parentage>("unknown");
 
+  const trimmedQuery = query.trim();
+  const searchInput = { limit: 10, offset: 0, search: trimmedQuery === "" ? null : trimmedQuery };
   const search = useQuery({
-    ...trpc.person.list.queryOptions({
-      limit: 10,
-      offset: 0,
-      search: query.trim() === "" ? null : query.trim(),
-    }),
+    queryKey: ["person", "list", searchInput],
+    queryFn: () => listPersons({ data: searchInput }),
     enabled: open,
   });
 
-  const linkParent = useMutation(trpc.person.linkParent.mutationOptions());
+  const linkParentMutation = useMutation({ mutationFn: linkParent });
   const options = (search.data?.items ?? []).filter((candidate) => !excludeIds.has(candidate.id));
 
   const link = async (target: PersonRow) => {
-    await linkParent.mutateAsync({ parentId: target.id, childId: personId, parentage });
+    await linkParentMutation.mutateAsync({
+      data: { parentId: target.id, childId: personId, parentage },
+    });
     setOpen(false);
     setQuery("");
     await onChanged();
@@ -1517,17 +1585,18 @@ function CreateAndLinkParentForm({
   presetSex: Sex | null;
   onDone: () => Promise<void>;
 }) {
-  const trpc = useTRPC();
-  const createPerson = useMutation(trpc.person.create.mutationOptions());
-  const linkParent = useMutation(trpc.person.linkParent.mutationOptions());
+  const createPersonMutation = useMutation({ mutationFn: createPerson });
+  const linkParentMutation = useMutation({ mutationFn: linkParent });
 
   const form = useForm({
     defaultValues: { given: "", surname: "" },
     onSubmit: async ({ value, formApi }) => {
-      const created = await createPerson.mutateAsync(
-        presetSex ? { ...value, sex: presetSex } : value,
-      );
-      await linkParent.mutateAsync({ parentId: created.id, childId: personId, parentage });
+      const created = await createPersonMutation.mutateAsync({
+        data: presetSex ? { ...value, sex: presetSex } : value,
+      });
+      await linkParentMutation.mutateAsync({
+        data: { parentId: created.id, childId: personId, parentage },
+      });
       formApi.reset();
       await onDone();
     },
@@ -1645,9 +1714,8 @@ function NameForm({
   options: ConfigurableOptionRow[];
   onDone: () => Promise<void>;
 }) {
-  const trpc = useTRPC();
-  const addName = useMutation(trpc.person.addName.mutationOptions());
-  const updateName = useMutation(trpc.person.updateName.mutationOptions());
+  const addNameMutation = useMutation({ mutationFn: addName });
+  const updateNameMutation = useMutation({ mutationFn: updateName });
   const initialNameType: NameVariantType = name?.nameType ?? "birth";
   const [nameType, setNameType] = useState(initialNameType);
 
@@ -1673,9 +1741,9 @@ function NameForm({
         notes: value.notes.trim() === "" ? null : value.notes,
       };
       if (name) {
-        await updateName.mutateAsync({ id: name.id, ...payload });
+        await updateNameMutation.mutateAsync({ data: { id: name.id, ...payload } });
       } else {
-        await addName.mutateAsync({ personId, ...payload });
+        await addNameMutation.mutateAsync({ data: { personId, ...payload } });
       }
       await onDone();
     },
@@ -1771,12 +1839,11 @@ function EventsSection({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
-  const trpc = useTRPC();
-  const removeEvent = useMutation(trpc.person.removeEvent.mutationOptions());
+  const removeEventMutation = useMutation({ mutationFn: removeEvent });
   const [addOpen, setAddOpen] = useState(false);
 
   const remove = async (id: string) => {
-    await removeEvent.mutateAsync({ id });
+    await removeEventMutation.mutateAsync({ data: { id } });
     await onChanged();
   };
 
@@ -1900,9 +1967,8 @@ function EventForm({
   options: ConfigurableOptionRow[];
   onDone: () => Promise<void>;
 }) {
-  const trpc = useTRPC();
-  const addEvent = useMutation(trpc.person.addEvent.mutationOptions());
-  const updateEvent = useMutation(trpc.person.updateEvent.mutationOptions());
+  const addEventMutation = useMutation({ mutationFn: addEvent });
+  const updateEventMutation = useMutation({ mutationFn: updateEvent });
   const initialEventType: EventType = event?.eventType ?? "residence";
   const initialDetails = event?.details ?? {};
   const [eventType, setEventType] = useState(initialEventType);
@@ -1935,9 +2001,9 @@ function EventForm({
         description: value.description.trim() === "" ? null : value.description,
       };
       if (event) {
-        await updateEvent.mutateAsync({ id: event.id, ...payload });
+        await updateEventMutation.mutateAsync({ data: { id: event.id, ...payload } });
       } else {
-        await addEvent.mutateAsync({ personId, ...payload });
+        await addEventMutation.mutateAsync({ data: { personId, ...payload } });
       }
       await onDone();
     },
@@ -2065,12 +2131,11 @@ function CitationsSection({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
-  const trpc = useTRPC();
-  const removeCitation = useMutation(trpc.source.removeCitation.mutationOptions());
+  const removeCitationMutation = useMutation({ mutationFn: removeCitation });
   const [addOpen, setAddOpen] = useState(false);
 
   const remove = async (id: string) => {
-    await removeCitation.mutateAsync({ id });
+    await removeCitationMutation.mutateAsync({ data: { id } });
     await onChanged();
   };
 
@@ -2175,9 +2240,8 @@ function CitationForm({
   options: ConfigurableOptionRow[];
   onDone: () => Promise<void>;
 }) {
-  const trpc = useTRPC();
-  const createSource = useMutation(trpc.source.createSource.mutationOptions());
-  const addCitation = useMutation(trpc.source.addCitation.mutationOptions());
+  const createSourceMutation = useMutation({ mutationFn: createSource });
+  const addCitationMutation = useMutation({ mutationFn: addCitation });
 
   const factOptions: FactOption[] = [
     { key: "person|none", factType: "person", factId: null, label: "This person (general)" },
@@ -2215,7 +2279,7 @@ function CitationForm({
   const [note, setNote] = useState("");
 
   const selectedFact = factOptions.find((option) => option.key === factKey) ?? factOptions[0]!;
-  const pending = createSource.isPending || addCitation.isPending;
+  const pending = createSourceMutation.isPending || addCitationMutation.isPending;
   const canSubmit = sourceMode === "existing" ? sourceId !== "" : newSourceTitle.trim() !== "";
 
   // This form has no TanStack Form to track dirtiness for it — it's always a
@@ -2248,19 +2312,23 @@ function CitationForm({
       sourceMode === "existing"
         ? sourceId
         : (
-            await createSource.mutateAsync({
-              title: newSourceTitle.trim(),
-              author: newSourceAuthor.trim() === "" ? null : newSourceAuthor.trim(),
+            await createSourceMutation.mutateAsync({
+              data: {
+                title: newSourceTitle.trim(),
+                author: newSourceAuthor.trim() === "" ? null : newSourceAuthor.trim(),
+              },
             })
           ).id;
-    await addCitation.mutateAsync({
-      sourceId: resolvedSourceId,
-      personId,
-      factType: selectedFact.factType,
-      factId: selectedFact.factId,
-      confidence,
-      page: page.trim() === "" ? null : page,
-      note: note.trim() === "" ? null : note,
+    await addCitationMutation.mutateAsync({
+      data: {
+        sourceId: resolvedSourceId,
+        personId,
+        factType: selectedFact.factType,
+        factId: selectedFact.factId,
+        confidence,
+        page: page.trim() === "" ? null : page,
+        note: note.trim() === "" ? null : note,
+      },
     });
     await onDone();
   };

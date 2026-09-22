@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs as `predev`, before `turbo run dev` claims :3000 (backend) and :5173
-# (frontend). `nest start --watch` and Vite don't always exit when a terminal
+# (apps/frontend). `nest start --watch` and Vite don't always exit when a terminal
 # is killed or the container restarts, so a stale process can still be
 # holding one of these ports. The next `pnpm dev` then either fails to bind,
 # or — worse — a half-dead old process keeps answering some requests while

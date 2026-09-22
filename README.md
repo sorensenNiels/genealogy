@@ -19,15 +19,20 @@ is installed on your machine.
 
 |          |                                                            |
 | -------- | ---------------------------------------------------------- |
-| Frontend | <http://localhost:5173>                                    |
+| Web      | <http://localhost:5173>                                    |
 | Backend  | <http://localhost:3000/trpc>                               |
 | Database | `localhost:5432` (`genealogy` / `genealogy` / `genealogy`) |
+
+You only ever open the Web URL — its server side proxies both data and auth
+calls to the backend, so the backend URL above is for API inspection, not
+browsing.
 
 ## Layout
 
 ```
 apps/backend      NestJS + tRPC over Express
-apps/frontend     React SPA — TanStack Router, Query, Table, Form; shadcn/ui
+apps/frontend     TanStack Start — renders every page; its server side proxies
+                  data and auth calls to apps/backend over HTTP (see TECH_STACK.md)
 packages/core     Domain model, framework-free
 packages/db       Drizzle schema + Apache AGE graph access
 packages/ui       shadcn/ui components and the shared Tailwind theme

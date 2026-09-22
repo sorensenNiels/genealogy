@@ -3,7 +3,15 @@
   "ui": "stream",
   "globalDependencies": [".oxlintrc.json", ".oxfmtrc.json", "tsconfig.base.json"],
   "globalEnv": ["NODE_ENV"],
-  "globalPassThroughEnv": ["DATABASE_URL", "PGHOST", "PGUSER", "PGPASSWORD", "PGDATABASE", "PORT"],
+  "globalPassThroughEnv": [
+    "DATABASE_URL",
+    "PGHOST",
+    "PGUSER",
+    "PGPASSWORD",
+    "PGDATABASE",
+    "PORT",
+    "BACKEND_URL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build", "routes"],

@@ -1,37 +1,96 @@
+/// <reference types="vite/client" />
 import { Button } from "@genealogy/ui/components/button";
 import { ThemeToggle } from "@genealogy/ui/components/theme-toggle";
 import type { QueryClient } from "@tanstack/react-query";
 import {
+  HeadContent,
   Link,
   Outlet,
+  Scripts,
   createRootRouteWithContext,
   redirect,
   useNavigate,
 } from "@tanstack/react-router";
 import { SettingsIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
-import { authClient, useSession } from "../lib/auth";
+import { authClient, useSession } from "../lib/auth-client";
+import { getSession } from "../server/functions/session.functions";
+
+import appCss from "../styles.css?url";
 
 export interface RouterContext {
   queryClient: QueryClient;
 }
 
 export const Route = createRootRouteWithContext<RouterContext>()({
-  // The API gates all person data behind a session too (protectedProcedure) —
-  // this redirect is just so an unauthenticated visitor lands on /login
-  // instead of a page full of failed queries.
+  // The API gates all person data behind a session too (protectedProcedure,
+  // proxied unchanged) — this redirect is just so an unauthenticated visitor
+  // lands on /login instead of a page full of failed queries. Runs via a
+  // server function (not the browser authClient) so it also works during SSR.
   beforeLoad: async ({ location }) => {
     if (location.pathname === "/login") return;
-    const { data: session } = await authClient.getSession();
+    const session = await getSession();
     if (!session) {
       throw redirect({ to: "/login" });
     }
   },
-  component: RootLayout,
+  head: () => ({
+    meta: [
+      { charSet: "utf-8" },
+      { name: "viewport", content: "width=device-width, initial-scale=1.0" },
+      { title: "Genealogy" },
+    ],
+    links: [{ rel: "stylesheet", href: appCss }],
+  }),
+  component: RootComponent,
   notFoundComponent: () => (
     <div className="p-8 text-muted-foreground">That page does not exist.</div>
   ),
 });
+
+function RootComponent() {
+  return (
+    <RootDocument>
+      <RootLayout />
+    </RootDocument>
+  );
+}
+
+function RootDocument({ children }: { children: ReactNode }) {
+  return (
+    <html
+      lang="en"
+      // The anti-flash script below mutates this element's class before
+      // hydration runs, so its class will legitimately differ from what was
+      // server-rendered — that's the point, not a bug, so don't let React
+      // warn about it.
+      suppressHydrationWarning
+    >
+      <head>
+        <HeadContent />
+        <script
+          // Mirrors packages/ui/src/hooks/use-theme.ts's resolution, applied
+          // synchronously before any stylesheet paints so there's no flash of
+          // the wrong theme. Keep the storage key in sync with that file by hand.
+          dangerouslySetInnerHTML={{
+            __html: `(function () {
+              var stored = localStorage.getItem("genealogy-theme");
+              var dark =
+                stored === "dark" ||
+                (stored !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+              document.documentElement.classList.toggle("dark", dark);
+            })();`,
+          }}
+        />
+      </head>
+      <body>
+        {children}
+        <Scripts />
+      </body>
+    </html>
+  );
+}
 
 function RootLayout() {
   return (

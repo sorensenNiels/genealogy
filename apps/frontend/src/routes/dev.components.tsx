@@ -196,6 +196,7 @@ function ComponentsShowcase() {
         <div className="w-56 space-y-1">
           <p className="text-xs text-muted-foreground">Title / prefix</p>
           <Autocomplete
+            aria-label="Title / prefix"
             placeholder="e.g. Dr., Rev."
             value={titlePrefix}
             onChange={setTitlePrefix}
@@ -205,6 +206,7 @@ function ComponentsShowcase() {
         <div className="w-56 space-y-1">
           <p className="text-xs text-muted-foreground">Clearable</p>
           <Autocomplete
+            aria-label="Clearable suffix example"
             placeholder="e.g. Jr., III"
             value={suffix}
             onChange={setSuffix}

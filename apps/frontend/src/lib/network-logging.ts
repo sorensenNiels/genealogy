@@ -1,10 +1,9 @@
 /**
- * Wraps `fetch` with console logging and a hard timeout. Shared by the tRPC
- * client and the better-auth client — those two are the entire network
- * surface of the frontend, and a request that hangs is otherwise invisible:
- * the browser's Network tab shows "pending" forever with nothing in the
- * console to say whether the request was ever sent, whether a response ever
- * came back, or why not. This turns a silent hang into a logged timeout.
+ * Wraps `fetch` with console logging and a hard timeout. A request that hangs
+ * is otherwise invisible: the browser's Network tab shows "pending" forever
+ * with nothing in the console to say whether the request was ever sent,
+ * whether a response ever came back, or why not. This turns a silent hang
+ * into a logged timeout.
  */
 const REQUEST_TIMEOUT_MS = 15_000;
 

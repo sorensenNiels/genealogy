@@ -8,16 +8,19 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { useTRPC } from "../lib/trpc";
+import { getHealth } from "../server/functions/health.functions";
+import { listPersons } from "../server/functions/person.functions";
 
 export const Route = createFileRoute("/")({
   component: Overview,
 });
 
 function Overview() {
-  const trpc = useTRPC();
-  const health = useQuery(trpc.health.queryOptions());
-  const people = useQuery(trpc.person.list.queryOptions({ limit: 1, offset: 0, search: null }));
+  const health = useQuery({ queryKey: ["health"], queryFn: () => getHealth() });
+  const people = useQuery({
+    queryKey: ["person", "list", { limit: 1, offset: 0, search: null }],
+    queryFn: () => listPersons({ data: { limit: 1, offset: 0, search: null } }),
+  });
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">

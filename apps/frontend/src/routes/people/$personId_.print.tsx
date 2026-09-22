@@ -5,9 +5,17 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
 
-import { formatDisplayDate } from "../lib/format-date";
-import { labelFor } from "../lib/person-display";
-import { useTRPC } from "../lib/trpc";
+import { formatDisplayDate } from "../../lib/format-date";
+import { labelFor } from "../../lib/person-display";
+import {
+  getPersonById,
+  getRelatives,
+  listEvents,
+  listNames,
+  listUnions,
+} from "../../server/functions/person.functions";
+import { listOptions } from "../../server/functions/settings.functions";
+import { listCitations, listSources } from "../../server/functions/source.functions";
 
 export const Route = createFileRoute("/people/$personId_/print")({
   component: PrintRoute,
@@ -20,16 +28,36 @@ type ConfigurableOptionRow = RouterOutputs["settings"]["listOptions"][number];
 
 function PrintRoute() {
   const { personId } = Route.useParams();
-  const trpc = useTRPC();
 
-  const person = useQuery(trpc.person.byId.queryOptions({ id: personId }));
-  const relatives = useQuery(trpc.person.relatives.queryOptions({ id: personId }));
-  const names = useQuery(trpc.person.listNames.queryOptions({ personId }));
-  const events = useQuery(trpc.person.listEvents.queryOptions({ personId }));
-  const unions = useQuery(trpc.person.listUnions.queryOptions({ personId }));
-  const citationsList = useQuery(trpc.source.listCitations.queryOptions({ personId }));
-  const sourcesList = useQuery(trpc.source.listSources.queryOptions());
-  const options = useQuery(trpc.settings.listOptions.queryOptions());
+  const person = useQuery({
+    queryKey: ["person", "byId", personId],
+    queryFn: () => getPersonById({ data: { id: personId } }),
+  });
+  const relatives = useQuery({
+    queryKey: ["person", "relatives", personId],
+    queryFn: () => getRelatives({ data: { id: personId } }),
+  });
+  const names = useQuery({
+    queryKey: ["person", "listNames", personId],
+    queryFn: () => listNames({ data: { personId } }),
+  });
+  const events = useQuery({
+    queryKey: ["person", "listEvents", personId],
+    queryFn: () => listEvents({ data: { personId } }),
+  });
+  const unions = useQuery({
+    queryKey: ["person", "listUnions", personId],
+    queryFn: () => listUnions({ data: { personId } }),
+  });
+  const citationsList = useQuery({
+    queryKey: ["source", "listCitations", personId],
+    queryFn: () => listCitations({ data: { personId } }),
+  });
+  const sourcesList = useQuery({
+    queryKey: ["source", "listSources"],
+    queryFn: () => listSources(),
+  });
+  const options = useQuery({ queryKey: ["settings", "listOptions"], queryFn: () => listOptions() });
 
   if (person.isPending) {
     return <p className="text-muted-foreground">Loading…</p>;

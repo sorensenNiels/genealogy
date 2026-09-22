@@ -1,4 +1,3 @@
-import type { AppRouter } from "@genealogy/backend";
 import { calculateAge, formatLifespan, formatPersonName } from "@genealogy/core";
 import {
   AlertDialog,
@@ -26,19 +25,18 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
-import type { inferRouterOutputs } from "@trpc/server";
 import { Trash2Icon } from "lucide-react";
 import { useState } from "react";
 
-import { apiUrl } from "../lib/env";
-import { GenderIcon, initials, SEX_LABELS } from "../lib/person-display";
-import { useTRPC } from "../lib/trpc";
+import { publicBackendUrl } from "../../lib/env";
+import { GenderIcon, initials, SEX_LABELS } from "../../lib/person-display";
+import { createPerson, listPersons, removePerson } from "../../server/functions/person.functions";
 
 export const Route = createFileRoute("/people/")({
   component: People,
 });
 
-type PersonListItem = inferRouterOutputs<AppRouter>["person"]["list"]["items"][number];
+type PersonListItem = Awaited<ReturnType<typeof listPersons>>["items"][number];
 
 // Declared at module scope: the table treats these as stable identities and
 // rebuilds its models whenever they change.
@@ -50,7 +48,7 @@ const columns = helper.columns([
     header: "Person",
     cell: (context) => {
       const person = context.row.original;
-      const photoUrl = person.photoPath ? `${apiUrl}/uploads/${person.photoPath}` : null;
+      const photoUrl = person.photoPath ? `${publicBackendUrl}/uploads/${person.photoPath}` : null;
       return (
         <Link
           to="/people/$personId"
@@ -107,32 +105,32 @@ const columns = helper.columns([
 const PAGE_SIZE = 50;
 
 function People() {
-  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const offset = page * PAGE_SIZE;
 
-  const people = useQuery(
-    trpc.person.list.queryOptions({
-      limit: PAGE_SIZE,
-      offset,
-      search: search.trim() === "" ? null : search.trim(),
-    }),
-  );
+  const listInput = {
+    limit: PAGE_SIZE,
+    offset,
+    search: search.trim() === "" ? null : search.trim(),
+  };
+  const people = useQuery({
+    queryKey: ["person", "list", listInput],
+    queryFn: () => listPersons({ data: listInput }),
+  });
 
   // Creates a blank record (every field on CreatePerson defaults) and drops
   // straight onto its own page — the same "person ui" used for editing — to
   // fill in, rather than asking for a name up front in the list toolbar.
-  const createPerson = useMutation(
-    trpc.person.create.mutationOptions({
-      onSuccess: async (person) => {
-        await queryClient.invalidateQueries({ queryKey: trpc.person.list.queryKey() });
-        await navigate({ to: "/people/$personId", params: { personId: person.id } });
-      },
-    }),
-  );
+  const createPersonMutation = useMutation({
+    mutationFn: createPerson,
+    onSuccess: async (person) => {
+      await queryClient.invalidateQueries({ queryKey: ["person", "list"] });
+      await navigate({ to: "/people/$personId", params: { personId: person.id } });
+    },
+  });
 
   // The table needs a stable array; an inline `?? []` would be a new one each render.
   const rows = people.data?.items ?? EMPTY_ROWS;
@@ -148,8 +146,11 @@ function People() {
             {people.data ? `${people.data.total} recorded` : "Loading…"}
           </p>
         </div>
-        <Button isDisabled={createPerson.isPending} onPress={() => createPerson.mutate({})}>
-          {createPerson.isPending ? "Adding…" : "Add person"}
+        <Button
+          isDisabled={createPersonMutation.isPending}
+          onPress={() => createPersonMutation.mutate({ data: {} })}
+        >
+          {createPersonMutation.isPending ? "Adding…" : "Add person"}
         </Button>
       </div>
 
@@ -243,15 +244,13 @@ function People() {
 
 /** Hidden outright when `hasRelations` is set — the backend enforces the same rule in `remove`. */
 function DeletePersonAction({ person }: { person: PersonListItem }) {
-  const trpc = useTRPC();
   const queryClient = useQueryClient();
-  const removePerson = useMutation(
-    trpc.person.remove.mutationOptions({
-      onSuccess: async () => {
-        await queryClient.invalidateQueries({ queryKey: trpc.person.list.queryKey() });
-      },
-    }),
-  );
+  const removePersonMutation = useMutation({
+    mutationFn: removePerson,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["person", "list"] });
+    },
+  });
 
   if (person.hasRelations) {
     return null;
@@ -264,7 +263,7 @@ function DeletePersonAction({ person }: { person: PersonListItem }) {
           variant="ghost"
           size="icon"
           aria-label={`Delete ${formatPersonName(person)}`}
-          isDisabled={removePerson.isPending}
+          isDisabled={removePersonMutation.isPending}
         >
           <Trash2Icon className="size-4 text-destructive" />
         </Button>
@@ -278,14 +277,16 @@ function DeletePersonAction({ person }: { person: PersonListItem }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onPress={() => removePerson.mutate({ id: person.id })}>
+            <AlertDialogAction
+              onPress={() => removePersonMutation.mutate({ data: { id: person.id } })}
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {removePerson.isError && (
-        <p className="text-xs text-destructive">{removePerson.error.message}</p>
+      {removePersonMutation.isError && (
+        <p className="text-xs text-destructive">{removePersonMutation.error.message}</p>
       )}
     </div>
   );
