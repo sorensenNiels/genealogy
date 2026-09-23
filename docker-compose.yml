@@ -24,5 +24,80 @@ services:
       retries: 20
       start_period: 10s
 
+  # Immich (see "Photos & albums via Immich" in FEATURES.md) — a real second
+  # service, not a dependency bump: its own Postgres (a vector-search
+  # extension that can't share this app's AGE-enabled instance, the same
+  # reason this app's own Postgres isn't shared with anything else), Redis,
+  # and a machine-learning container for face detection, ~6-8GB RAM
+  # recommended by Immich's own docs. `profiles: [immich]` keeps all four
+  # out of a plain `docker compose up` — opt in with
+  # `docker compose --profile immich up -d`. Versions pinned to the exact
+  # release this integration was built and tested against (v3.2.2, 2026-09);
+  # bump deliberately, matching this repo's version-pinning convention.
+  immich-db:
+    container_name: genealogy-immich-db
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    profiles: ["immich"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: immich
+      POSTGRES_PASSWORD: immich
+      POSTGRES_DB: immich
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - immich-db-data:/var/lib/postgresql/data
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U immich -d immich"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  immich-redis:
+    container_name: genealogy-immich-redis
+    image: docker.io/valkey/valkey:9@sha256:70739f85ad2ee01a726a965584a0f94895f01b0c60b3cc8b0aeef11eaa6888cf
+    profiles: ["immich"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  immich-machine-learning:
+    container_name: genealogy-immich-ml
+    image: ghcr.io/immich-app/immich-machine-learning:v3.2.2
+    profiles: ["immich"]
+    restart: unless-stopped
+    volumes:
+      - immich-model-cache:/cache
+
+  immich-server:
+    container_name: genealogy-immich-server
+    image: ghcr.io/immich-app/immich-server:v3.2.2
+    profiles: ["immich"]
+    restart: unless-stopped
+    environment:
+      DB_HOSTNAME: immich-db
+      DB_USERNAME: immich
+      DB_PASSWORD: immich
+      DB_DATABASE_NAME: immich
+      REDIS_HOSTNAME: immich-redis
+    volumes:
+      - immich-uploads:/data
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "2283:2283"
+    depends_on:
+      immich-db:
+        condition: service_healthy
+      immich-redis:
+        condition: service_healthy
+
 volumes:
   postgres-data:
+  immich-db-data:
+  immich-uploads:
+  immich-model-cache:

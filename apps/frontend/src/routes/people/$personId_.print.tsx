@@ -174,7 +174,9 @@ function PrintRoute() {
                   </span>{" "}
                   {formatDisplayDate(event.date)}
                   {event.place ? ` in ${event.place}` : ""}
-                  {event.description ? ` — ${event.description}` : ""}
+                  {event.notes && (
+                    <MarkdownContent className="mt-0.5">{event.notes}</MarkdownContent>
+                  )}
                 </li>
               ))}
             </ul>

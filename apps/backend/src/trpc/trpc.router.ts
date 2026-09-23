@@ -3,6 +3,7 @@ import type { INestApplication } from "@nestjs/common";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 
 import { AUTH, type Auth } from "../auth/auth.module.js";
+import { ImmichRouter } from "../immich/immich.router.js";
 import { PersonRouter } from "../person/person.router.js";
 import { SettingsRouter } from "../settings/settings.router.js";
 import { SourceRouter } from "../source/source.router.js";
@@ -17,6 +18,7 @@ export class TrpcRouter {
     private readonly person: PersonRouter,
     private readonly source: SourceRouter,
     private readonly settings: SettingsRouter,
+    private readonly immich: ImmichRouter,
     @Inject(AUTH) private readonly auth: Auth,
   ) {}
 
@@ -29,6 +31,7 @@ export class TrpcRouter {
       person: this.person.build(),
       source: this.source.build(),
       settings: this.settings.build(),
+      immich: this.immich.build(),
     });
   }
 

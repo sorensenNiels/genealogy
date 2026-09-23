@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import { Button, type ButtonProps } from "./button";
 
-export interface SaveButtonProps extends Omit<ButtonProps, "type" | "isDisabled" | "children"> {
+export interface SaveButtonProps extends Omit<ButtonProps, "isDisabled" | "children"> {
   /** Whether the form has unsaved changes, shown as a small red dot. */
   isDirty: boolean;
   /** Whether the save is in flight — replaces the dot with a spinner and disables the button. */
@@ -21,16 +21,29 @@ export interface SaveButtonProps extends Omit<ButtonProps, "type" | "isDisabled"
  *
  * Not for actions without a clean/dirty baseline to compare against (sign
  * in, sign up) — those are plain `Button`s.
+ *
+ * `type` defaults to "submit" (the common case: a `<form onSubmit>` calling
+ * its own save logic) but can be overridden to "button" for a form embedded
+ * inside another one's DOM subtree, driving `submit()` from `onPress`
+ * instead. A `type="submit"` button submits its nearest ancestor `<form>`
+ * regardless of how deeply it's nested inside other elements — including,
+ * for React specifically, across a `createPortal` boundary, since React's
+ * synthetic events bubble through the *React tree* (parent/child component
+ * relationships), not the DOM tree a portal actually renders into. A stray
+ * submit button one dialog below another one's own form was exactly this
+ * bug, caught building the event-citation dialog: `Add` in the inner form
+ * silently re-triggered the outer form's own submit handler too.
  */
 export function SaveButton({
   isDirty,
   isPending,
   isDisabled = false,
   children,
+  type = "submit",
   ...props
 }: SaveButtonProps) {
   return (
-    <Button type="submit" isDisabled={isPending || isDisabled} aria-busy={isPending} {...props}>
+    <Button type={type} isDisabled={isPending || isDisabled} aria-busy={isPending} {...props}>
       {children}
       {/* aria-hidden: a descendant's aria-label would otherwise merge into
           the button's own accessible name ("Save" becomes "Save Unsaved

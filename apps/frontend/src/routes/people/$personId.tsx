@@ -125,6 +125,7 @@ import {
   listSources,
   removeCitation,
 } from "../../server/functions/source.functions";
+import { PersonPhotosCard } from "./-immich-photos-card";
 
 export const Route = createFileRoute("/people/$personId")({
   component: PersonDetailRoute,
@@ -214,6 +215,10 @@ const EVENT_DETAIL_FIELDS: Partial<Record<EventType, { key: string; label: strin
   occupation: [
     { key: "employer", label: "Employer" },
     { key: "jobTitle", label: "Job title" },
+  ],
+  death: [
+    { key: "causeOfDeath", label: "Cause of death" },
+    { key: "informant", label: "Informant" },
   ],
 };
 
@@ -340,9 +345,12 @@ function PersonDetailRoute() {
           onChanged={refresh}
         />
       </div>
+      <PersonPhotosCard personId={personId} />
       <EventsSection
         personId={personId}
         events={events.data ?? []}
+        citations={citationsList.data ?? []}
+        sourcesList={sourcesList.data ?? []}
         options={options.data ?? []}
         onChanged={refresh}
       />
@@ -849,7 +857,7 @@ function RemoveButton({
   return (
     <AlertDialog>
       {trigger ?? (
-        <Button variant="ghost" size="sm">
+        <Button type="button" variant="ghost" size="sm">
           Remove
         </Button>
       )}
@@ -2194,11 +2202,15 @@ function NameForm({
 function EventsSection({
   personId,
   events,
+  citations,
+  sourcesList,
   options,
   onChanged,
 }: {
   personId: string;
   events: PersonEventRow[];
+  citations: CitationRow[];
+  sourcesList: SourceRow[];
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
@@ -2228,11 +2240,14 @@ function EventsSection({
             <EventForm
               personId={personId}
               event={null}
+              citations={citations}
+              sourcesList={sourcesList}
               options={options}
               onDone={async () => {
                 setAddOpen(false);
                 await onChanged();
               }}
+              onChanged={onChanged}
             />
           </DialogContent>
         </Dialog>
@@ -2243,6 +2258,8 @@ function EventsSection({
             key={event.id}
             personId={personId}
             event={event}
+            citations={citations}
+            sourcesList={sourcesList}
             options={options}
             onChanged={onChanged}
             onRemove={() => void remove(event.id)}
@@ -2253,20 +2270,38 @@ function EventsSection({
   );
 }
 
+/**
+ * "birth"/"death" are ordinary `person_events` rows (see `PersonService`),
+ * but the person form above owns creating them (as a dedicated pair of
+ * fields) so there's only ever one canonical one of each — the generic
+ * "+ Add event" dialog excludes them from its type choices accordingly. An
+ * existing birth/death row is still fully editable from this list like any
+ * other event (date, place, and now-relevant detail like cause of death),
+ * except its type can't be changed away from what created it.
+ */
+const VITAL_EVENT_TYPES = new Set(["birth", "death"]);
+
 function EventRow({
   personId,
   event,
+  citations,
+  sourcesList,
   options,
   onChanged,
   onRemove,
 }: {
   personId: string;
   event: PersonEventRow;
+  citations: CitationRow[];
+  sourcesList: SourceRow[];
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
   onRemove: () => void;
 }) {
   const [editOpen, setEditOpen] = useState(false);
+  const sourceCount = citations.filter(
+    (citation) => citation.factType === "event" && citation.factId === event.id,
+  ).length;
 
   return (
     <div className="flex items-center justify-between gap-2 text-sm">
@@ -2291,7 +2326,14 @@ function EventRow({
               .join(" · ")}
           </p>
         )}
-        {event.description && <p className="text-xs text-muted-foreground">{event.description}</p>}
+        {event.notes && (
+          <MarkdownContent className="text-xs text-muted-foreground">{event.notes}</MarkdownContent>
+        )}
+        {sourceCount > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {sourceCount} {sourceCount === 1 ? "source" : "sources"} cited
+          </p>
+        )}
       </div>
       <div className="flex items-center gap-1">
         <Dialog isOpen={editOpen} onOpenChange={setEditOpen}>
@@ -2305,11 +2347,14 @@ function EventRow({
             <EventForm
               personId={personId}
               event={event}
+              citations={citations}
+              sourcesList={sourcesList}
               options={options}
               onDone={async () => {
                 setEditOpen(false);
                 await onChanged();
               }}
+              onChanged={onChanged}
             />
           </DialogContent>
         </Dialog>
@@ -2325,13 +2370,26 @@ function EventRow({
 function EventForm({
   personId,
   event,
+  citations,
+  sourcesList,
   options,
   onDone,
+  onChanged,
 }: {
   personId: string;
   event: PersonEventRow | null;
+  citations: CitationRow[];
+  sourcesList: SourceRow[];
   options: ConfigurableOptionRow[];
   onDone: () => Promise<void>;
+  /**
+   * Refreshes shared data (citations especially) without closing this
+   * dialog — distinct from `onDone`, which is this form's own save/close.
+   * Only exercised when `event` is set: a citation needs a real event id to
+   * point at, so `EventCitations` below doesn't render for a brand-new,
+   * not-yet-saved event.
+   */
+  onChanged: () => Promise<void>;
 }) {
   const addEventMutation = useMutation({ mutationFn: addEvent });
   const updateEventMutation = useMutation({ mutationFn: updateEvent });
@@ -2345,7 +2403,7 @@ function EventForm({
       label: event?.label ?? "",
       dateOriginal: event?.date?.original ?? "",
       place: event?.place ?? "",
-      description: event?.description ?? "",
+      notes: event?.notes ?? "",
     },
     onSubmit: async ({ value }) => {
       const detailFields = EVENT_DETAIL_FIELDS[eventType] ?? [];
@@ -2364,7 +2422,7 @@ function EventForm({
               },
         place: value.place.trim() === "" ? null : value.place,
         details: detailEntries.length > 0 ? Object.fromEntries(detailEntries) : null,
-        description: value.description.trim() === "" ? null : value.description,
+        notes: value.notes.trim() === "" ? null : value.notes,
       };
       if (event) {
         await updateEventMutation.mutateAsync({ data: { id: event.id, ...payload } });
@@ -2398,6 +2456,12 @@ function EventForm({
       <Select
         aria-label="Event type"
         value={eventType}
+        // Locked once it's already "birth"/"death": those are created only
+        // from the person form's own Date of Birth/Death fields (so there's
+        // ever just one canonical row of each), not selectable here — but an
+        // existing one, once created, stays fully editable otherwise (date,
+        // place, detail like cause of death).
+        isDisabled={VITAL_EVENT_TYPES.has(initialEventType)}
         onChange={(value) => {
           if (value) setEventType(eventTypeSchema.parse(value));
         }}
@@ -2406,11 +2470,17 @@ function EventForm({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {optionsFor(options, "event_type").map((option) => (
-            <SelectItem key={option.key} id={option.key}>
-              {option.label}
-            </SelectItem>
-          ))}
+          {optionsFor(options, "event_type")
+            // The disabled trigger above still needs its own current option
+            // present to render a label from, when that's "birth"/"death".
+            .filter(
+              (option) => !VITAL_EVENT_TYPES.has(option.key) || option.key === initialEventType,
+            )
+            .map((option) => (
+              <SelectItem key={option.key} id={option.key}>
+                {option.label}
+              </SelectItem>
+            ))}
         </SelectContent>
       </Select>
       {eventType === "other" && (
@@ -2453,21 +2523,136 @@ function EventForm({
           }
         />
       ))}
-      <form.Field name="description">
+      <form.Field name="notes">
         {(field) => (
-          <Input
-            placeholder="Description"
+          <MarkdownEditor
+            aria-label="Notes"
+            placeholder="Notes"
             value={field.state.value}
-            onChange={(inputEvent) => field.handleChange(inputEvent.target.value)}
+            onChange={field.handleChange}
           />
         )}
       </form.Field>
+      {event && (
+        <EventCitations
+          personId={personId}
+          event={event}
+          citations={citations}
+          sourcesList={sourcesList}
+          options={options}
+          onChanged={onChanged}
+        />
+      )}
       <DialogFooter>
         <SaveButton isDirty={isDirty} isPending={isSubmitting} isDisabled={needsLabel}>
           {event ? "Save" : "Add"}
         </SaveButton>
       </DialogFooter>
     </form>
+  );
+}
+
+/**
+ * The event dialog's own citations sub-section — lets you see and manage
+ * what's already cited, and cite a new (or newly-created) source, without
+ * leaving the dialog. Only rendered for an existing event (see the comment
+ * on `EventForm`'s `onChanged` prop for why). Reuses `CitationForm` with the
+ * "what this cites" fact fixed to this event, rather than a parallel
+ * implementation of the source-search/create-new-source logic.
+ */
+function EventCitations({
+  personId,
+  event,
+  citations,
+  sourcesList,
+  options,
+  onChanged,
+}: {
+  personId: string;
+  event: PersonEventRow;
+  citations: CitationRow[];
+  sourcesList: SourceRow[];
+  options: ConfigurableOptionRow[];
+  onChanged: () => Promise<void>;
+}) {
+  const removeCitationMutation = useMutation({ mutationFn: removeCitation });
+  // Not a nested `Dialog` — see the `embedded` prop comment on `CitationForm`
+  // for why stacking this component's own dialog inside the event's would
+  // close both. Swapping in the form as inline content, within the same
+  // dialog, sidesteps that entirely.
+  const [mode, setMode] = useState<"list" | "add">("list");
+  const sourceById = new Map(sourcesList.map((source) => [source.id, source]));
+  const eventCitations = citations.filter(
+    (citation) => citation.factType === "event" && citation.factId === event.id,
+  );
+
+  const remove = async (id: string) => {
+    await removeCitationMutation.mutateAsync({ data: { id } });
+    await onChanged();
+  };
+
+  if (mode === "add") {
+    return (
+      <div className="space-y-2 rounded-md border p-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase">Add citation</p>
+          <Button type="button" variant="ghost" size="sm" onPress={() => setMode("list")}>
+            ← Back
+          </Button>
+        </div>
+        <CitationForm
+          personId={personId}
+          sourcesList={sourcesList}
+          options={options}
+          embedded
+          fixedFact={{
+            key: `event|${event.id}`,
+            factType: "event",
+            factId: event.id,
+            label: `Event: ${labelFor(options, "event_type", event.eventType)}${event.label ? ` (${event.label})` : ""}`,
+          }}
+          onDone={async () => {
+            setMode("list");
+            await onChanged();
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase">Sources</p>
+        <Button type="button" variant="ghost" size="sm" onPress={() => setMode("add")}>
+          + Add citation
+        </Button>
+      </div>
+      {eventCitations.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No sources cited yet.</p>
+      ) : (
+        eventCitations.map((citation) => {
+          const source = sourceById.get(citation.sourceId);
+          return (
+            <div key={citation.id} className="flex items-center justify-between gap-2 text-xs">
+              <div>
+                <Badge variant="outline" className="mr-2">
+                  {labelFor(options, "confidence", citation.confidence)}
+                </Badge>
+                <span className="font-medium">{source?.title ?? "Unknown source"}</span>
+                {citation.page && (
+                  <span className="text-muted-foreground"> · p. {citation.page}</span>
+                )}
+              </div>
+              <RemoveButton
+                itemLabel={`this citation of "${source?.title ?? "this source"}"`}
+                onConfirm={() => void remove(citation.id)}
+              />
+            </div>
+          );
+        })
+      )}
+    </div>
   );
 }
 
@@ -2511,10 +2696,6 @@ function CitationsSection({
     switch (citation.factType) {
       case "person":
         return "This person";
-      case "birth":
-        return "Birth";
-      case "death":
-        return "Death";
       case "name": {
         const name = names.find((candidate) => candidate.id === citation.factId);
         return name
@@ -2592,49 +2773,80 @@ function CitationsSection({
   );
 }
 
+// Stable reference for the "names"/"events"/"unions" defaults below — an
+// inline `[]` would be a fresh array every render, which oxlint's
+// `no-object-type-as-default-prop` flags (a new default defeats memoization
+// downstream, though nothing here currently memoizes on it).
+const EMPTY_ROWS: never[] = [];
+
 function CitationForm({
   personId,
   sourcesList,
-  names,
-  events,
-  unions,
+  names = EMPTY_ROWS,
+  events = EMPTY_ROWS,
+  unions = EMPTY_ROWS,
   options,
+  fixedFact,
+  embedded = false,
   onDone,
 }: {
   personId: string;
   sourcesList: SourceRow[];
-  names: NameVariantRow[];
-  events: PersonEventRow[];
-  unions: UnionRow[];
+  names?: NameVariantRow[];
+  events?: PersonEventRow[];
+  unions?: UnionRow[];
   options: ConfigurableOptionRow[];
+  /**
+   * Pins "what this cites" to a specific fact and hides the picker — used
+   * when this form is opened from inside that fact's own edit dialog (e.g.
+   * `EventCitations`), where offering the full person/name/event/union list
+   * would be both redundant and let the citation drift onto the wrong fact.
+   */
+  fixedFact?: FactOption;
+  /**
+   * Renders as a plain `<div>` with the Save button driving `submit()`
+   * directly via `onPress`, instead of a `<form>` relying on native submit —
+   * for use inside another dialog's own `<form>` (e.g. `EventCitations`),
+   * where a nested `<form>` would be invalid HTML. Also sidesteps a real bug
+   * found while building that: stacking this component's own `Dialog`
+   * inside another one closes *both* on submit (traced via MutationObserver
+   * to a single synchronous DOM removal covering both `ModalOverlay`s —
+   * React Aria Components doesn't cleanly support nested `Modal`s here),
+   * so the embedded case doesn't open its own nested dialog at all; the
+   * caller (`EventCitations`) swaps this form in as inline content instead.
+   */
+  embedded?: boolean;
   onDone: () => Promise<void>;
 }) {
   const createSourceMutation = useMutation({ mutationFn: createSource });
   const addCitationMutation = useMutation({ mutationFn: addCitation });
 
-  const factOptions: FactOption[] = [
-    { key: "person|none", factType: "person", factId: null, label: "This person (general)" },
-    { key: "birth|none", factType: "birth", factId: null, label: "Birth" },
-    { key: "death|none", factType: "death", factId: null, label: "Death" },
-    ...names.map((name) => ({
-      key: `name|${name.id}`,
-      factType: "name" as const,
-      factId: name.id,
-      label: `Name: ${[name.given, name.surname].filter(Boolean).join(" ") || "unnamed"}`,
-    })),
-    ...events.map((event) => ({
-      key: `event|${event.id}`,
-      factType: "event" as const,
-      factId: event.id,
-      label: `Event: ${labelFor(options, "event_type", event.eventType)}${event.label ? ` (${event.label})` : ""}`,
-    })),
-    ...unions.map((union) => ({
-      key: `union|${union.id}`,
-      factType: "union" as const,
-      factId: union.id,
-      label: `Union (${labelFor(options, "union_status", union.status)})`,
-    })),
-  ];
+  const factOptions: FactOption[] = fixedFact
+    ? [fixedFact]
+    : [
+        { key: "person|none", factType: "person", factId: null, label: "This person (general)" },
+        // No separate "birth"/"death" entries — those are `person_events` rows
+        // now (see PersonService), so they fall out of the `events.map` below
+        // like any other event ("Event: Birth").
+        ...names.map((name) => ({
+          key: `name|${name.id}`,
+          factType: "name" as const,
+          factId: name.id,
+          label: `Name: ${[name.given, name.surname].filter(Boolean).join(" ") || "unnamed"}`,
+        })),
+        ...events.map((event) => ({
+          key: `event|${event.id}`,
+          factType: "event" as const,
+          factId: event.id,
+          label: `Event: ${labelFor(options, "event_type", event.eventType)}${event.label ? ` (${event.label})` : ""}`,
+        })),
+        ...unions.map((union) => ({
+          key: `union|${union.id}`,
+          factType: "union" as const,
+          factId: union.id,
+          label: `Union (${labelFor(options, "union_status", union.status)})`,
+        })),
+      ];
 
   const [factKey, setFactKey] = useState(factOptions[0]!.key);
   const [sourceMode, setSourceMode] = useState<"existing" | "new">(
@@ -2702,32 +2914,28 @@ function CitationForm({
     await onDone();
   };
 
-  return (
-    <form
-      className="space-y-3"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-    >
-      <Select
-        aria-label="What this cites"
-        value={factKey}
-        onChange={(value) => {
-          if (value) setFactKey(String(value));
-        }}
-      >
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {factOptions.map((option) => (
-            <SelectItem key={option.key} id={option.key}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+  const fields = (
+    <>
+      {!fixedFact && (
+        <Select
+          aria-label="What this cites"
+          value={factKey}
+          onChange={(value) => {
+            if (value) setFactKey(String(value));
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {factOptions.map((option) => (
+              <SelectItem key={option.key} id={option.key}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       {sourceMode === "existing" ? (
         <div className="space-y-2">
@@ -2817,10 +3025,38 @@ function CitationForm({
       />
 
       <DialogFooter>
-        <SaveButton isDirty={isDirty} isPending={pending} isDisabled={!canSubmit}>
+        <SaveButton
+          isDirty={isDirty}
+          isPending={pending}
+          isDisabled={!canSubmit}
+          {...(embedded
+            ? // Not type="submit": this form is a `<div>` nested inside
+              // another `<form>` (EventForm's) when embedded, and a
+              // type="submit" button submits its nearest ancestor form
+              // regardless of nesting depth — see the comment on
+              // `SaveButton`'s `type` prop for the portal-specific version
+              // of this same gotcha, hit first via the dialog-in-dialog
+              // approach this embedding replaced.
+              { type: "button", onPress: () => void submit() }
+            : {})}
+        >
           Add
         </SaveButton>
       </DialogFooter>
+    </>
+  );
+
+  return embedded ? (
+    <div className="space-y-3">{fields}</div>
+  ) : (
+    <form
+      className="space-y-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      {fields}
     </form>
   );
 }

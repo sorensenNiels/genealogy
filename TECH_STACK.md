@@ -330,8 +330,10 @@ Points that will bite you, coming from either Radix or Base UI:
 
 ### Markdown notes: MDXEditor, not Tiptap
 
-Every `notes` field across the app (`persons`, `personNames`, `unions`) is
-stored as plain markdown text and edited through a shared WYSIWYG component,
+Every `notes` field across the app (`persons`, `personNames`, `unions`,
+`personEvents` — the last renamed from `description`, a plain `Input`, on
+2026-09-23, specifically to bring it into this convention) is stored as
+plain markdown text and edited through a shared WYSIWYG component,
 `@genealogy/ui/components/markdown-editor`, rather than a plain `Input` — see
 the "notes field" rule in [CLAUDE.md](CLAUDE.md#adding-to-the-stack).
 Read-only display goes through the counterpart `markdown-content`, built on
@@ -643,18 +645,74 @@ plain `text` for this (see migration `0015`); `parentage` never had a column
 at all, since it already lived as a bare agtype string on the graph edge.
 
 Two dropdowns stay hardcoded on purpose: `citationFactType`
-(person/birth/death/name/event/union) and `sex` (M/F/U) are structural —
-code branches on their exact value in ways a runtime-editable list can't
-safely support (e.g. a citation's `factId` is required or forbidden
-depending on `factType`). Two individual option keys are seeded
-`isProtected: true` for the same reason at a smaller scale: `event_type`'s
-`"other"` (a required-label rule keys off it) and `parentage`'s `"birth"`
-(the Parents UI's Father/Mother slots key off it) — protected options can be
-relabeled but never deleted. `EVENT_DETAIL_FIELDS` (the extra fields
-immigration/burial/etc. get, like ship name or cemetery) stays a hardcoded
-map keyed by the built-in event-type strings; an admin-added event type
-gets only the generic date/place/description fields, not bonus ones — a
-deliberate limitation, not an oversight.
+(person/name/event/union) and `sex` (M/F/U) are structural — code branches on
+their exact value in ways a runtime-editable list can't safely support (e.g.
+a citation's `factId` is required or forbidden depending on `factType`).
+Three individual `event_type` option keys are seeded `isProtected: true` for
+the same reason at a smaller scale: `"other"` (a required-label rule keys off
+it), and `"birth"`/`"death"` (the person form's dedicated vitals fields key
+off them — see "Birth and death are events" below); `parentage`'s `"birth"`
+is protected too, for the Parents UI's Father/Mother slots — a different
+`"birth"`, in a different topic, not to be confused with `event_type`'s.
+Protected options can be relabeled but never deleted. `EVENT_DETAIL_FIELDS`
+(the extra fields immigration/burial/death/etc. get, like ship name or cause
+of death) stays a hardcoded map keyed by the built-in event-type strings; an
+admin-added event type gets only the generic date/place/notes fields,
+not bonus ones — a deliberate limitation, not an oversight.
+
+### Birth and death are events
+
+Until 2026-09-23, `birth`/`birthPlace`/`death`/`deathPlace` were columns on
+`persons`, and `person_events` held "life events beyond birth/death" —
+christening, burial, and the rest. That split was arbitrary (a birth record
+has the same shape as a christening record: a date, a place, type-specific
+detail, citations) and it had a real user-facing cost: the "Life events" card
+on a person's own page queries `person_events`, so it silently never showed
+someone's birth or death — the bug that triggered this change. It also forced
+`citations.factType` to special-case `"birth"`/`"death"` as two more
+null-`factId` cases alongside `"person"`, since there was no row for a
+citation to point at.
+
+Birth and death are now ordinary `person_events` rows (`eventType`
+`"birth"`/`"death"`, both seeded `isProtected: true` — see "Configurable
+dropdown options" above), so a birth citation is just `factType: "event"`
+with that row's id, like any other event, and `citationFactType` shrank to
+`person`/`name`/`event`/`union`. The person page still creates and edits them
+as a dedicated pair of fields ("Date of Birth"/"Place of Birth", etc.)
+rather than through the generic "+ Add event" dialog — that's a UX choice
+(one canonical birth, easy to find), not a data-model one, and it's enforced
+in one place: `PersonService.addEvent` rejects a second `"birth"`/`"death"`
+row for the same person regardless of which UI path tried to create it. Once
+created, the row is fully editable from the "Life events" list like anything
+else (date, place, detail — e.g. cause of death) except its type, which the
+list's `EventForm` locks for exactly those two rows.
+
+The part this doesn't come for free on is reads: `persons.birth` used to be
+a plain `jsonb` column, read by `calculateAge`/`formatLifespan`
+(`packages/core/src/person.ts`) on every person list row, tree node, and the
+print report. Rather than keep a denormalized `persons.birth` cache "in sync"
+with the real event row — reintroducing the exact two-sources-of-truth
+problem this change removes, one level down — `personsWithVitals`
+(`packages/db/src/vitals.ts`) left-joins `persons` to its own birth/death
+`person_events` rows and re-assembles the same `{birth, birthPlace, death,
+deathPlace}` shape the API has always returned. `PersonService` routes every
+person read (`list`/`byId`/`relatives`/`tree`/photo mutations) through it,
+and `create`/`update` split their input into a `persons` write plus a
+birth/death upsert (`upsertVitalEvent`) in the same transaction. The payoff:
+**zero ripple on the frontend or on `packages/core`'s types** —
+`createPersonSchema`/`updatePersonSchema`/`Person` still carry
+`birth`/`birthPlace`/`death`/`deathPlace` exactly as before, now documented
+as assembled rather than stored, so the person form, list, tree, and print
+report needed no changes at all. The left join is only safe because
+`addEvent`'s guard above keeps birth/death at most one row per person per
+type — anything less strict would multiply rows.
+
+Migration `0016` is data-preserving, not additive: it moves every existing
+person's `birth`/`death` into `person_events`, repoints any citation that
+referenced the old `"birth"`/`"death"` fact types at the new rows, and only
+then narrows `citation_fact_type` and drops the four `persons` columns —
+verified against the real dev database (11 people, 9 births and 2 deaths
+carried across with dates/places intact) before being treated as done.
 
 ### One Save button component, not one per form
 
@@ -682,6 +740,38 @@ at all — every field is `useState` — so it snapshots all of them once on
 mount and compares the whole set; the snapshot uses `useState`, not
 `useRef`, because reading `ref.current` during render is flagged by
 oxlint's `react(refs)` rule even though the value itself never changes here.
+
+`SaveButton` defaults its underlying `type` to `"submit"` but lets a caller
+override it to `"button"` — added specifically for `CitationForm`'s
+`embedded` mode (see below), where relying on native form submission is
+actively wrong, not just unnecessary.
+
+**A `type="submit"` button submits its nearest ancestor `<form>` no matter
+how deeply it's nested inside other elements — including, for React
+specifically, across a `createPortal` boundary.** React's synthetic events
+bubble through the _React component tree_ (parent/child relationships), not
+the DOM tree a portal actually renders into (this is documented React portal
+behaviour, not a bug — "the portal still exists in the React tree, regardless
+of position in the DOM tree"). Every `Dialog` in this app (`dialog.tsx`)
+renders its content through React Aria's `Modal`, which portals: the content
+is a DOM sibling of wherever the trigger sits, but still a React descendant
+of it. Building the event-citation UI (see `EventCitations`/`CitationForm`'s
+`fixedFact`/`embedded` props under "Sources & citations" in FEATURES.md) hit
+this directly: an inner `CitationForm`, opened from inside an event's own
+edit dialog, has its own `SaveButton` ("Add"). Even with the inner form
+correctly `preventDefault`-ing its own submit, clicking "Add" _also_
+synthetically re-triggered the **outer** `EventForm`'s `onSubmit` — which
+closes that dialog on success — because React re-dispatches the submit event
+up the React tree regardless of the portal. Traced with a `MutationObserver`
+and confirmed independent of pointer events (reproduced via keyboard Enter
+alone) and independent of nesting depth (still fired with the inner form
+rendered as plain embedded content, no portal, no dialog-in-dialog at all —
+once nesting was ruled out as the cause, the shared-form-ancestor explanation
+was the one left standing). The fix is the `type="button"` + `onPress`
+override above, used whenever a `SaveButton` lives inside another form's
+subtree, React-tree-nested or not — `stopPropagation` was considered but
+doesn't reach across an _actual_ DOM/native form submission the way it does a
+synthetic one, so it wouldn't have covered the embedded (non-portalled) case.
 
 ### Tree view: React Flow + elkjs, with elk doing only half the job
 
@@ -727,6 +817,110 @@ _single_ value per column — a list of vertices/edges each carrying their own
 inline annotation isn't valid JSON once spliced together, so the list form
 was never wired up. Costs a query per generation instead of one; fine at the
 depths (4 up, 4 down by default) a tree view renders.
+
+**Provenance, not just presence, decides "+ Add relative" vs. "Load more".**
+The obvious rule — "show an add button if this person has no recorded
+father/mother/child" — is wrong on its own, because absence in the fetched
+tree isn't the same as absence in the graph. `treeAround`'s walk is
+asymmetric: it follows an ancestor's own parents further up, but never asks
+whether that ancestor has _other_ children (the root's aunts and uncles);
+symmetrically for descendants, their children are followed but their other
+parents never checked. So "no edge found" can mean "genuinely has none" or
+"we simply never looked at that side of this specific person," and those
+need different UI: an add-relative dialog for the first, a "load more" action
+for the second. `treeAround` now returns `parentsKnownIds`/`childrenKnownIds`
+— exactly the ids that were themselves used as a query source in each
+direction, captured from the walk's own frontier rather than inferred after
+the fact — and the tree view (`apps/frontend/src/routes/tree.tsx`) gates on
+that instead of on edge presence. "Load more" itself needed no new backend
+endpoint: it reuses `person.relatives` (already existed for the person page)
+one hop at a time and merges the result into local state, rather than
+refetching and relaying out the whole tree.
+
+### Photos & albums: Immich, self-hosted, proxied like everything else
+
+The photo library (`/photos`, and the "Photos" card on a person's page) is
+built on [Immich](https://immich.app) rather than a bespoke upload/gallery/
+face-detection stack — checked against the "Recommending or adding a
+library" rule in CLAUDE.md on 2026-09-21 before the idea went into
+FEATURES.md, and re-checked on 2026-09-23 before building: still actively
+released (v3.2.2 at build time), active issue/PR turnaround. Building face
+detection and clustering from scratch was never seriously considered —
+that's a research problem, not a CRUD feature, and Immich already solves it
+well. This app never stores photo bytes or face data of its own; it links
+to what Immich already has.
+
+**Immich runs in `docker-compose.yml`, but behind a `profiles: ["immich"]`
+gate**, not in the default `docker compose up`. It's a 4-container stack of
+its own (Postgres w/ pgvecto.rs, Redis, the app server, a machine-learning
+service for face detection) at maybe 6-8GB of RAM for the ML container
+alone — a cost nobody should pay just to run this app's own tests or work
+on an unrelated page. `docker compose --profile immich up -d` opts in.
+Versions are pinned to the exact v3.2.2 image digests from Immich's own
+release, not `:release`, for the same reason the rest of this repo pins
+versions in the catalog rather than a floating range. Because the compose
+file already runs this app's own Postgres as `db`/`redis` would collide by
+name with Immich's defaults, the containers are named `immich-db` /
+`immich-redis` with `DB_HOSTNAME`/`REDIS_HOSTNAME` overridden to match —
+Immich's own compose file assumes service names `database`/`redis`, which
+would silently point it at nothing (or at this app's own Postgres) if left
+unchanged.
+
+**The proxy architecture (see the top-level section in this file) extends
+to Immich, unmodified in shape.** `apps/backend/src/immich/immich.service.ts`
+is the only thing in the repo holding `IMMICH_API_KEY`; it's an optional
+config pair (`apps/backend/src/config/env.ts`) so the app boots fine with
+Immich never configured at all — every route and card checks
+`isImmichConfigured` first and either hides itself (`PersonPhotosCard`) or
+shows a setup message (`/photos`'s `NotConfigured`), never a broken
+request. tRPC (`immich.router.ts`) carries JSON — people, albums, asset
+metadata. Binary thumbnails don't fit tRPC's JSON transport any better than
+this app's own local-disk photo uploads do, so they get the same treatment:
+a REST controller (`immich-asset.controller.ts`) with its own manual
+session check, mirrored on the frontend by proxy API routes
+(`routes/api/immich/**`) that forward bytes without buffering them through
+`createServerFn` — the same reasoning already recorded above for
+`routes/api/people/$id/photo.ts`.
+
+**The person↔Immich relationship is a link table, not a foreign key on
+`persons`.** `person_immich_links` (`packages/db/src/schema.ts`) maps one
+person to potentially several Immich "people" (Immich clusters faces per
+photo-set, not per real individual — the same person can end up as two
+separate Immich people if, e.g., their look changed enough over decades of
+photos), with `immichPersonId` unique so one Immich person can't be linked
+to two different tree people at once. It's a plain Postgres table, not a
+graph edge — nothing about it is a genealogical relationship the graph
+layer needs to traverse, it's just foreign-key metadata, same category as a
+citation.
+
+**A dangling link (the linked Immich person gets deleted in Immich) fails
+open, not closed, and there's no code written to prevent or clean it up.**
+`ImmichService.linkedPeople` drops any link whose `GET /people/{id}` 404s
+rather than surfacing an error, so a stale link just quietly stops
+contributing photos instead of breaking the person's page. This was a
+deliberate choice, not an oversight: Immich is the system of record for
+whether a person-cluster still exists, and reconciling that eagerly (a
+webhook, a periodic sweep) was judged not worth building until a real
+workflow shows it's needed — accepted as the known cost of the fast-follow
+decision below, since without a profile-photo picker pointing at Immich the
+only consequence of a stale link today is a photo grid that's short a few
+thumbnails.
+
+**Picking a person's profile photo from Immich was deliberately deferred**,
+not forgotten: the local-disk upload path (`### Photo uploads` above) is
+untouched, and linking a face is step one on its own before "use one of
+these linked photos as the header portrait" is worth building — confirmed
+with the user as a fast-follow rather than part of this version.
+
+**One real gap found during live verification, not a code defect:**
+Immich's `GET /people` only lists a "person" once it has at least one
+detected face — a person record with photos uploaded but no face ever
+recognized in them (a scanned photo where faces are too small, or a group
+photo Immich hasn't finished processing) simply won't appear to link
+against yet. That's Immich's own indexing behavior, confirmed directly
+against its API rather than assumed, and there's nothing to fix on this
+app's side — it just means "no faces found yet" is a real, expected empty
+state, not always a config problem.
 
 ## Verified, not assumed
 

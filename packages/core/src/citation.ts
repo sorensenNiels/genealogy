@@ -12,18 +12,14 @@ export const confidenceSchema = z.string().trim().min(1);
 export type Confidence = z.infer<typeof confidenceSchema>;
 
 /**
- * What a citation is evidence for: the person as a whole, one of the two
- * fields that live directly on `persons` (birth/death), or a row in
- * `personNames`/`personEvents`/`unions` — see `factId` below.
+ * What a citation is evidence for: the person as a whole, or a row in
+ * `personNames`/`personEvents`/`unions` — see `factId` below. Birth and death
+ * used to be their own fact types here (they lived directly on `persons`);
+ * now that they're ordinary `personEvents` rows (see "Birth and death are
+ * events" in TECH_STACK.md), citing one is just `factType: "event"` with
+ * that row's id, like any other event.
  */
-export const citationFactTypeSchema = z.enum([
-  "person",
-  "birth",
-  "death",
-  "name",
-  "event",
-  "union",
-]);
+export const citationFactTypeSchema = z.enum(["person", "name", "event", "union"]);
 export type CitationFactType = z.infer<typeof citationFactTypeSchema>;
 
 const FACT_TYPES_NEEDING_ID = new Set<CitationFactType>(["name", "event", "union"]);
@@ -38,9 +34,9 @@ export const citationSchema = z.object({
   factType: citationFactTypeSchema,
   /**
    * The `personNames`/`personEvents`/`unions` row this cites, matching
-   * `factType`; null for "person"/"birth"/"death", which have no row of
-   * their own. Not typed against a specific id schema here since which one
-   * applies depends on `factType` — see the `factId` comment in schema.ts.
+   * `factType`; null for "person", which has no row of its own. Not typed
+   * against a specific id schema here since which one applies depends on
+   * `factType` — see the `factId` comment in schema.ts.
    */
   factId: z.uuid().nullable(),
   page: z.string().nullable(),

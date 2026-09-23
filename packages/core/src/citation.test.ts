@@ -7,21 +7,20 @@ const personId = "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d";
 const factId = "c56a4180-65aa-42ec-a945-5fd21dec0538";
 
 describe("createCitationSchema", () => {
-  it.each(["person", "birth", "death"] as const)(
-    'rejects a factId on a "%s" citation',
-    (factType) => {
-      const result = createCitationSchema.safeParse({ sourceId, personId, factType, factId });
-      expect(result.success).toBe(false);
-    },
-  );
+  it('rejects a factId on a "person" citation', () => {
+    const result = createCitationSchema.safeParse({
+      sourceId,
+      personId,
+      factType: "person",
+      factId,
+    });
+    expect(result.success).toBe(false);
+  });
 
-  it.each(["person", "birth", "death"] as const)(
-    'accepts a "%s" citation with no factId',
-    (factType) => {
-      const result = createCitationSchema.safeParse({ sourceId, personId, factType });
-      expect(result.success).toBe(true);
-    },
-  );
+  it('accepts a "person" citation with no factId', () => {
+    const result = createCitationSchema.safeParse({ sourceId, personId, factType: "person" });
+    expect(result.success).toBe(true);
+  });
 
   it.each(["name", "event", "union"] as const)(
     'requires a factId on a "%s" citation',

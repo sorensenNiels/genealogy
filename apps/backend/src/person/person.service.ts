@@ -30,6 +30,7 @@ import {
   personNames,
   persons,
   personsWithRelations,
+  personsWithVitals,
   removeParentOf,
   removeSpouseOf,
   spousesOf,
@@ -39,7 +40,7 @@ import {
   type Database,
   type PersonEventRow,
   type PersonNameRow,
-  type PersonRow,
+  type PersonWithVitals,
   type TreeEdge,
   type UnionRow,
 } from "@genealogy/db";
@@ -98,21 +99,24 @@ export interface ListPersonsInput {
 
 export interface ListPersonsResult {
   /** `hasRelations` mirrors the guard in `remove` — lets the list hide the delete action per row without a `relatives()` round trip each. */
-  items: (PersonRow & { hasRelations: boolean })[];
+  items: (PersonWithVitals & { hasRelations: boolean })[];
   total: number;
 }
 
 export interface RelativesResult {
-  parents: (PersonRow & { parentage: Parentage })[];
-  spouses: PersonRow[];
-  children: PersonRow[];
+  parents: (PersonWithVitals & { parentage: Parentage })[];
+  spouses: PersonWithVitals[];
+  children: PersonWithVitals[];
 }
 
 export interface TreeResult {
   rootId: string;
-  people: PersonRow[];
+  people: PersonWithVitals[];
   parentEdges: TreeEdge[];
   spouseEdges: Array<[string, string]>;
+  /** See `TreeGraph` in `@genealogy/db` for what these mean. */
+  parentsKnownIds: string[];
+  childrenKnownIds: string[];
 }
 
 @Injectable()
@@ -126,9 +130,7 @@ export class PersonService {
   async list(input: ListPersonsInput): Promise<ListPersonsResult> {
     const where = this.searchFilter(input.search);
 
-    const items = await this.db
-      .select()
-      .from(persons)
+    const items = await personsWithVitals(this.db)
       .where(where)
       .orderBy(asc(persons.surname), asc(persons.given))
       .limit(input.limit)
@@ -184,8 +186,12 @@ export class PersonService {
       .filter((value): value is string => value !== null && value.trim() !== "");
   }
 
-  async byId(id: string): Promise<PersonRow> {
-    const [row] = await this.db.select().from(persons).where(eq(persons.id, id)).limit(1);
+  async byId(id: string): Promise<PersonWithVitals> {
+    return this.getOneWithVitals(this.db, id);
+  }
+
+  private async getOneWithVitals(db: Database, id: string): Promise<PersonWithVitals> {
+    const [row] = await personsWithVitals(db).where(eq(persons.id, id)).limit(1);
     if (!row) {
       throw new NotFoundException(`No person with id ${id}`);
     }
@@ -202,8 +208,10 @@ export class PersonService {
    * essentially never fire, but the collision is cheap to detect and cheap
    * to retry, so there's no reason not to handle it.
    */
-  async create(input: CreatePerson): Promise<PersonRow> {
-    const values = { ...input, birth: resolveDate(input.birth), death: resolveDate(input.death) };
+  async create(input: CreatePerson): Promise<PersonWithVitals> {
+    const { birth, birthPlace, death, deathPlace, ...personInput } = input;
+    const resolvedBirth = resolveDate(birth);
+    const resolvedDeath = resolveDate(death);
     for (let attempt = 1; ; attempt++) {
       try {
         // Each attempt must fully resolve before the next can know whether a
@@ -213,13 +221,15 @@ export class PersonService {
           const tx = createDatabase(client);
           const [row] = await tx
             .insert(persons)
-            .values({ ...values, publicId: generatePublicId() })
+            .values({ ...personInput, publicId: generatePublicId() })
             .returning();
           if (!row) {
             throw new Error("Insert returned no row");
           }
           await upsertPersonNode(this.pool, row.id, { client });
-          return row;
+          await this.upsertVitalEvent(tx, row.id, "birth", resolvedBirth, birthPlace);
+          await this.upsertVitalEvent(tx, row.id, "death", resolvedDeath, deathPlace);
+          return this.getOneWithVitals(tx, row.id);
         });
       } catch (error) {
         if (attempt >= 5 || !isUniqueViolation(error)) {
@@ -229,19 +239,81 @@ export class PersonService {
     }
   }
 
-  /** Relational fields only — the graph node is keyed by `id` alone, so nothing there changes. */
-  async update(input: UpdatePerson): Promise<PersonRow> {
-    const { id, ...patch } = input;
-    const values = { ...patch, birth: resolveDate(patch.birth), death: resolveDate(patch.death) };
-    const [row] = await this.db
-      .update(persons)
-      .set({ ...values, updatedAt: new Date() })
-      .where(eq(persons.id, id))
-      .returning();
-    if (!row) {
-      throw new NotFoundException(`No person with id ${id}`);
+  /**
+   * The graph node is keyed by `id` alone, so nothing there changes. Wrapped
+   * in `inGraphTransaction` purely for its plain-Postgres transaction
+   * semantics (the `persons` row and the birth/death event upserts below
+   * must commit together) — no graph write happens here.
+   */
+  async update(input: UpdatePerson): Promise<PersonWithVitals> {
+    const { id, birth, birthPlace, death, deathPlace, ...patch } = input;
+    const resolvedBirth = resolveDate(birth);
+    const resolvedDeath = resolveDate(death);
+    return inGraphTransaction(this.pool, async (client) => {
+      const tx = createDatabase(client);
+      const [row] = await tx
+        .update(persons)
+        .set({ ...patch, updatedAt: new Date() })
+        .where(eq(persons.id, id))
+        .returning({ id: persons.id });
+      if (!row) {
+        throw new NotFoundException(`No person with id ${id}`);
+      }
+      await this.upsertVitalEvent(tx, id, "birth", resolvedBirth, birthPlace);
+      await this.upsertVitalEvent(tx, id, "death", resolvedDeath, deathPlace);
+      return this.getOneWithVitals(tx, id);
+    });
+  }
+
+  /**
+   * Finds the person's existing "birth"/"death" `person_events` row, if any,
+   * and creates, updates, or deletes it to match — merging with whatever
+   * wasn't touched by this call, so `date` and `place` can be patched
+   * independently (mirrors `updatePersonEventSchema`'s own field-by-field
+   * optionality). A result with neither date nor place left deletes the row
+   * (and any citations pointing at it, same as `removeEvent`) rather than
+   * leaving an empty event behind — this is what makes `create`/`update`
+   * still feel like plain nullable `persons` columns from the caller's side,
+   * even though they're `person_events` rows underneath.
+   */
+  private async upsertVitalEvent(
+    tx: Database,
+    personId: string,
+    eventType: "birth" | "death",
+    date: HistoricalDate | null | undefined,
+    place: string | null | undefined,
+  ): Promise<void> {
+    if (date === undefined && place === undefined) return;
+
+    const [existing] = await tx
+      .select({ id: personEvents.id, date: personEvents.date, place: personEvents.place })
+      .from(personEvents)
+      .where(and(eq(personEvents.personId, personId), eq(personEvents.eventType, eventType)))
+      .limit(1);
+
+    const nextDate = date !== undefined ? date : (existing?.date ?? null);
+    const nextPlace = place !== undefined ? place : (existing?.place ?? null);
+
+    if (nextDate === null && nextPlace === null) {
+      if (existing) {
+        await tx.delete(personEvents).where(eq(personEvents.id, existing.id));
+        await tx
+          .delete(citations)
+          .where(and(eq(citations.factType, "event"), eq(citations.factId, existing.id)));
+      }
+      return;
     }
-    return row;
+
+    if (existing) {
+      await tx
+        .update(personEvents)
+        .set({ date: nextDate, place: nextPlace, updatedAt: new Date() })
+        .where(eq(personEvents.id, existing.id));
+    } else {
+      await tx
+        .insert(personEvents)
+        .values({ personId, eventType, date: nextDate, place: nextPlace });
+    }
   }
 
   /**
@@ -286,7 +358,7 @@ export class PersonService {
    * `person-photo.controller.ts`, the one REST endpoint in an otherwise
    * all-tRPC API — multipart file upload doesn't fit tRPC's JSON contract.
    */
-  async setPhoto(id: string, file: UploadedPhoto): Promise<PersonRow> {
+  async setPhoto(id: string, file: UploadedPhoto): Promise<PersonWithVitals> {
     const person = await this.byId(id);
     const uploadsDir = this.config.getOrThrow<string>("UPLOADS_DIR");
     await mkdir(uploadsDir, { recursive: true });
@@ -299,33 +371,25 @@ export class PersonService {
       await rm(join(uploadsDir, person.photoPath), { force: true });
     }
 
-    const [row] = await this.db
+    await this.db
       .update(persons)
       .set({ photoPath: filename, updatedAt: new Date() })
-      .where(eq(persons.id, id))
-      .returning();
-    if (!row) {
-      throw new NotFoundException(`No person with id ${id}`);
-    }
-    return row;
+      .where(eq(persons.id, id));
+    return this.getOneWithVitals(this.db, id);
   }
 
-  async removePhoto(id: string): Promise<PersonRow> {
+  async removePhoto(id: string): Promise<PersonWithVitals> {
     const person = await this.byId(id);
     if (person.photoPath) {
       const uploadsDir = this.config.getOrThrow<string>("UPLOADS_DIR");
       await rm(join(uploadsDir, person.photoPath), { force: true });
     }
 
-    const [row] = await this.db
+    await this.db
       .update(persons)
       .set({ photoPath: null, updatedAt: new Date() })
-      .where(eq(persons.id, id))
-      .returning();
-    if (!row) {
-      throw new NotFoundException(`No person with id ${id}`);
-    }
-    return row;
+      .where(eq(persons.id, id));
+    return this.getOneWithVitals(this.db, id);
   }
 
   /** Direct parents, spouses and children, resolved to full rows for display. */
@@ -340,9 +404,9 @@ export class PersonService {
       ...new Set([...parentEdges, ...spouseNodes, ...childNodes].map((node) => node.personId)),
     ];
     const rows =
-      ids.length > 0 ? await this.db.select().from(persons).where(inArray(persons.id, ids)) : [];
+      ids.length > 0 ? await personsWithVitals(this.db).where(inArray(persons.id, ids)) : [];
     const byId = new Map(rows.map((row) => [row.id, row]));
-    const toRows = (nodes: PedigreeNode[]): PersonRow[] =>
+    const toRows = (nodes: PedigreeNode[]): PersonWithVitals[] =>
       nodes.flatMap((node) => byId.get(node.personId) ?? []);
 
     return {
@@ -407,13 +471,15 @@ export class PersonService {
     const graph = await treeAround(this.pool, id, ancestorGenerations, descendantGenerations);
     const people =
       graph.personIds.length > 0
-        ? await this.db.select().from(persons).where(inArray(persons.id, graph.personIds))
+        ? await personsWithVitals(this.db).where(inArray(persons.id, graph.personIds))
         : [];
     return {
       rootId: id,
       people,
       parentEdges: graph.parentEdges,
       spouseEdges: graph.spouseEdges,
+      parentsKnownIds: graph.parentsKnownIds,
+      childrenKnownIds: graph.childrenKnownIds,
     } satisfies TreeResult;
   }
 
@@ -472,7 +538,33 @@ export class PersonService {
       );
   }
 
+  /**
+   * "birth"/"death" are guarded here, not by a database constraint: the
+   * person page treats them as a single pair of fields (via `update`'s
+   * `upsertVitalEvent`), so a second one arriving through this generic
+   * add-event path — the frontend's own "+ Add event" dialog excludes them
+   * from its type choices, but this is the actual enforcement boundary —
+   * would leave two "canonical" birth dates with no way to tell which one
+   * the person form should show.
+   */
   async addEvent(input: CreatePersonEvent): Promise<PersonEventRow> {
+    if (input.eventType === "birth" || input.eventType === "death") {
+      const [existing] = await this.db
+        .select({ id: personEvents.id })
+        .from(personEvents)
+        .where(
+          and(
+            eq(personEvents.personId, input.personId),
+            eq(personEvents.eventType, input.eventType),
+          ),
+        )
+        .limit(1);
+      if (existing) {
+        throw new BadRequestException(
+          `This person already has a ${input.eventType} event — edit it from the person page instead of adding another.`,
+        );
+      }
+    }
     const values = { ...input, date: resolveDate(input.date) };
     const [row] = await this.db.insert(personEvents).values(values).returning();
     if (!row) {

@@ -6,11 +6,11 @@ A living backlog for the genealogy app. Status markers: ✅ done, 🚧 planned, 
 
 - ✅ Person records: given names, last name, sex, title/prefix, suffix, one or more nicknames/preferred names, birth/death with approximate or range dates, places, notes
 - ✅ Alternate names: maiden, married, and spelling-variant names, each with its own note (add/remove; no in-place edit yet)
-- ✅ Life events beyond birth/death: christening, burial, cremation, immigration, emigration, naturalization, residence, occupation, other — each with a date, place, and description
+- ✅ Life events, birth and death included: christening, burial, cremation, immigration, emigration, naturalization, residence, occupation, other, and (since 2026-09-23) birth/death themselves — each with a date, place, and notes (markdown, `MarkdownEditor`/`MarkdownContent` — was a plain-text "description" until 2026-09-23). Birth/death are ordinary `person_events` rows now, not separate `persons` columns (see "Birth and death are events" in TECH_STACK.md) — they used to be the one thing missing from the "Life events" list on a person's own page despite always having a date/place/citations like any other event; created/edited as the usual dedicated pair of fields on the person form (so there's still exactly one of each), but they show up, and are fully editable (date, place, notes, detail like cause of death), from the Life events list like everything else
 - ✅ Marriage/union detail: status (married/divorced/partnership/annulled/widowed), start/end dates and places per spousal pair, supporting more than one union over time (divorce, remarriage)
 - ✅ Relationships: parents, spouses, children, with parentage type (birth/adopted/step/foster/unknown)
 - ✅ Living/deceased flag per person, ready for privacy rules once sharing exists
-- ✅ Sources & citations: attach evidence to a person, or to a specific fact about them (birth, death, an alternate name, a life event, a union), with a confidence level (low/medium/high/proven), page/volume/entry ID/certificate number, and a note
+- ✅ Sources & citations: attach evidence to a person, or to a specific fact about them (an alternate name, a life event — birth/death included — or a union), with a confidence level (low/medium/high/proven), page/volume/entry ID/certificate number, and a note. A life event's own edit dialog has a "Sources" section — see/remove what's already cited and cite a new (or newly-created-right-there) source without leaving the dialog, rather than only from the person-level "Sources & citations" card
 - 🚧 Media attachments: scanned documents (certificates, deeds, census pages) attached to a person or a citation — see "Photos & albums via Immich" under Ideas for the separate plan covering photos specifically
 - ✅ Search people by name
 - ✅ A short, human-readable public id per person (FamilySearch-style, e.g. `LZ4Y-9K2`) — always starts with a letter, distinct from the internal database id, shown as a subtle click-to-copy indicator in the people list and on a person's own page
@@ -23,7 +23,7 @@ A living backlog for the genealogy app. Status markers: ✅ done, 🚧 planned, 
 - ✅ Person profile photo: a primary portrait on the person's header card, uploaded to local disk on the backend (see `UPLOADS_DIR`)
 - ✅ Structured per-event-type detail fields (ship & port for immigration, employer & job title for occupation, cemetery & plot for burial, and more), stored in the existing `details` key/value bag
 - ✅ Distinguish "other" life events from one another via a required short label (named event types don't need one)
-- ✅ Cite evidence against a specific fact (a birth date, a life event, an alternate name, a union), not just the person as a whole
+- ✅ Cite evidence against a specific fact (a life event — birth/death included — an alternate name, or a union), not just the person as a whole
 - ✅ Sort life events chronologically on the person page (oldest first, undated events last)
 - ✅ Edit an alternate name after adding it, rather than only add/remove
 - ✅ Confirm before removing a relationship, alternate name, or life event, via a new `alert-dialog` component in the shared library
@@ -34,13 +34,27 @@ A living backlog for the genealogy app. Status markers: ✅ done, 🚧 planned, 
 
 ## Tree & visualization
 
-- ✅ Tree view (`/tree`, nav link "Tree"): ancestors and descendants around one person, four generations either way by default, rendered with React Flow (`@xyflow/react`) + elkjs. A "View in tree" row action on the person list (the `Network` icon) links straight to `/tree?personId=...`; with no `personId`, the page shows a person search instead of a dead end. Clicking a non-root node's own tree icon re-centers on them; clicking their name goes to their person page.
+- ✅ Tree view (`/tree`, nav link "Tree"): ancestors and descendants around one person, four generations either way by default, rendered with React Flow (`@xyflow/react`) + elkjs. A "View in tree" row action on the person list (the `Network` icon) links straight to `/tree?personId=...`; with no `personId`, the page shows a person search instead of a dead end. Clicking a non-root node's own tree icon re-centers on them. Cards are sex-accented (a colored left stripe + tinted silhouette placeholder, no photo needed) and spouses are joined by a short solid "marriage" connector through dedicated left/right handles, distinct from the parent/child lines through the top/bottom handles.
 
   Layout is a hybrid, not a single elk call: elk's layered algorithm can only place a node relative to its edges, and a strictly layered (Sugiyama-style) algorithm always treats an edge as "target is at least one layer below source" — fed a spouse edge, it either ignores the same-row intent or shifts one node down a layer to make the edge routable, so partitioning-by-generation doesn't work as it appears to promise (verified empirically: it only constrains cross-partition ordering, not that two same-partition nodes land in the same layer). So generation (row) is computed once, in-house, via a flood-fill from the root (`computeGenerations` in `apps/frontend/src/lib/tree-layout.ts`: +1 down a `PARENT_OF` edge, -1 up, +0 across a spouse edge), and that becomes `y` directly. elk only ever sees `PARENT_OF` edges, deciding left-to-right ordering (crossing minimization) within each already-fixed row; a spouse with no blood edge of their own (a pure in-law) is placed beside whichever partner elk did position, on the same row.
 
   Backend: `person.tree` procedure (`apps/backend/src/person/person.router.ts`) → `PersonService.tree` → `treeAround` (`packages/db/src/graph.ts`), which walks one generation at a time via `parentsOf`/`childrenOf` rather than a single variable-length Cypher path query — AGE's `agtype` decoding only handles one vertex/edge/path per column, not the list form `nodes(path)`/`relationships(path)` would return.
 
+- ✅ Clicking a card opens a docked detail panel instead of navigating away — name, lifespan, "View full profile", "Center tree here", and the person's parents/spouses/children with add/expand actions (below). Keeps the canvas and your scroll position intact; profile navigation is now an explicit action in the panel rather than the card's default click.
+
+- ✅ Add a relative directly from the tree: the panel offers "+ Add father/mother/spouse/child" (search an existing person or create a blank one to link, then fill in details later from their own page) wherever the tree can vouch the slot is genuinely empty — not just unfetched. `treeAround` now reports `parentsKnownIds`/`childrenKnownIds`: exactly who had their _own_ full parent/child set queried, since the walk is asymmetric (an ancestor's parents are verified but their other children — your aunts and uncles — never are, and the mirror image holds for descendants). The tree view only offers "+ Add" where that's actually known; otherwise it offers "Load ancestors"/"Load descendants" instead (below).
+
+- ✅ Expand on demand: a node whose further ancestors/descendants were never fetched shows "Load ancestors"/"Load descendants" in the panel, reusing the existing `person.relatives` procedure (no new endpoint) to pull in one more generation — plus each newly-revealed person's own spouse, one hop, matching what the initial fetch does — and merges it into the current layout without refetching or rearranging the rest of the tree.
+
 - 🚧 Toggle between ancestor-only / descendant-only / both (currently always both)
+- 🚧 Remove a relationship from the tree panel (currently add-only there; removal still requires the full person page)
+
+## Photos
+
+- ✅ Family photo library via [Immich](https://immich.app), self-hosted alongside this app rather than built from scratch — see "Photos & albums via Immich" in TECH_STACK.md for the full design and why. Nav link "Photos" → `/photos`: an album grid (from Immich's own `GET /albums`) and, per album, a photo grid. A person's own page gets a "Photos" card: linked faces as removable chips, a thumbnail grid of every photo across all of them, and "+ Link a face" to browse Immich's detected people (paginated, named or not) and link one. Browse-and-link only — photos are added to the library through Immich itself (its web UI, mobile app auto-backup, or bulk import), never through this app.
+- 🚧 Immich is opt-in infrastructure (`docker compose --profile immich up -d`, not part of a plain `docker compose up`) — self-hosted deployment packaging still needs to document this choice and its ~6-8GB RAM cost.
+- 🚧 Picking a person's profile photo (the header portrait, still local-disk upload only) from one of their linked Immich photos — deliberately deferred past this first version; see TECH_STACK.md.
+- 💡 Structured trial of Immich's face clustering against old/scanned/faded photographs specifically — its docs don't say how well it performs outside phone-camera-backup use, and that matters a lot for a genealogy library skewed toward pre-digital photos.
 
 ## Import / export
 

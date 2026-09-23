@@ -55,6 +55,16 @@ export const personSchema = personNameSchema.extend({
    * never through `updatePersonSchema`.
    */
   photoPath: z.string().nullable(),
+  /**
+   * Not columns on the `persons` table — birth and death are ordinary
+   * `person_events` rows (see "Birth and death are events" in
+   * TECH_STACK.md), assembled onto this shape server-side
+   * (`personsWithVitals` in `@genealogy/db`) so every existing caller
+   * (lifespan/age display, the person form, list/tree/print) keeps working
+   * against the same `{birth, birthPlace, death, deathPlace}` fields it
+   * always has. `PersonService` is what turns a write to these fields into
+   * the matching `person_events` upsert.
+   */
   birth: historicalDateSchema.nullable(),
   birthPlace: z.string().nullable(),
   death: historicalDateSchema.nullable(),

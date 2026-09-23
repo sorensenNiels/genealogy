@@ -120,6 +120,13 @@ function RootLayout() {
           >
             Tree
           </Link>
+          <Link
+            to="/photos"
+            className="text-sm text-muted-foreground hover:text-foreground"
+            activeProps={{ className: "text-sm text-foreground font-medium" }}
+          >
+            Photos
+          </Link>
           <span className="ml-auto flex items-center gap-3">
             <SettingsLink />
             <ThemeToggle />

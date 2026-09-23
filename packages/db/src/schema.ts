@@ -49,12 +49,11 @@ export const persons = pgTable(
     // own origin, so this stays portable across environments.
     photoPath: text("photo_path"),
 
-    // Stored as jsonb rather than `date` because genealogical dates are ranges
-    // and approximations more often than they are days. See HistoricalDate.
-    birth: jsonb("birth").$type<HistoricalDate>(),
-    birthPlace: text("birth_place"),
-    death: jsonb("death").$type<HistoricalDate>(),
-    deathPlace: text("death_place"),
+    // No birth/death columns here — they're ordinary `person_events` rows
+    // (eventType "birth"/"death"), exactly like christening or burial, not a
+    // special case. See "Birth and death are events" in TECH_STACK.md for why,
+    // and `personsWithVitals` in vitals.ts for how the API still hands back a
+    // `{birth, birthPlace, death, deathPlace}` shape despite that.
 
     // A deliberate flag rather than an inference from `death` — see the
     // matching comment on Person in packages/core/src/person.ts.
@@ -96,10 +95,18 @@ export const personNames = pgTable(
 );
 
 /**
- * Life events beyond birth/death, which stay as columns on `persons` since
- * every person has exactly one of each. Everything here — residence history
- * and occupations especially — can happen zero to many times per person,
- * which is what a separate table buys over more `persons` columns.
+ * Every dated life event a person has — birth and death included. Residence
+ * and occupation especially can happen zero to many times per person, which
+ * is what a separate table buys over columns on `persons`; birth and death
+ * are structurally no different from christening or burial (a date, a place,
+ * type-specific detail, evidence via `citations`), so they live here too
+ * rather than being special-cased as `persons` columns the way they used to
+ * be — see "Birth and death are events" in TECH_STACK.md. The application
+ * still treats "birth"/"death" as at-most-one-per-person (enforced in
+ * `PersonService.addEvent`, not by this table), and the person page still
+ * edits them as a dedicated pair of fields rather than through the generic
+ * add-event flow — `vitals.ts`'s `personsWithVitals` is what reassembles them
+ * onto the API's person shape for that.
  */
 export const personEvents = pgTable(
   "person_events",
@@ -110,9 +117,10 @@ export const personEvents = pgTable(
       .references(() => persons.id, { onDelete: "cascade" }),
     // Plain text, not an enum: the set of event types is user-configurable
     // (see `configurableOptions` below, topic "event_type") — a new one must
-    // not require a migration. The literal "other" is still meaningful to
-    // application code (see person-event.ts); it's seeded as a protected,
-    // undeletable option rather than enforced by this column's type.
+    // not require a migration. The literals "birth"/"death"/"other" are still
+    // meaningful to application code (see person-event.ts and
+    // `PersonService`); all three are seeded as protected, undeletable
+    // options rather than enforced by this column's type.
     eventType: text("event_type").notNull(),
     // Distinguishes one "other" event from another; named types don't need it.
     label: text("label"),
@@ -121,7 +129,11 @@ export const personEvents = pgTable(
     // A loose key/value bag (ship name + port, employer + job title, cemetery
     // + plot) rather than a rigid per-type schema — see EventDetails.
     details: jsonb("details").$type<EventDetails>(),
-    description: text("description"),
+    // Free-form markdown, same convention as `persons.notes`/`unions.notes`/
+    // `personNames.notes` — edited with `MarkdownEditor`, rendered with
+    // `MarkdownContent`, never a plain text field. Was "description" (a plain
+    // `Input`) until 2026-09-23.
+    notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -180,8 +192,6 @@ export const sources = pgTable("sources", {
 
 export const citationFactTypeEnum = pgEnum("citation_fact_type", [
   "person",
-  "birth",
-  "death",
   "name",
   "event",
   "union",
@@ -194,10 +204,12 @@ export const citationFactTypeEnum = pgEnum("citation_fact_type", [
  *
  * `factId` is deliberately not a foreign key: which table it points into
  * depends on `factType` (`personNames`/`personEvents`/`unions`), and Postgres
- * has no polymorphic FK. It's null for "person"/"birth"/"death", which don't
- * have a row of their own to point at — `personId` + `factType` alone
- * identifies those. The application is responsible for clearing citations
- * whose fact row was deleted (see `removeName`/`removeEvent` in
+ * has no polymorphic FK. It's null only for "person" (evidence for the person
+ * as a whole, not one fact), where `personId` + `factType` alone identifies
+ * it — birth and death used to be a second null-`factId` case here too,
+ * before they became ordinary `person_events` rows with a real id (see
+ * `personEvents` above). The application is responsible for clearing
+ * citations whose fact row was deleted (see `removeName`/`removeEvent` in
  * `person.service.ts`), since the database can't cascade a reference it
  * doesn't know is a foreign key.
  */
@@ -322,6 +334,33 @@ export const configurableOptions = pgTable(
   ],
 );
 
+/**
+ * Links a genealogy person to an Immich "Person" (a face-clustering result —
+ * see "Photos & albums via Immich" in FEATURES.md). Many Immich person ids
+ * can map to one genealogy person — the same real person photographed
+ * decades apart plausibly lands in two separate face clusters — but
+ * `immichPersonId` is unique on its own: one face cluster represents at most
+ * one genealogy person. Immich's own `Person` object has no field for an
+ * external id (checked its `PersonCreateDto`/`PersonUpdateDto` schema
+ * directly), so this mapping has to live here, the same way
+ * `citations.factId` resolves against a table this app owns rather than
+ * something the external system tracks for us. No photo bytes or metadata
+ * live here — this is purely the link; everything else is fetched live from
+ * Immich through the backend proxy on every read.
+ */
+export const personImmichLinks = pgTable(
+  "person_immich_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => persons.id, { onDelete: "cascade" }),
+    immichPersonId: text("immich_person_id").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("person_immich_links_person_idx").on(table.personId)],
+);
+
 export const schema = {
   persons,
   personNames,
@@ -330,6 +369,7 @@ export const schema = {
   sources,
   citations,
   configurableOptions,
+  personImmichLinks,
   sexEnum,
   citationFactTypeEnum,
   user,
@@ -346,3 +386,4 @@ export type UnionRow = typeof unions.$inferSelect;
 export type SourceRow = typeof sources.$inferSelect;
 export type CitationRow = typeof citations.$inferSelect;
 export type ConfigurableOptionRow = typeof configurableOptions.$inferSelect;
+export type PersonImmichLinkRow = typeof personImmichLinks.$inferSelect;

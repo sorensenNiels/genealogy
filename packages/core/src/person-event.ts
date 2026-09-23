@@ -3,10 +3,12 @@ import { z } from "zod";
 import { historicalDateSchema, personIdSchema } from "./person.js";
 
 /**
- * Life events beyond birth/death, which stay as first-class `Person` fields
- * since every person has exactly one of each. Everything here can happen zero
- * to many times per person — residence and occupation especially — which is
- * why it lives in its own table instead of more columns on `persons`.
+ * Every dated life event a person has, birth and death included — see
+ * "Birth and death are events" in TECH_STACK.md. Most can happen zero to many
+ * times per person (residence and occupation especially), which is why this
+ * lives in its own table rather than more columns on `persons`; birth/death
+ * are the two exceptions the application still treats as at-most-one (see
+ * `PersonService.addEvent`), not something this schema enforces.
  *
  * Not a closed enum — the set of event types is user-configurable (see
  * `configurable-options.ts`, topic `"event_type"`), so this only checks that
@@ -42,7 +44,8 @@ export const personEventSchema = z.object({
   date: historicalDateSchema.nullable(),
   place: z.string().nullable(),
   details: eventDetailsSchema.nullable(),
-  description: z.string().nullable(),
+  /** Free-form markdown — same convention as a person's/union's/alternate name's `notes`. */
+  notes: z.string().nullable(),
 });
 export type PersonEvent = z.infer<typeof personEventSchema>;
 
@@ -54,7 +57,7 @@ export const createPersonEventSchema = z
     date: historicalDateSchema.nullable().default(null),
     place: z.string().nullable().default(null),
     details: eventDetailsSchema.nullable().default(null),
-    description: z.string().nullable().default(null),
+    notes: z.string().nullable().default(null),
   })
   .refine((data) => data.eventType !== "other" || (data.label?.trim().length ?? 0) > 0, {
     message: 'A label is required for "other" events',
@@ -70,7 +73,7 @@ export const updatePersonEventSchema = z
     date: historicalDateSchema.nullable().optional(),
     place: z.string().nullable().optional(),
     details: eventDetailsSchema.nullable().optional(),
-    description: z.string().nullable().optional(),
+    notes: z.string().nullable().optional(),
   })
   .refine(
     (data) => data.eventType !== "other" || (data.label?.trim().length ?? 0) > 0,

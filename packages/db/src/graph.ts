@@ -286,6 +286,21 @@ export interface TreeGraph {
   parentEdges: TreeEdge[];
   /** Undirected, each pair reported once. */
   spouseEdges: Array<[string, string]>;
+  /**
+   * Who we actually asked "who are your parents" / "who are your children" —
+   * as opposed to merely appearing in `personIds` because someone else's
+   * query happened to mention them. The walk is asymmetric: an ancestor's
+   * *parents* are verified (the walk keeps going up from them) but their
+   * *other* children — the root's aunts and uncles — never are, and the
+   * mirror image holds for descendants. A person reached only via
+   * `spouseEdges` (an in-law with no `PARENT_OF` edge of their own in this
+   * tree) is asked neither. The tree view uses this to decide whether an
+   * "Add father" / "Add child" action is safe to offer (we know the slot is
+   * really empty) versus whether to offer "load more" instead (we simply
+   * never looked).
+   */
+  parentsKnownIds: string[];
+  childrenKnownIds: string[];
 }
 
 /**
@@ -321,7 +336,8 @@ export async function treeAround(
     startGenerations: number,
     fetchEdges: (id: string) => Promise<TEdge[]>,
     toTreeEdge: (frontierId: string, edge: TEdge) => TreeEdge,
-  ) => {
+  ): Promise<Set<string>> => {
+    const queriedIds = new Set<string>();
     let frontier = [personId];
     for (let generation = 0; generation < startGenerations && frontier.length > 0; generation++) {
       // Each generation's frontier must be resolved before the next can be
@@ -332,6 +348,7 @@ export async function treeAround(
       );
       const next = new Set<string>();
       for (const { id, edges } of results) {
+        queriedIds.add(id);
         for (const edge of edges) {
           const treeEdge = toTreeEdge(id, edge);
           const key = `${treeEdge.parentId}->${treeEdge.childId}`;
@@ -345,14 +362,15 @@ export async function treeAround(
       }
       frontier = [...next];
     }
+    return queriedIds;
   };
 
-  await walk(
+  const parentsKnownIds = await walk(
     upDepth,
     (id) => parentsOf(pool, id, options),
     (childId, edge) => ({ parentId: edge.personId, childId, parentage: edge.parentage }),
   );
-  await walk(
+  const childrenKnownIds = await walk(
     downDepth,
     (id) => childrenOf(pool, id, options),
     (parentId, edge) => ({ parentId, childId: edge.personId, parentage: edge.parentage }),
@@ -373,7 +391,13 @@ export async function treeAround(
     }
   }
 
-  return { personIds: [...personIds], parentEdges, spouseEdges };
+  return {
+    personIds: [...personIds],
+    parentEdges,
+    spouseEdges,
+    parentsKnownIds: [...parentsKnownIds],
+    childrenKnownIds: [...childrenKnownIds],
+  };
 }
 
 /**

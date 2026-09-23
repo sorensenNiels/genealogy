@@ -113,6 +113,27 @@
       "when": 1790075412166,
       "tag": "0015_perpetual_red_wolf",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790181606773,
+      "tag": "0016_tricky_proudstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790184464007,
+      "tag": "0017_lame_adam_warlock",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790189015399,
+      "tag": "0018_unusual_shinobi_shaw",
+      "breakpoints": true
     }
   ]
 }
