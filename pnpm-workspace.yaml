@@ -86,6 +86,12 @@ catalog:
   tailwind-merge: 3.7.0
   lucide-react: 1.47.0
 
+  # --- markdown notes (see "Markdown notes" in TECH_STACK.md) ---
+  # MDXEditor for the WYSIWYG editing side (Lexical-based, markdown in/out
+  # natively) and react-markdown for read-only rendering elsewhere.
+  "@mdxeditor/editor": 4.2.5
+  react-markdown: 10.1.0
+
   # --- auth ---
   better-auth: 1.7.5
 

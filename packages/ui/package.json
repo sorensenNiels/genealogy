@@ -17,11 +17,13 @@
     "clean": "rm -rf .turbo *.tsbuildinfo"
   },
   "dependencies": {
+    "@mdxeditor/editor": "catalog:",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "lucide-react": "catalog:",
     "motion": "catalog:",
     "react-aria-components": "catalog:",
+    "react-markdown": "catalog:",
     "tailwind-merge": "catalog:"
   },
   "devDependencies": {

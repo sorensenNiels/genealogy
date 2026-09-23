@@ -1,6 +1,7 @@
 import type { AppRouter } from "@genealogy/backend";
 import { formatAge, formatFullPersonName, formatLifespan, formatPersonName } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
+import { MarkdownContent } from "@genealogy/ui/components/markdown-content";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
@@ -121,7 +122,9 @@ function PrintRoute() {
             {record.notes && (
               <>
                 <dt className="text-muted-foreground">Notes</dt>
-                <dd>{record.notes}</dd>
+                <dd>
+                  <MarkdownContent>{record.notes}</MarkdownContent>
+                </dd>
               </>
             )}
           </dl>
@@ -138,7 +141,7 @@ function PrintRoute() {
                   </span>{" "}
                   {[name.given, name.surname].filter(Boolean).join(" ")}
                   {name.since ? ` (since ${formatDisplayDate(name.since)})` : ""}
-                  {name.notes ? ` — ${name.notes}` : ""}
+                  {name.notes && <MarkdownContent className="mt-0.5">{name.notes}</MarkdownContent>}
                 </li>
               ))}
             </ul>

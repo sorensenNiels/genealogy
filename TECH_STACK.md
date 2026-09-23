@@ -327,6 +327,46 @@ Points that will bite you, coming from either Radix or Base UI:
   new code. Plain native `<button>` elements (not this package's `Button`)
   are unaffected and keep using `onClick`.
 
+### Markdown notes: MDXEditor, not Tiptap
+
+Every `notes` field across the app (`persons`, `personNames`, `unions`) is
+stored as plain markdown text and edited through a shared WYSIWYG component,
+`@genealogy/ui/components/markdown-editor`, rather than a plain `Input` — see
+the "notes field" rule in [CLAUDE.md](CLAUDE.md#adding-to-the-stack).
+Read-only display goes through the counterpart `markdown-content`, built on
+`react-markdown`.
+
+Checked against the "Recommending or adding a library" rule before adding
+either:
+
+- **[MDXEditor](https://mdxeditor.dev/) (`@mdxeditor/editor`) over
+  [Tiptap](https://tiptap.dev/) (`@tiptap/react`) for the editor itself.**
+  Both are actively maintained — `@mdxeditor/editor` 4.2.5 and `@tiptap/react`
+  3.31.3 were each published within the prior three weeks at the time of this
+  decision — but they differ on what they consider their native storage
+  format. MDXEditor is built (on Lexical) to parse markdown in and serialize
+  markdown back out on every change, so a `notes` field round-trips as plain
+  text with no extra layer. Tiptap's native format is HTML/JSON; getting
+  markdown in and out of it needs a community extension
+  (`tiptap-markdown`), which had gone unpublished for over a year against a
+  Tiptap core that had since moved from v2 to v3 — exactly the kind of
+  plausible-but-unmaintained dependency this rule exists to catch, so it was
+  ruled out here despite Tiptap's larger ecosystem.
+- **`react-markdown` for read-only rendering, not MDXEditor's own `readOnly`
+  mode.** MDXEditor's docs say plainly not to use it that way — "don't use
+  this mode to render content for consumption." `react-markdown`'s own last
+  npm release is over a year old, but its repository had commits within the
+  prior month at the time of this decision and a small, well-triaged open
+  issue count — a stable, low-churn library rather than an abandoned one, the
+  distinction this rule asks for.
+
+Both only render client-side: `MarkdownEditor` follows `use-theme.ts`'s
+placeholder-then-swap pattern (a plain `<textarea>` bound to the same value
+until mounted, then the real editor), since Lexical touches `contentEditable`
+at mount and cannot run during SSR. `MarkdownContent` has no such
+restriction — `react-markdown` touches no browser APIs and renders identically
+server- and client-side.
+
 ### Dark mode: a hand-rolled toggle, not `next-themes`
 
 Dark mode is a plain `.dark` class on `<html>`, driven by

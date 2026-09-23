@@ -256,3 +256,14 @@ type="submit"`. It shows a small red dot once the form is dirty, and swaps
   separate check bypassing the component. The only forms exempt from this are
   ones with no clean/dirty baseline to compare against — sign in/sign up
   (`login.tsx`) — which stay plain `Button`s.
+- **A notes field: always `MarkdownEditor` for editing, `MarkdownContent` for
+  read-only display** (`@genealogy/ui/components/markdown-editor` /
+  `markdown-content`), never a plain `Input`/`Textarea` or raw text
+  interpolation. The field itself stays plain `text` in the schema — the
+  markdown is just the convention for what that text contains, the same way a
+  configurable-options key is "just text" until the app agrees what it means.
+  See "Markdown notes" in [TECH_STACK.md](TECH_STACK.md) for why MDXEditor was
+  picked over Tiptap. `MarkdownEditor` is SSR-unsafe (Lexical touches
+  `contentEditable` at mount) and follows the same placeholder-then-swap
+  pattern as `use-theme.ts`, so it's already safe to drop into any form
+  without extra guarding.

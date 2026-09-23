@@ -38,6 +38,8 @@ import {
 } from "@genealogy/ui/components/dialog";
 import { HistoricalDateInput } from "@genealogy/ui/components/historical-date-input";
 import { Input } from "@genealogy/ui/components/input";
+import { MarkdownContent } from "@genealogy/ui/components/markdown-content";
+import { MarkdownEditor } from "@genealogy/ui/components/markdown-editor";
 import { Popover, PopoverContent } from "@genealogy/ui/components/popover";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import {
@@ -116,6 +118,7 @@ function ComponentsShowcase() {
   const [checked, setChecked] = useState(true);
   const [titlePrefix, setTitlePrefix] = useState("");
   const [suffix, setSuffix] = useState("Jr.");
+  const [notes, setNotes] = useState("Known as **Grandpa Joe** — served in the *merchant navy*.");
 
   const options = SAMPLE_PEOPLE.filter((person) =>
     person.name.toLowerCase().includes(query.toLowerCase()),
@@ -182,6 +185,19 @@ function ComponentsShowcase() {
 
       <Section title="Copyable Text">
         <CopyableText value="LZ4Y-9K2" />
+      </Section>
+
+      <Section title="Markdown Editor">
+        <div className="w-full max-w-md space-y-1">
+          <p className="text-xs text-muted-foreground">Editing</p>
+          <MarkdownEditor aria-label="Notes" value={notes} onChange={setNotes} />
+        </div>
+        <div className="w-full max-w-md space-y-1">
+          <p className="text-xs text-muted-foreground">Rendered (MarkdownContent)</p>
+          <div className="rounded-md border p-3">
+            <MarkdownContent>{notes}</MarkdownContent>
+          </div>
+        </div>
       </Section>
 
       <Section title="Historical Date Input">

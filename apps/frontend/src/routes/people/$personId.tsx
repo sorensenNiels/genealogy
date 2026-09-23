@@ -61,7 +61,8 @@ import {
   type HistoricalDatePreview,
 } from "@genealogy/ui/components/historical-date-input";
 import { Input } from "@genealogy/ui/components/input";
-import { Popover, PopoverContent } from "@genealogy/ui/components/popover";
+import { MarkdownContent } from "@genealogy/ui/components/markdown-content";
+import { MarkdownEditor } from "@genealogy/ui/components/markdown-editor";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import {
   Select,
@@ -71,11 +72,20 @@ import {
   SelectValue,
 } from "@genealogy/ui/components/select";
 import { Switch } from "@genealogy/ui/components/switch";
+import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
-import { Cake, CameraIcon, Cross, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import {
+  Cake,
+  CameraIcon,
+  Cross,
+  PencilIcon,
+  PlusIcon,
+  Trash2Icon,
+  UnlinkIcon,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 
@@ -105,6 +115,7 @@ import {
   updateEvent,
   updateName,
   updatePerson,
+  updateUnion,
 } from "../../server/functions/person.functions";
 import { listOptions } from "../../server/functions/settings.functions";
 import {
@@ -673,11 +684,11 @@ function PersonFields({
           )}
           <form.Field name="notes">
             {(field) => (
-              <LabeledField label="Notes" className="sm:col-span-2">
-                <Input
+              <LabeledField label="Notes" className="sm:col-span-2" asDiv>
+                <MarkdownEditor
+                  aria-label="Notes"
                   value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
+                  onChange={field.handleChange}
                 />
               </LabeledField>
             )}
@@ -859,17 +870,29 @@ function RemoveButton({
 function LabeledField({
   label,
   className,
+  /**
+   * A plain `<label>` forwards a click anywhere inside it (that isn't
+   * itself a labelable element) to the *first* labelable descendant —
+   * fine when that's the one input/select this wraps, wrong when the
+   * child is a widget with its own internal buttons that happen to come
+   * first in the DOM (MarkdownEditor's toolbar). Set this for a child
+   * that already carries its own `aria-label` and renders a plain `<div>`
+   * instead, so text-area clicks stop silently also clicking "Undo".
+   */
+  asDiv = false,
   children,
 }: {
   label: string;
   className?: string;
+  asDiv?: boolean;
   children: ReactNode;
 }) {
+  const Tag = asDiv ? "div" : "label";
   return (
-    <label className={`space-y-1 text-sm ${className ?? ""}`}>
+    <Tag className={`block space-y-1 text-sm ${className ?? ""}`}>
       <span className="text-muted-foreground">{label}</span>
       {children}
-    </label>
+    </Tag>
   );
 }
 
@@ -937,6 +960,18 @@ function RelativesSection({
               (candidate.personAId === personId && candidate.personBId === relative.id) ||
               (candidate.personBId === personId && candidate.personAId === relative.id),
           );
+          if (kind === "spouse") {
+            return (
+              <SpouseRow
+                key={relative.id}
+                relative={relative}
+                union={union}
+                options={options}
+                onChanged={onChanged}
+                onRemove={() => void remove(relative.id)}
+              />
+            );
+          }
           return (
             <div key={relative.id} className="flex items-center justify-between gap-2 text-sm">
               <div>
@@ -950,17 +985,15 @@ function RelativesSection({
                     <span className="ml-1 text-muted-foreground">({formatLifespan(relative)})</span>
                   )}
                 </Link>
-                {union && (
-                  <p className="text-xs text-muted-foreground">
-                    {labelFor(options, "union_status", union.status)}
-                    {union.startDate ? ` · ${formatDisplayDate(union.startDate)}` : ""}
-                    {union.startPlace ? ` in ${union.startPlace}` : ""}
-                  </p>
-                )}
               </div>
               <RemoveButton
                 itemLabel={`the relationship with ${formatPersonName(relative)}`}
                 onConfirm={() => void remove(relative.id)}
+                trigger={
+                  <Button type="button" variant="ghost" size="icon" aria-label="Remove child">
+                    <UnlinkIcon className="size-4" />
+                  </Button>
+                }
               />
             </div>
           );
@@ -1030,6 +1063,190 @@ function OrphanedUnionRow({
   );
 }
 
+/**
+ * A linked spouse always has a union behind it — `AddRelative`'s `link()`
+ * always creates one alongside the `SPOUSE_OF` edge — so `union` here is
+ * only possibly missing if the two have drifted, not in normal use.
+ */
+function SpouseRow({
+  relative,
+  union,
+  options,
+  onChanged,
+  onRemove,
+}: {
+  relative: PersonRow;
+  union: UnionRow | undefined;
+  options: ConfigurableOptionRow[];
+  onChanged: () => Promise<void>;
+  onRemove: () => void;
+}) {
+  const [editOpen, setEditOpen] = useState(false);
+
+  return (
+    <div className="flex items-center justify-between gap-2 text-sm">
+      <div>
+        <Link to="/people/$personId" params={{ personId: relative.id }} className="hover:underline">
+          {formatPersonName(relative)}
+          {formatLifespan(relative) && (
+            <span className="ml-1 text-muted-foreground">({formatLifespan(relative)})</span>
+          )}
+        </Link>
+        {union && (
+          <p className="text-xs text-muted-foreground">
+            {labelFor(options, "union_status", union.status)}
+            {union.startDate ? ` · ${formatDisplayDate(union.startDate)}` : ""}
+          </p>
+        )}
+        {union?.notes && (
+          <MarkdownContent className="text-xs text-muted-foreground">{union.notes}</MarkdownContent>
+        )}
+      </div>
+      <div className="flex items-center gap-1">
+        {union && (
+          <Dialog isOpen={editOpen} onOpenChange={setEditOpen}>
+            <Button type="button" variant="ghost" size="icon" aria-label="Edit union">
+              <PencilIcon className="size-4" />
+            </Button>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Edit union</DialogTitle>
+              </DialogHeader>
+              <UnionForm
+                union={union}
+                options={options}
+                onDone={async () => {
+                  setEditOpen(false);
+                  await onChanged();
+                }}
+              />
+            </DialogContent>
+          </Dialog>
+        )}
+        <RemoveButton
+          itemLabel={`the relationship with ${formatPersonName(relative)}`}
+          onConfirm={onRemove}
+          trigger={
+            <Button type="button" variant="ghost" size="icon" aria-label="Remove spouse">
+              <UnlinkIcon className="size-4" />
+            </Button>
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Edits an existing union's own facts — status, start date/place — the same fields `AddRelative` sets when creating one. */
+function UnionForm({
+  union,
+  options,
+  onDone,
+}: {
+  union: UnionRow;
+  options: ConfigurableOptionRow[];
+  onDone: () => Promise<void>;
+}) {
+  const updateUnionMutation = useMutation({ mutationFn: updateUnion });
+  const [status, setStatus] = useState<UnionStatus>(unionStatusSchema.parse(union.status));
+
+  const form = useForm({
+    defaultValues: {
+      startDate: union.startDate?.original ?? "",
+      startPlace: union.startPlace ?? "",
+      notes: union.notes ?? "",
+    },
+    onSubmit: async ({ value }) => {
+      await updateUnionMutation.mutateAsync({
+        data: {
+          id: union.id,
+          status,
+          startDate:
+            value.startDate.trim() === ""
+              ? null
+              : {
+                  original: value.startDate.trim(),
+                  ...parseHistoricalDate(value.startDate.trim()),
+                },
+          startPlace: value.startPlace.trim() === "" ? null : value.startPlace,
+          notes: value.notes.trim() === "" ? null : value.notes,
+        },
+      });
+      await onDone();
+    },
+  });
+
+  const formIsDirty = useStore(form.store, (state) => state.isDirty);
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+  // status is tracked outside the form (it drives a Select, not a
+  // form.Field), so the form's own isDirty misses a status-only change.
+  const isDirty = formIsDirty || status !== union.status;
+
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <Select
+        aria-label="Union status"
+        value={status}
+        onChange={(value) => {
+          if (value) setStatus(unionStatusSchema.parse(value));
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {optionsFor(options, "union_status").map((option) => (
+            <SelectItem key={option.key} id={option.key}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <form.Field name="startDate">
+        {(field) => (
+          <HistoricalDateInput
+            placeholder="Marriage date, e.g. 12 JUN 1920"
+            value={field.state.value}
+            onBlur={field.handleBlur}
+            onChange={field.handleChange}
+            preview={historicalDatePreview(field.state.value)}
+          />
+        )}
+      </form.Field>
+      <form.Field name="startPlace">
+        {(field) => (
+          <Input
+            placeholder="Marriage place"
+            value={field.state.value}
+            onChange={(event) => field.handleChange(event.target.value)}
+          />
+        )}
+      </form.Field>
+      <form.Field name="notes">
+        {(field) => (
+          <MarkdownEditor
+            aria-label="Notes"
+            placeholder="Notes"
+            value={field.state.value}
+            onChange={field.handleChange}
+          />
+        )}
+      </form.Field>
+      <DialogFooter>
+        <SaveButton isDirty={isDirty} isPending={isSubmitting}>
+          Save
+        </SaveButton>
+      </DialogFooter>
+    </form>
+  );
+}
+
 function AddRelative({
   kind,
   personId,
@@ -1050,6 +1267,7 @@ function AddRelative({
   const [unionStatus, setUnionStatus] = useState<UnionStatus>("married");
   const [unionDate, setUnionDate] = useState("");
   const [unionPlace, setUnionPlace] = useState("");
+  const [unionNotes, setUnionNotes] = useState("");
 
   const trimmedQuery = query.trim();
   const searchInput = { limit: 10, offset: 0, search: trimmedQuery === "" ? null : trimmedQuery };
@@ -1076,6 +1294,7 @@ function AddRelative({
               ? null
               : { original: unionDate.trim(), ...parseHistoricalDate(unionDate.trim()) },
           startPlace: unionPlace.trim() === "" ? null : unionPlace,
+          notes: unionNotes.trim() === "" ? null : unionNotes,
         },
       });
     } else {
@@ -1098,9 +1317,16 @@ function AddRelative({
         }
       }}
     >
-      <Button variant="outline" size="sm">
-        + Add
-      </Button>
+      <Tooltip>
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label={kind === "spouse" ? "Add spouse" : "Add child"}
+        >
+          <PlusIcon className="size-4" />
+        </Button>
+        <TooltipContent>{kind === "spouse" ? "Add spouse" : "Add child"}</TooltipContent>
+      </Tooltip>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{kind === "spouse" ? "Add spouse" : "Add child"}</DialogTitle>
@@ -1147,15 +1373,21 @@ function AddRelative({
                 </SelectContent>
               </Select>
               <HistoricalDateInput
-                placeholder="Marriage date, e.g. 12 JUN 1920"
+                placeholder="Date, e.g. 12 JUN 1920"
                 value={unionDate}
                 onChange={setUnionDate}
                 preview={historicalDatePreview(unionDate)}
               />
               <Input
-                placeholder="Marriage place"
+                placeholder="Place"
                 value={unionPlace}
                 onChange={(event) => setUnionPlace(event.target.value)}
+              />
+              <MarkdownEditor
+                aria-label="Notes"
+                placeholder="Notes"
+                value={unionNotes}
+                onChange={setUnionNotes}
               />
             </div>
           )}
@@ -1204,6 +1436,7 @@ function AddRelative({
                 unionStatus={unionStatus}
                 unionDate={unionDate}
                 unionPlace={unionPlace}
+                unionNotes={unionNotes}
                 onDone={async () => {
                   setOpen(false);
                   await onChanged();
@@ -1224,6 +1457,7 @@ function CreateAndLinkForm({
   unionStatus,
   unionDate,
   unionPlace,
+  unionNotes,
   onDone,
 }: {
   kind: RelativeKind;
@@ -1232,6 +1466,7 @@ function CreateAndLinkForm({
   unionStatus: UnionStatus;
   unionDate: string;
   unionPlace: string;
+  unionNotes: string;
   onDone: () => Promise<void>;
 }) {
   const createPersonMutation = useMutation({ mutationFn: createPerson });
@@ -1253,6 +1488,7 @@ function CreateAndLinkForm({
                 ? null
                 : { original: unionDate.trim(), ...parseHistoricalDate(unionDate.trim()) },
             startPlace: unionPlace.trim() === "" ? null : unionPlace,
+            notes: unionNotes.trim() === "" ? null : unionNotes,
           },
         });
       } else {
@@ -1337,8 +1573,14 @@ function ParentsSection({
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle className="text-base">Parents</CardTitle>
+        <AddOtherParent
+          personId={personId}
+          excludeIds={excludeIds}
+          options={options}
+          onChanged={onChanged}
+        />
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-3">
@@ -1361,16 +1603,7 @@ function ParentsSection({
             onChanged={onChanged}
           />
         </div>
-        <div className="space-y-2 border-t pt-3">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-sm text-muted-foreground">Other parents</span>
-            <AddOtherParent
-              personId={personId}
-              excludeIds={excludeIds}
-              options={options}
-              onChanged={onChanged}
-            />
-          </div>
+        <div className="space-y-2">
           {others.map((parent) => (
             <div key={parent.id} className="flex items-center justify-between gap-2 text-sm">
               <div className="flex items-center gap-2">
@@ -1389,6 +1622,11 @@ function ParentsSection({
               <RemoveButton
                 itemLabel={`the relationship with ${formatPersonName(parent)}`}
                 onConfirm={() => void remove(parent.id)}
+                trigger={
+                  <Button type="button" variant="ghost" size="icon" aria-label="Remove parent">
+                    <UnlinkIcon className="size-4" />
+                  </Button>
+                }
               />
             </div>
           ))}
@@ -1441,6 +1679,11 @@ function ParentSlot({
       <RemoveButton
         itemLabel={`the relationship with ${formatPersonName(parent)}`}
         onConfirm={() => void onRemove(parent.id)}
+        trigger={
+          <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${label}`}>
+            <UnlinkIcon className="size-4" />
+          </Button>
+        }
       />
     </div>
   );
@@ -1461,7 +1704,7 @@ function AddParentSlot({
   onChanged: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [mode, setMode] = useState<"search" | "create">("search");
   const [query, setQuery] = useState("");
 
   const trimmedQuery = query.trim();
@@ -1469,7 +1712,7 @@ function AddParentSlot({
   const search = useQuery({
     queryKey: ["person", "list", searchInput],
     queryFn: () => listPersons({ data: searchInput }),
-    enabled: open,
+    enabled: open && mode === "search",
   });
 
   const linkParentMutation = useMutation({ mutationFn: linkParent });
@@ -1480,63 +1723,83 @@ function AddParentSlot({
       data: { parentId: target.id, childId: personId, parentage: "birth" },
     });
     setOpen(false);
-    setQuery("");
     await onChanged();
   };
 
   return (
-    <Popover isOpen={open} onOpenChange={setOpen}>
+    <Dialog
+      isOpen={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) {
+          setMode("search");
+          setQuery("");
+        }
+      }}
+    >
       <Button variant="outline" size="sm" className="w-full justify-start">
         + Add {label.toLowerCase()}
       </Button>
-      <PopoverContent className="w-80 space-y-3">
-        <Combobox<PersonRow>
-          aria-label={`Search for ${label.toLowerCase()}`}
-          items={options}
-          inputValue={query}
-          onInputChange={setQuery}
-          onChange={(value) => {
-            const target = options.find((candidate) => candidate.id === value);
-            if (target) void link(target);
-          }}
-        >
-          <ComboboxInput placeholder="Search people…" />
-          <ComboboxContent<PersonRow>
-            renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
-          >
-            {(item) => (
-              <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-                <span className="flex items-center gap-1.5">
-                  <GenderIcon sex={item.sex} className="size-3.5" />
-                  {formatPersonName(item)}
-                  {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
-                </span>
-              </ComboboxItem>
-            )}
-          </ComboboxContent>
-        </Combobox>
-        <Dialog isOpen={createOpen} onOpenChange={setCreateOpen}>
-          <Button variant="ghost" size="sm" className="w-full">
-            + Create new person
-          </Button>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>New {label.toLowerCase()}</DialogTitle>
-            </DialogHeader>
-            <CreateAndLinkParentForm
-              personId={personId}
-              parentage="birth"
-              presetSex={presetSex}
-              onDone={async () => {
-                setCreateOpen(false);
-                setOpen(false);
-                await onChanged();
-              }}
-            />
-          </DialogContent>
-        </Dialog>
-      </PopoverContent>
-    </Popover>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add {label.toLowerCase()}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          {mode === "search" ? (
+            <>
+              <Combobox<PersonRow>
+                aria-label={`Search for ${label.toLowerCase()}`}
+                items={options}
+                inputValue={query}
+                onInputChange={setQuery}
+                onChange={(value) => {
+                  const target = options.find((candidate) => candidate.id === value);
+                  if (target) void link(target);
+                }}
+              >
+                <ComboboxInput placeholder="Search people…" />
+                <ComboboxContent<PersonRow>
+                  renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
+                >
+                  {(item) => (
+                    <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
+                      <span className="flex items-center gap-1.5">
+                        <GenderIcon sex={item.sex} className="size-3.5" />
+                        {formatPersonName(item)}
+                        {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
+                      </span>
+                    </ComboboxItem>
+                  )}
+                </ComboboxContent>
+              </Combobox>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full"
+                onPress={() => setMode("create")}
+              >
+                + Create new person
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" onPress={() => setMode("search")}>
+                ← Search instead
+              </Button>
+              <CreateAndLinkParentForm
+                personId={personId}
+                parentage="birth"
+                presetSex={presetSex}
+                onDone={async () => {
+                  setOpen(false);
+                  await onChanged();
+                }}
+              />
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1553,7 +1816,7 @@ function AddOtherParent({
   onChanged: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [mode, setMode] = useState<"search" | "create">("search");
   const [query, setQuery] = useState("");
   const [parentage, setParentage] = useState<Parentage>("unknown");
 
@@ -1562,7 +1825,7 @@ function AddOtherParent({
   const search = useQuery({
     queryKey: ["person", "list", searchInput],
     queryFn: () => listPersons({ data: searchInput }),
-    enabled: open,
+    enabled: open && mode === "search",
   });
 
   const linkParentMutation = useMutation({ mutationFn: linkParent });
@@ -1573,78 +1836,101 @@ function AddOtherParent({
       data: { parentId: target.id, childId: personId, parentage },
     });
     setOpen(false);
-    setQuery("");
     await onChanged();
   };
 
   return (
-    <Popover isOpen={open} onOpenChange={setOpen}>
-      <Button variant="outline" size="sm">
-        + Add
-      </Button>
-      <PopoverContent className="w-80 space-y-3">
-        <Select
-          aria-label="Parentage"
-          value={parentage}
-          onChange={(value) => {
-            if (value) setParentage(parentageSchema.parse(value));
-          }}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {optionsFor(allOptions, "parentage").map((option) => (
-              <SelectItem key={option.key} id={option.key}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Combobox<PersonRow>
-          aria-label="Search people"
-          items={options}
-          inputValue={query}
-          onInputChange={setQuery}
-          onChange={(value) => {
-            const target = options.find((candidate) => candidate.id === value);
-            if (target) void link(target);
-          }}
-        >
-          <ComboboxInput placeholder="Search people…" />
-          <ComboboxContent<PersonRow>
-            renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
+    <Dialog
+      isOpen={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) {
+          setMode("search");
+          setQuery("");
+        }
+      }}
+    >
+      <Tooltip>
+        <Button variant="outline" size="icon" aria-label="Add other parent">
+          <PlusIcon className="size-4" />
+        </Button>
+        <TooltipContent>Add other parent</TooltipContent>
+      </Tooltip>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add other parent</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <Select
+            aria-label="Parentage"
+            value={parentage}
+            onChange={(value) => {
+              if (value) setParentage(parentageSchema.parse(value));
+            }}
           >
-            {(item) => (
-              <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-                {formatPersonName(item)}
-                {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
-              </ComboboxItem>
-            )}
-          </ComboboxContent>
-        </Combobox>
-        <Dialog isOpen={createOpen} onOpenChange={setCreateOpen}>
-          <Button variant="ghost" size="sm" className="w-full">
-            + Create new person
-          </Button>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>New person</DialogTitle>
-            </DialogHeader>
-            <CreateAndLinkParentForm
-              personId={personId}
-              parentage={parentage}
-              presetSex={null}
-              onDone={async () => {
-                setCreateOpen(false);
-                setOpen(false);
-                await onChanged();
-              }}
-            />
-          </DialogContent>
-        </Dialog>
-      </PopoverContent>
-    </Popover>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {optionsFor(allOptions, "parentage").map((option) => (
+                <SelectItem key={option.key} id={option.key}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {mode === "search" ? (
+            <>
+              <Combobox<PersonRow>
+                aria-label="Search people"
+                items={options}
+                inputValue={query}
+                onInputChange={setQuery}
+                onChange={(value) => {
+                  const target = options.find((candidate) => candidate.id === value);
+                  if (target) void link(target);
+                }}
+              >
+                <ComboboxInput placeholder="Search people…" />
+                <ComboboxContent<PersonRow>
+                  renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
+                >
+                  {(item) => (
+                    <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
+                      {formatPersonName(item)}
+                      {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
+                    </ComboboxItem>
+                  )}
+                </ComboboxContent>
+              </Combobox>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full"
+                onPress={() => setMode("create")}
+              >
+                + Create new person
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" onPress={() => setMode("search")}>
+                ← Search instead
+              </Button>
+              <CreateAndLinkParentForm
+                personId={personId}
+                parentage={parentage}
+                presetSex={null}
+                onDone={async () => {
+                  setOpen(false);
+                  await onChanged();
+                }}
+              />
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1741,7 +2027,9 @@ function NameRow({
             (since {formatDisplayDate(name.since)})
           </span>
         )}
-        {name.notes && <p className="text-xs text-muted-foreground">{name.notes}</p>}
+        {name.notes && (
+          <MarkdownContent className="text-xs text-muted-foreground">{name.notes}</MarkdownContent>
+        )}
       </div>
       <div className="flex items-center gap-1">
         <Dialog isOpen={editOpen} onOpenChange={setEditOpen}>
@@ -1886,10 +2174,11 @@ function NameForm({
       </form.Field>
       <form.Field name="notes">
         {(field) => (
-          <Input
+          <MarkdownEditor
+            aria-label="Notes"
             placeholder="Notes"
             value={field.state.value}
-            onChange={(event) => field.handleChange(event.target.value)}
+            onChange={field.handleChange}
           />
         )}
       </form.Field>
@@ -1926,9 +2215,12 @@ function EventsSection({
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle className="text-base">Life events</CardTitle>
         <Dialog isOpen={addOpen} onOpenChange={setAddOpen}>
-          <Button variant="outline" size="sm">
-            + Add
-          </Button>
+          <Tooltip>
+            <Button variant="outline" size="icon" aria-label="Add event">
+              <PlusIcon className="size-4" />
+            </Button>
+            <TooltipContent>Add event</TooltipContent>
+          </Tooltip>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add event</DialogTitle>
@@ -2247,9 +2539,12 @@ function CitationsSection({
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle className="text-base">Sources &amp; citations</CardTitle>
         <Dialog isOpen={addOpen} onOpenChange={setAddOpen}>
-          <Button variant="outline" size="sm">
-            + Add
-          </Button>
+          <Tooltip>
+            <Button variant="outline" size="icon" aria-label="Add citation">
+              <PlusIcon className="size-4" />
+            </Button>
+            <TooltipContent>Add citation</TooltipContent>
+          </Tooltip>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add citation</DialogTitle>
