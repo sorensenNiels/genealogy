@@ -48,6 +48,17 @@ export const getRelatives = createServerFn({ method: "GET" })
   .validator(z.object({ id: personIdSchema }))
   .handler(({ data }) => trpcProxy.person.relatives.query(data));
 
+// Mirrors apps/backend/src/person/person.router.ts's local `treeInput`.
+const treeInput = z.object({
+  id: personIdSchema,
+  ancestorGenerations: z.number().int().min(0).max(15).default(4),
+  descendantGenerations: z.number().int().min(0).max(15).default(4),
+});
+
+export const getTree = createServerFn({ method: "GET" })
+  .validator(treeInput)
+  .handler(({ data }) => trpcProxy.person.tree.query(data));
+
 export const updatePerson = createServerFn({ method: "POST" })
   .validator(updatePersonSchema)
   .handler(({ data }) => trpcProxy.person.update.mutate(data));

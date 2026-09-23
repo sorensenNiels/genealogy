@@ -31,6 +31,15 @@ const pedigreeInput = z.object({
   generations: z.number().int().min(1).max(25).default(6),
 });
 
+const treeInput = z.object({
+  id: personIdSchema,
+  // Smaller default than pedigreeInput's — the tree view renders every node
+  // and edge at once (not just a count per generation), so it needs to stay
+  // readable rather than maxing out what the graph can technically walk.
+  ancestorGenerations: z.number().int().min(0).max(15).default(4),
+  descendantGenerations: z.number().int().min(0).max(15).default(4),
+});
+
 @Injectable()
 export class PersonRouter {
   constructor(private readonly persons: PersonService) {}
@@ -111,6 +120,12 @@ export class PersonRouter {
       descendants: protectedProcedure
         .input(pedigreeInput)
         .query(({ input }) => this.persons.descendants(input.id, input.generations)),
+
+      tree: protectedProcedure
+        .input(treeInput)
+        .query(({ input }) =>
+          this.persons.tree(input.id, input.ancestorGenerations, input.descendantGenerations),
+        ),
 
       listNames: protectedProcedure
         .input(z.object({ personId: personIdSchema }))

@@ -86,6 +86,31 @@ export async function parentsOf(
   return rows.map((row) => ({ personId: row.parent.properties.id, parentage: row.parentage }));
 }
 
+export interface ChildEdge {
+  personId: string;
+  parentage: Parentage;
+}
+
+/**
+ * Direct children only, mirroring `parentsOf` in the other direction — used by
+ * `treeAround`'s downward walk, which needs the `parentage` on each edge (unlike
+ * `descendantsOf`, which only reports generation distance from the root).
+ */
+export async function childrenOf(
+  pool: Pool,
+  personId: string,
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<ChildEdge[]> {
+  const rows = await cypher<{ child: AgeVertex<PersonNodeProps>; parentage: Parentage }>(
+    pool,
+    `MATCH (:Person {id: $id})-[r:PARENT_OF]->(child:Person)
+     RETURN child, r.parentage AS parentage`,
+    ["child", "parentage"],
+    { ...options, params: { id: personId } },
+  );
+  return rows.map((row) => ({ personId: row.child.properties.id, parentage: row.parentage }));
+}
+
 export async function addSpouseOf(
   pool: Pool,
   aId: string,
@@ -250,6 +275,107 @@ export async function descendantsOf(
   return toPedigree(rows, "descendant");
 }
 
+export interface TreeEdge {
+  parentId: string;
+  childId: string;
+  parentage: Parentage;
+}
+
+export interface TreeGraph {
+  personIds: string[];
+  parentEdges: TreeEdge[];
+  /** Undirected, each pair reported once. */
+  spouseEdges: Array<[string, string]>;
+}
+
+/**
+ * Everyone and every edge needed to render a tree centered on `personId` for
+ * the tree view: ancestors up to `ancestorGenerations`, descendants down to
+ * `descendantGenerations`, and the spouses of everyone collected (so a couple
+ * who are both blood relatives, or where only one side is, still render next
+ * to each other) — see FEATURES.md's "Tree & visualization" entry.
+ *
+ * Walks one generation at a time in JS via `parentsOf`/`childrenOf` rather
+ * than a single variable-length Cypher `MATCH ... -[:PARENT_OF*1..N]->`,
+ * deliberately: AGE's `agtype` decoding (`parseAgtype`) only handles a single
+ * vertex/edge/path value per column, not the `nodes(path)`/`relationships(path)`
+ * list form a path-based query would need to report every intermediate edge —
+ * see the comment on `AGTYPE_ANNOTATION` in age.ts. This costs a query per
+ * generation instead of one, which is fine at the depths a tree view renders.
+ */
+export async function treeAround(
+  pool: Pool,
+  personId: string,
+  ancestorGenerations: number,
+  descendantGenerations: number,
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<TreeGraph> {
+  const upDepth = clampGenerations(ancestorGenerations);
+  const downDepth = clampGenerations(descendantGenerations);
+
+  const personIds = new Set<string>([personId]);
+  const parentEdgeKeys = new Set<string>();
+  const parentEdges: TreeEdge[] = [];
+
+  const walk = async <TEdge extends { personId: string; parentage: Parentage }>(
+    startGenerations: number,
+    fetchEdges: (id: string) => Promise<TEdge[]>,
+    toTreeEdge: (frontierId: string, edge: TEdge) => TreeEdge,
+  ) => {
+    let frontier = [personId];
+    for (let generation = 0; generation < startGenerations && frontier.length > 0; generation++) {
+      // Each generation's frontier must be resolved before the next can be
+      // computed from it — not parallelizable across generations.
+      // eslint-disable-next-line no-await-in-loop
+      const results = await Promise.all(
+        frontier.map(async (id) => ({ id, edges: await fetchEdges(id) })),
+      );
+      const next = new Set<string>();
+      for (const { id, edges } of results) {
+        for (const edge of edges) {
+          const treeEdge = toTreeEdge(id, edge);
+          const key = `${treeEdge.parentId}->${treeEdge.childId}`;
+          if (!parentEdgeKeys.has(key)) {
+            parentEdgeKeys.add(key);
+            parentEdges.push(treeEdge);
+          }
+          personIds.add(edge.personId);
+          next.add(edge.personId);
+        }
+      }
+      frontier = [...next];
+    }
+  };
+
+  await walk(
+    upDepth,
+    (id) => parentsOf(pool, id, options),
+    (childId, edge) => ({ parentId: edge.personId, childId, parentage: edge.parentage }),
+  );
+  await walk(
+    downDepth,
+    (id) => childrenOf(pool, id, options),
+    (parentId, edge) => ({ parentId, childId: edge.personId, parentage: edge.parentage }),
+  );
+
+  const spouseEdgeKeys = new Set<string>();
+  const spouseEdges: Array<[string, string]> = [];
+  const spouseResults = await Promise.all(
+    [...personIds].map(async (id) => ({ id, spouses: await spousesOf(pool, id, options) })),
+  );
+  for (const { id, spouses } of spouseResults) {
+    for (const spouse of spouses) {
+      const key = [id, spouse.personId].toSorted().join("|");
+      if (spouseEdgeKeys.has(key)) continue;
+      spouseEdgeKeys.add(key);
+      spouseEdges.push([id, spouse.personId]);
+      personIds.add(spouse.personId);
+    }
+  }
+
+  return { personIds: [...personIds], parentEdges, spouseEdges };
+}
+
 /**
  * The depth is spliced into the Cypher text because AGE will not accept a bound
  * parameter inside a variable-length pattern, so it must be a trusted integer.
@@ -257,6 +383,14 @@ export async function descendantsOf(
 function clampDepth(requested: number): number {
   if (!Number.isInteger(requested) || requested < 1) {
     throw new Error(`maxGenerations must be a positive integer, got ${requested}`);
+  }
+  return Math.min(requested, 25);
+}
+
+/** Like `clampDepth`, but 0 is valid — `treeAround` walks generation by generation in JS, not Cypher. */
+function clampGenerations(requested: number): number {
+  if (!Number.isInteger(requested) || requested < 0) {
+    throw new Error(`generations must be a non-negative integer, got ${requested}`);
   }
   return Math.min(requested, 25);
 }

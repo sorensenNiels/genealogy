@@ -33,12 +33,14 @@ import {
   removeParentOf,
   removeSpouseOf,
   spousesOf,
+  treeAround,
   unions,
   upsertPersonNode,
   type Database,
   type PersonEventRow,
   type PersonNameRow,
   type PersonRow,
+  type TreeEdge,
   type UnionRow,
 } from "@genealogy/db";
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
@@ -104,6 +106,13 @@ export interface RelativesResult {
   parents: (PersonRow & { parentage: Parentage })[];
   spouses: PersonRow[];
   children: PersonRow[];
+}
+
+export interface TreeResult {
+  rootId: string;
+  people: PersonRow[];
+  parentEdges: TreeEdge[];
+  spouseEdges: Array<[string, string]>;
 }
 
 @Injectable()
@@ -385,6 +394,27 @@ export class PersonService {
 
   async descendants(id: string, generations: number): Promise<PedigreeNode[]> {
     return descendantsOf(this.pool, id, generations);
+  }
+
+  /**
+   * Everyone and every edge the tree view needs to draw a graph centered on
+   * `id`: their ancestors, descendants, and everyone's spouses, resolved to
+   * full rows for display (see `treeAround` for why this is several
+   * generation-at-a-time queries rather than one).
+   */
+  async tree(id: string, ancestorGenerations: number, descendantGenerations: number) {
+    await this.byId(id);
+    const graph = await treeAround(this.pool, id, ancestorGenerations, descendantGenerations);
+    const people =
+      graph.personIds.length > 0
+        ? await this.db.select().from(persons).where(inArray(persons.id, graph.personIds))
+        : [];
+    return {
+      rootId: id,
+      people,
+      parentEdges: graph.parentEdges,
+      spouseEdges: graph.spouseEdges,
+    } satisfies TreeResult;
   }
 
   /** Birth name, married name(s), spelling variants found in records. */

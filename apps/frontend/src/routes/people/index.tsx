@@ -11,7 +11,7 @@ import {
 } from "@genealogy/ui/components/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Badge } from "@genealogy/ui/components/badge";
-import { Button } from "@genealogy/ui/components/button";
+import { Button, buttonVariants } from "@genealogy/ui/components/button";
 import { CopyableText } from "@genealogy/ui/components/copyable-text";
 import { Input } from "@genealogy/ui/components/input";
 import {
@@ -25,7 +25,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
-import { Trash2Icon } from "lucide-react";
+import { Network, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 
 import { publicBackendUrl } from "../../lib/env";
@@ -98,7 +98,12 @@ const columns = helper.columns([
   helper.display({
     id: "actions",
     header: "",
-    cell: (context) => <DeletePersonAction person={context.row.original} />,
+    cell: (context) => (
+      <div className="flex items-center justify-end gap-1">
+        <ViewInTreeAction person={context.row.original} />
+        <DeletePersonAction person={context.row.original} />
+      </div>
+    ),
   }),
 ]);
 
@@ -239,6 +244,19 @@ function People() {
         </div>
       )}
     </div>
+  );
+}
+
+function ViewInTreeAction({ person }: { person: PersonListItem }) {
+  return (
+    <Link
+      to="/tree"
+      search={{ personId: person.id }}
+      className={buttonVariants({ variant: "ghost", size: "icon" })}
+      aria-label={`View ${formatPersonName(person)} in tree`}
+    >
+      <Network className="size-4 text-muted-foreground" />
+    </Link>
   );
 }
 

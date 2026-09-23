@@ -34,7 +34,13 @@ A living backlog for the genealogy app. Status markers: ✅ done, 🚧 planned, 
 
 ## Tree & visualization
 
-- 🚧 Pedigree (ancestor) and descendant tree views, toggle between them — React Flow + elkjs, not yet built. Once a route exists, add a "View in tree" action to the person list row actions (deliberately left out for now rather than shipping a dead-end button — see the list's own row actions)
+- ✅ Tree view (`/tree`, nav link "Tree"): ancestors and descendants around one person, four generations either way by default, rendered with React Flow (`@xyflow/react`) + elkjs. A "View in tree" row action on the person list (the `Network` icon) links straight to `/tree?personId=...`; with no `personId`, the page shows a person search instead of a dead end. Clicking a non-root node's own tree icon re-centers on them; clicking their name goes to their person page.
+
+  Layout is a hybrid, not a single elk call: elk's layered algorithm can only place a node relative to its edges, and a strictly layered (Sugiyama-style) algorithm always treats an edge as "target is at least one layer below source" — fed a spouse edge, it either ignores the same-row intent or shifts one node down a layer to make the edge routable, so partitioning-by-generation doesn't work as it appears to promise (verified empirically: it only constrains cross-partition ordering, not that two same-partition nodes land in the same layer). So generation (row) is computed once, in-house, via a flood-fill from the root (`computeGenerations` in `apps/frontend/src/lib/tree-layout.ts`: +1 down a `PARENT_OF` edge, -1 up, +0 across a spouse edge), and that becomes `y` directly. elk only ever sees `PARENT_OF` edges, deciding left-to-right ordering (crossing minimization) within each already-fixed row; a spouse with no blood edge of their own (a pure in-law) is placed beside whichever partner elk did position, on the same row.
+
+  Backend: `person.tree` procedure (`apps/backend/src/person/person.router.ts`) → `PersonService.tree` → `treeAround` (`packages/db/src/graph.ts`), which walks one generation at a time via `parentsOf`/`childrenOf` rather than a single variable-length Cypher path query — AGE's `agtype` decoding only handles one vertex/edge/path per column, not the list form `nodes(path)`/`relationships(path)` would return.
+
+- 🚧 Toggle between ancestor-only / descendant-only / both (currently always both)
 
 ## Import / export
 

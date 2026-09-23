@@ -92,6 +92,16 @@ catalog:
   "@mdxeditor/editor": 4.2.5
   react-markdown: 10.1.0
 
+  # --- tree view (see "Tree & visualization" in FEATURES.md) ---
+  # @xyflow/react is the current package name for what's commonly still called
+  # "React Flow" (the old `reactflow` package is its predecessor, superseded by
+  # this scoped one). elkjs computes node positions (layered/hierarchical
+  # layout) off-thread from React Flow's own rendering. Checked 2026-09-23 per
+  # the "Recommending or adding a library" rule: @xyflow/react last published
+  # 2026-09-01, elkjs 2026-07-17 — both actively maintained.
+  "@xyflow/react": 12.11.6
+  elkjs: 0.12.0
+
   # --- auth ---
   better-auth: 1.7.5
 

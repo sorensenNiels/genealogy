@@ -6,23 +6,24 @@ the stack was assembled (September 2026).
 
 ## At a glance
 
-| Layer                           | Choice                              | Version                    |
-| ------------------------------- | ----------------------------------- | -------------------------- |
-| Runtime                         | Node.js                             | 24 LTS                     |
-| Language                        | TypeScript                          | 6.0.3                      |
-| Package manager                 | pnpm (workspaces + catalog)         | 12.5.1                     |
-| Build orchestration             | Turborepo                           | 2.11.2                     |
-| Lint / format                   | oxlint / oxfmt                      | 1.83.0 / 0.68.0            |
-| Tests                           | Vitest                              | 5.0.1                      |
-| Backend                         | NestJS on Express                   | 12.0.3 / Express 5.2.0     |
-| API contract                    | tRPC + superjson + Zod              | 11.19.0 / 2.2.6 / 4.6.5    |
-| Relational ORM                  | Drizzle ORM + drizzle-kit           | 0.45.2 / 0.31.10           |
-| Database                        | PostgreSQL + Apache AGE             | 18 / 1.8.0                 |
-| Frontend                        | React + TanStack Start (Vite)       | 19.3.0 / 1.168 / 8.3.0     |
-| Routing / data / tables / forms | TanStack Router, Query, Table, Form | 1.170 / 5.103 / 9.2 / 1.33 |
-| Components                      | shadcn/ui (React Aria) on Tailwind  | new-york, slate / 4.3.3    |
-| Animation                       | motion                              | 13.4.0                     |
-| Authentication                  | better-auth                         | 1.7.5                      |
+| Layer                           | Choice                               | Version                    |
+| ------------------------------- | ------------------------------------ | -------------------------- |
+| Runtime                         | Node.js                              | 24 LTS                     |
+| Language                        | TypeScript                           | 6.0.3                      |
+| Package manager                 | pnpm (workspaces + catalog)          | 12.5.1                     |
+| Build orchestration             | Turborepo                            | 2.11.2                     |
+| Lint / format                   | oxlint / oxfmt                       | 1.83.0 / 0.68.0            |
+| Tests                           | Vitest                               | 5.0.1                      |
+| Backend                         | NestJS on Express                    | 12.0.3 / Express 5.2.0     |
+| API contract                    | tRPC + superjson + Zod               | 11.19.0 / 2.2.6 / 4.6.5    |
+| Relational ORM                  | Drizzle ORM + drizzle-kit            | 0.45.2 / 0.31.10           |
+| Database                        | PostgreSQL + Apache AGE              | 18 / 1.8.0                 |
+| Frontend                        | React + TanStack Start (Vite)        | 19.3.0 / 1.168 / 8.3.0     |
+| Routing / data / tables / forms | TanStack Router, Query, Table, Form  | 1.170 / 5.103 / 9.2 / 1.33 |
+| Components                      | shadcn/ui (React Aria) on Tailwind   | new-york, slate / 4.3.3    |
+| Animation                       | motion                               | 13.4.0                     |
+| Authentication                  | better-auth                          | 1.7.5                      |
+| Tree view                       | React Flow (`@xyflow/react`) + elkjs | 12.11.6 / 0.12.0           |
 
 ## Repository shape
 
@@ -681,6 +682,51 @@ at all — every field is `useState` — so it snapshots all of them once on
 mount and compares the whole set; the snapshot uses `useState`, not
 `useRef`, because reading `ref.current` during render is flagged by
 oxlint's `react(refs)` rule even though the value itself never changes here.
+
+### Tree view: React Flow + elkjs, with elk doing only half the job
+
+The tree view (`/tree`) renders with React Flow (`@xyflow/react` — the
+package "React Flow" now ships under; the old `reactflow` name is its
+predecessor) for the canvas, and elkjs for layout. Both checked against the
+"Recommending or adding a library" rule in CLAUDE.md on 2026-09-23:
+`@xyflow/react` last published 2026-09-01, elkjs 2026-07-17 — both actively
+maintained. This was the option already recorded in FEATURES.md before this
+was built, not a fresh choice.
+
+elk does _not_ decide row placement, despite that looking like its job.
+elk's layered algorithm ("Sugiyama-style") can only place a node relative to
+its edges, and always treats an edge as "target is at least one layer below
+source" — there's no such thing as a same-layer edge to it. Feeding it a
+spouse edge (to keep a couple on one row) either gets ignored or makes elk
+shift one side down a layer to keep the edge routable. elk's own
+`partitioning` feature looks like the fix (assign nodes a partition, expect
+same-partition nodes to land on the same row) but isn't: verified
+empirically that partitioning only constrains _ordering between_ partitions
+(everything in partition 0 comes before partition 1), not that two
+same-partition nodes share a layer — two parents of the same child, given
+the same partition, still landed one layer apart.
+
+So row assignment is done by hand, once, before elk ever runs:
+`computeGenerations` (`apps/frontend/src/lib/tree-layout.ts`) floods outward
+from the root person — +1 down a `PARENT_OF` edge, -1 up one, +0 across a
+`SPOUSE_OF` edge — and that number becomes `y` directly, overriding whatever
+y elk would have computed. elk is only asked to lay out the `PARENT_OF`
+edges (never spouse edges), and only its `x` output is kept, for left-to-
+right ordering (crossing minimization) within each already-fixed row. A
+spouse with no blood edge of their own anywhere in the collected set (a pure
+in-law, e.g. the root's own spouse) never reaches elk at all — they're
+placed beside whichever partner elk did position, at that partner's exact
+`y`, in a fixed-point pass over the spouse edges afterward.
+
+On the data side, `treeAround` (`packages/db/src/graph.ts`) walks one
+generation at a time via `parentsOf`/`childrenOf`, rather than a single
+Cypher `MATCH ...-[:PARENT_OF*1..N]->...` returning `nodes(path)`/
+`relationships(path)`. `cypher()`'s `parseAgtype` (`packages/db/src/age.ts`)
+only strips the `::vertex`/`::edge`/`::path` annotation AGE appends to a
+_single_ value per column — a list of vertices/edges each carrying their own
+inline annotation isn't valid JSON once spliced together, so the list form
+was never wired up. Costs a query per generation instead of one; fine at the
+depths (4 up, 4 down by default) a tree view renders.
 
 ## Verified, not assumed
 
