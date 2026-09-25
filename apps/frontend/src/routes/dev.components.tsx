@@ -1,4 +1,8 @@
-import { resolveHistoricalDate } from "@genealogy/core";
+import {
+  joinHistoricalDateText,
+  resolveHistoricalDate,
+  splitHistoricalDateText,
+} from "@genealogy/core";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,6 +17,7 @@ import { Autocomplete } from "@genealogy/ui/components/autocomplete";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button } from "@genealogy/ui/components/button";
+import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
 import {
   Card,
   CardContent,
@@ -36,11 +41,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@genealogy/ui/components/dialog";
-import { HistoricalDateInput } from "@genealogy/ui/components/historical-date-input";
+import {
+  HistoricalDateInput,
+  type HistoricalDateQuality,
+} from "@genealogy/ui/components/historical-date-input";
 import { Input } from "@genealogy/ui/components/input";
 import { MarkdownContent } from "@genealogy/ui/components/markdown-content";
 import { MarkdownEditor } from "@genealogy/ui/components/markdown-editor";
 import { Popover, PopoverContent } from "@genealogy/ui/components/popover";
+import { ProgressBar } from "@genealogy/ui/components/progress-bar";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import {
   Select,
@@ -94,21 +103,49 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 function HistoricalDateDemo({ label, initialValue }: { label: string; initialValue: string }) {
-  const [value, setValue] = useState(initialValue);
-  const trimmed = value.trim();
-  const resolved = trimmed === "" ? null : resolveHistoricalDate(trimmed);
+  const initialSplit = splitHistoricalDateText(initialValue);
+  const [quality, setQuality] = useState<HistoricalDateQuality>(initialSplit.quality);
+  const [value, setValue] = useState(initialSplit.value);
+  const [endValue, setEndValue] = useState(initialSplit.endValue);
+
+  const joined = joinHistoricalDateText({ quality, value, endValue });
+  const resolved = joined === null ? null : resolveHistoricalDate(joined);
   const preview =
     resolved === null
       ? null
       : resolved.display
         ? { text: resolved.display, status: "parsed" as const }
-        : { text: value, status: "unparsed" as const };
+        : { text: joined ?? "", status: "unparsed" as const };
 
   return (
     <div className="w-56 space-y-1">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <HistoricalDateInput value={value} onChange={setValue} preview={preview} />
+      <HistoricalDateInput
+        quality={quality}
+        onQualityChange={setQuality}
+        value={value}
+        onChange={setValue}
+        endValue={endValue}
+        onEndChange={setEndValue}
+        preview={preview}
+      />
     </div>
+  );
+}
+
+function ButtonRadioGroupDemo() {
+  const [sex, setSex] = useState<"M" | "F" | "U">("U");
+  return (
+    <ButtonRadioGroup
+      aria-label="Gender"
+      value={sex}
+      onChange={setSex}
+      options={[
+        { value: "M", label: "Male" },
+        { value: "F", label: "Female" },
+        { value: "U", label: "Unknown" },
+      ]}
+    />
   );
 }
 
@@ -158,6 +195,16 @@ function ComponentsShowcase() {
         <SaveButton isDirty={false} isPending>
           Save
         </SaveButton>
+      </Section>
+
+      <Section title="Button Radio Group">
+        <ButtonRadioGroupDemo />
+      </Section>
+
+      <Section title="Progress Bar">
+        <ProgressBar label="Research completeness" value={20} className="max-w-56" />
+        <ProgressBar label="Research completeness" value={78} className="max-w-56" />
+        <ProgressBar label="Research completeness" value={100} className="max-w-56" />
       </Section>
 
       <Section title="Badge">

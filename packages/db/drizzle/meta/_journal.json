@@ -134,6 +134,20 @@
       "when": 1790189015399,
       "tag": "0018_unusual_shinobi_shaw",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790356129862,
+      "tag": "0019_lumpy_carlie_cooper",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790365284324,
+      "tag": "0020_mature_gabe_jones",
+      "breakpoints": true
     }
   ]
 }

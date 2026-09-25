@@ -38,3 +38,19 @@ export interface PedigreeNode {
   /** 0 is the person the walk started from, 1 their parents, and so on. */
   generation: number;
 }
+
+/**
+ * A person's relationship to whichever account is currently viewing —
+ * per-viewer, not tree-wide: each logged-in user has their own "this is me"
+ * link (`userProfiles.personId` in `packages/db/src/schema.ts`, set from the
+ * Profile page), so two accounts looking at the same person can see
+ * different badges. Deliberately narrow — collateral relationships (sibling,
+ * cousin, in-law) aren't classified yet, so anyone who isn't the viewer
+ * themselves or on their direct ancestor/descendant line gets `null` (no
+ * badge), including when the viewer hasn't identified themselves at all. Not
+ * to be confused with `Parentage` above, which classifies a single edge
+ * (biological/adoptive/step), not a person's overall position relative to
+ * the viewer.
+ */
+export const relationshipToRootSchema = z.enum(["root", "ancestor", "descendant"]).nullable();
+export type RelationshipToRoot = z.infer<typeof relationshipToRootSchema>;

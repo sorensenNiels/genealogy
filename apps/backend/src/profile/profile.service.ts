@@ -1,0 +1,79 @@
+import type { UpdateProfile } from "@genealogy/core";
+import { userProfiles, type Database, type UserProfileRow } from "@genealogy/db";
+import { BadRequestException, Inject, Injectable } from "@nestjs/common";
+import { eq } from "drizzle-orm";
+
+import { DRIZZLE } from "../database/database.module.js";
+
+/**
+ * Postgres SQLSTATE 23505 — a `UNIQUE`/primary-key constraint was violated.
+ * Drizzle wraps the raw `pg` error in a `DrizzleQueryError`, which puts the
+ * original error (the one that actually carries `.code`) on `.cause` rather
+ * than spreading it onto itself — checking `error.code` alone here would
+ * silently never match.
+ */
+function isUniqueViolation(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const { code, cause } = error as { code?: unknown; cause?: { code?: unknown } };
+  return code === "23505" || cause?.code === "23505";
+}
+
+@Injectable()
+export class ProfileService {
+  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+
+  /**
+   * Lazy — an account with no row yet (nobody has ever saved a phone number
+   * or picked themselves in the tree) just reads back as "nothing set" rather
+   * than needing a row created at signup for every account.
+   */
+  async getMyProfile(userId: string): Promise<Pick<UserProfileRow, "phoneNumber" | "personId">> {
+    const [row] = await this.db
+      .select({ phoneNumber: userProfiles.phoneNumber, personId: userProfiles.personId })
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, userId))
+      .limit(1);
+    return row ?? { phoneNumber: null, personId: null };
+  }
+
+  /**
+   * Upserts just the fields given — `undefined` means "leave alone", mirroring
+   * `PersonService.update`'s field-by-field optionality. A `personId` already
+   * claimed by another account hits the partial unique index
+   * (`user_profiles_person_id_idx`); that's surfaced as a clear 400 rather
+   * than the raw Postgres error, since a caller can plausibly trigger this by
+   * picking someone another account already identified as.
+   */
+  async updateProfile(
+    userId: string,
+    input: UpdateProfile,
+  ): Promise<Pick<UserProfileRow, "phoneNumber" | "personId">> {
+    try {
+      const [row] = await this.db
+        .insert(userProfiles)
+        .values({
+          userId,
+          phoneNumber: input.phoneNumber ?? null,
+          personId: input.personId ?? null,
+        })
+        .onConflictDoUpdate({
+          target: userProfiles.userId,
+          set: {
+            ...(input.phoneNumber !== undefined ? { phoneNumber: input.phoneNumber } : {}),
+            ...(input.personId !== undefined ? { personId: input.personId } : {}),
+            updatedAt: new Date(),
+          },
+        })
+        .returning({ phoneNumber: userProfiles.phoneNumber, personId: userProfiles.personId });
+      if (!row) {
+        throw new Error("Upsert returned no row");
+      }
+      return row;
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new BadRequestException("Someone else has already identified as this person");
+      }
+      throw error;
+    }
+  }
+}

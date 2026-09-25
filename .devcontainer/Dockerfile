@@ -3,7 +3,7 @@ FROM mcr.microsoft.com/devcontainers/typescript-node:24-trixie
 # turbo has no corepack equivalent, so it stays pinned here explicitly.
 # pnpm's version is NOT set here: corepack reads it from the single source of
 # truth, `packageManager` in the root package.json, so the two can never drift.
-ARG TURBO_VERSION=2.11.2
+ARG TURBO_VERSION=2.11.4
 
 # postgresql-client gives us psql/pg_isready for AGE (Cypher) spelunking and
 # for the readiness gate in post-create.sh.

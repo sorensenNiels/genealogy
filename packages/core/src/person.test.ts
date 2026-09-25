@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   calculateAge,
+  calculateResearchCompleteness,
   createPersonSchema,
   formatAge,
   formatFullPersonName,
@@ -107,6 +108,9 @@ describe("createPersonSchema", () => {
       birthPlace: null,
       death: null,
       deathPlace: null,
+      causeOfDeath: null,
+      burial: null,
+      burialPlace: null,
       notes: null,
       isLiving: true,
     });
@@ -175,5 +179,36 @@ describe("formatAge", () => {
 
   it("returns null rather than a label when age can't be resolved", () => {
     expect(formatAge({ birth: null, death: null, isLiving: true })).toBeNull();
+  });
+});
+
+describe("calculateResearchCompleteness", () => {
+  const NONE = {
+    hasBirthDate: false,
+    hasDeathDateOrLiving: false,
+    hasParent: false,
+    hasCitation: false,
+    hasPhoto: false,
+  };
+
+  it("is 0% when nothing is filled in", () => {
+    expect(calculateResearchCompleteness(NONE)).toBe(0);
+  });
+
+  it("is 100% when every check passes", () => {
+    expect(
+      calculateResearchCompleteness({
+        hasBirthDate: true,
+        hasDeathDateOrLiving: true,
+        hasParent: true,
+        hasCitation: true,
+        hasPhoto: true,
+      }),
+    ).toBe(100);
+  });
+
+  it("counts each check as an equal 20% share", () => {
+    expect(calculateResearchCompleteness({ ...NONE, hasBirthDate: true })).toBe(20);
+    expect(calculateResearchCompleteness({ ...NONE, hasBirthDate: true, hasPhoto: true })).toBe(40);
   });
 });

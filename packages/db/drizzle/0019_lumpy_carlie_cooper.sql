@@ -1,0 +1,2 @@
+ALTER TABLE "persons" ADD COLUMN "is_root_person" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "persons_single_root_idx" ON "persons" USING btree ("is_root_person") WHERE "persons"."is_root_person" = true;

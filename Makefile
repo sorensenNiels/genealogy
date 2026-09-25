@@ -29,6 +29,9 @@ fmt: ## Rewrite files with oxfmt
 lint: ## Lint with oxlint, applying automatic fixes
 	pnpm lint:fix
 
+update:
+	pnpm update --interactive --latest
+
 typecheck: ## Typecheck every package
 	pnpm typecheck
 

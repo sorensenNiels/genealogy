@@ -11,7 +11,7 @@ import {
   redirect,
   useNavigate,
 } from "@tanstack/react-router";
-import { SettingsIcon } from "lucide-react";
+import { SettingsIcon, UserIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { authClient, useSession } from "../lib/auth-client";
@@ -111,7 +111,7 @@ function RootLayout() {
             className="text-sm text-muted-foreground hover:text-foreground"
             activeProps={{ className: "text-sm text-foreground font-medium" }}
           >
-            Person list
+            People
           </Link>
           <Link
             to="/tree"
@@ -128,6 +128,7 @@ function RootLayout() {
             Photos
           </Link>
           <span className="ml-auto flex items-center gap-3">
+            <ProfileLink />
             <SettingsLink />
             <ThemeToggle />
             <SessionStatus />
@@ -138,6 +139,25 @@ function RootLayout() {
         <Outlet />
       </main>
     </div>
+  );
+}
+
+function ProfileLink() {
+  const { data: session, isPending } = useSession();
+
+  if (isPending || !session) {
+    return null;
+  }
+
+  return (
+    <Link
+      to="/profile"
+      className="text-muted-foreground hover:text-foreground"
+      activeProps={{ className: "text-foreground" }}
+      aria-label="Profile"
+    >
+      <UserIcon className="size-5" aria-hidden="true" />
+    </Link>
   );
 }
 

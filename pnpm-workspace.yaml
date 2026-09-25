@@ -16,9 +16,9 @@ catalog:
   # programmatic compiler API, which the Nest CLI (`nest build`, `nest start`)
   # calls into. The API is expected back in 7.1 — bump this line then.
   typescript: 6.0.3
-  turbo: 2.11.2
-  oxlint: 1.83.0
-  oxfmt: 0.68.0
+  turbo: 2.11.3
+  oxlint: 1.85.0
+  oxfmt: 0.70.0
   vitest: 5.0.1
   "@types/node": 24.10.1
   jsdom: 30.1.0

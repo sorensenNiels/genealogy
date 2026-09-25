@@ -91,6 +91,10 @@ export const createPersonSchema = z.object({
   birthPlace: z.string().nullable().default(null),
   death: historicalDateSchema.nullable().default(null),
   deathPlace: z.string().nullable().default(null),
+  /** As written in the record — free text, not a coded cause-of-death vocabulary. */
+  causeOfDeath: z.string().nullable().default(null),
+  burial: historicalDateSchema.nullable().default(null),
+  burialPlace: z.string().nullable().default(null),
   notes: z.string().nullable().default(null),
   isLiving: z.boolean().default(true),
 });
@@ -108,6 +112,9 @@ export const updatePersonSchema = z.object({
   birthPlace: z.string().nullable().optional(),
   death: historicalDateSchema.nullable().optional(),
   deathPlace: z.string().nullable().optional(),
+  causeOfDeath: z.string().nullable().optional(),
+  burial: historicalDateSchema.nullable().optional(),
+  burialPlace: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   isLiving: z.boolean().optional(),
 });
@@ -202,4 +209,29 @@ export function formatAge(
   const age = calculateAge(person, asOf);
   if (age === null) return null;
   return person.isLiving ? `Age ${age}` : `Died at age ${age}`;
+}
+
+/**
+ * A plain 5-point checklist, 20% each, for the "research completeness" bar
+ * on the person-page header — deliberately not a weighted or fuzzy score,
+ * so it stays predictable ("what's missing?") rather than a black box.
+ * Takes an explicit, minimal shape rather than a full `Person` (or query
+ * result) so it stays a pure function callers can test and reuse without
+ * needing to fetch anything beyond what they already have on hand.
+ */
+export function calculateResearchCompleteness(input: {
+  hasBirthDate: boolean;
+  hasDeathDateOrLiving: boolean;
+  hasParent: boolean;
+  hasCitation: boolean;
+  hasPhoto: boolean;
+}): number {
+  const checks = [
+    input.hasBirthDate,
+    input.hasDeathDateOrLiving,
+    input.hasParent,
+    input.hasCitation,
+    input.hasPhoto,
+  ];
+  return (checks.filter(Boolean).length / checks.length) * 100;
 }

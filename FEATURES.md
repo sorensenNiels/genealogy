@@ -15,7 +15,7 @@ A living backlog for the genealogy app. Status markers: ✅ done, 🚧 planned, 
 - ✅ Search people by name
 - ✅ A short, human-readable public id per person (FamilySearch-style, e.g. `LZ4Y-9K2`) — always starts with a letter, distinct from the internal database id, shown as a subtle click-to-copy indicator in the people list and on a person's own page
 - ✅ Autocomplete on Title/prefix and Suffix, suggesting a fixed list of common values plus whatever's already been typed for other people — encourages reusing the same wording ("Dr." rather than a mix of "Dr.", "Dr", "Doctor") without forcing a closed vocabulary
-- ✅ "Person list" (renamed from "People"): avatar/initials, gender shown as an icon + label, a living/deceased status badge, an Age column, hover-revealed row actions, and real pagination (previously hard-capped at 50 with no way to see anyone past that)
+- ✅ "People" list: avatar/initials, gender shown as an icon + label, a living/deceased status badge, an Age column, hover-revealed row actions, and real pagination (previously hard-capped at 50 with no way to see anyone past that)
 
 ### Person record & UI — gaps found in a review of the current implementation
 

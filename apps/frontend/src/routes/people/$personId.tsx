@@ -1,16 +1,19 @@
 import type { AppRouter } from "@genealogy/backend";
 import {
   calculateAge,
+  calculateResearchCompleteness,
   confidenceSchema,
   eventTypeSchema,
   formatFullPersonName,
   formatLifespan,
   formatPersonName,
+  joinHistoricalDateText,
   nameVariantTypeSchema,
   parentageSchema,
   parseHistoricalDate,
   resolveHistoricalDate,
   sexSchema,
+  splitHistoricalDateText,
   unionStatusSchema,
   type CitationFactType,
   type Confidence,
@@ -33,14 +36,9 @@ import {
 import { Autocomplete } from "@genealogy/ui/components/autocomplete";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Badge } from "@genealogy/ui/components/badge";
-import { Button } from "@genealogy/ui/components/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@genealogy/ui/components/card";
+import { Button, buttonVariants } from "@genealogy/ui/components/button";
+import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
+import { Card, CardContent, CardHeader, CardTitle } from "@genealogy/ui/components/card";
 import {
   Combobox,
   ComboboxContent,
@@ -59,10 +57,12 @@ import {
 import {
   HistoricalDateInput,
   type HistoricalDatePreview,
+  type HistoricalDateQuality,
 } from "@genealogy/ui/components/historical-date-input";
 import { Input } from "@genealogy/ui/components/input";
 import { MarkdownContent } from "@genealogy/ui/components/markdown-content";
 import { MarkdownEditor } from "@genealogy/ui/components/markdown-editor";
+import { ProgressBar } from "@genealogy/ui/components/progress-bar";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import {
   Select,
@@ -71,27 +71,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@genealogy/ui/components/select";
-import { Switch } from "@genealogy/ui/components/switch";
 import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
+import { cn } from "@genealogy/ui/lib/utils";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
-import {
-  Cake,
-  CameraIcon,
-  Cross,
-  PencilIcon,
-  PlusIcon,
-  Trash2Icon,
-  UnlinkIcon,
-} from "lucide-react";
+import { CameraIcon, Network, PencilIcon, PlusIcon, Trash2Icon, UnlinkIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 
 import { publicBackendUrl } from "../../lib/env";
 import { formatDisplayDate } from "../../lib/format-date";
-import { GenderIcon, initials, labelFor, optionsFor, SEX_LABELS } from "../../lib/person-display";
+import {
+  GenderIcon,
+  initials,
+  labelFor,
+  optionsFor,
+  RELATIONSHIP_TO_ROOT_LABELS,
+  SEX_LABELS,
+} from "../../lib/person-display";
 import {
   addEvent,
   addName,
@@ -283,6 +282,9 @@ function PersonDetailRoute() {
   const spouses = relatives.data?.spouses ?? [];
   const children = relatives.data?.children ?? [];
   const unionRows = unions.data ?? [];
+  const nicknames = (names.data ?? [])
+    .filter((name) => name.nameType === "nickname")
+    .map((name) => name.given);
   // Nobody already related (in any direction) should be offered again as a pick.
   const excludeIds = new Set([
     personId,
@@ -297,7 +299,19 @@ function PersonDetailRoute() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-4">
+        <nav
+          className="flex items-center gap-1.5 text-sm text-muted-foreground"
+          aria-label="Breadcrumb"
+        >
+          <Link to="/people" className="hover:text-foreground">
+            People
+          </Link>
+          <span aria-hidden="true">/</span>
+          <span className="text-foreground">
+            {formatFullPersonName({ ...person.data, nickname: nicknames })}
+          </span>
+        </nav>
         <Link
           to="/people/$personId/print"
           params={{ personId }}
@@ -308,11 +322,12 @@ function PersonDetailRoute() {
       </div>
       <PersonFields
         person={person.data}
-        nicknames={(names.data ?? [])
-          .filter((name) => name.nameType === "nickname")
-          .map((name) => name.given)}
+        nicknames={nicknames}
         names={names.data ?? []}
         options={options.data ?? []}
+        citations={citationsList.data ?? []}
+        sourcesList={sourcesList.data ?? []}
+        hasParent={parents.length > 0}
         onChanged={refresh}
         canDelete={canDelete}
         onDeleted={() => navigate({ to: "/people" })}
@@ -373,6 +388,9 @@ function PersonFields({
   nicknames,
   names,
   options,
+  citations,
+  sourcesList,
+  hasParent,
   onChanged,
   canDelete,
   onDeleted,
@@ -381,10 +399,14 @@ function PersonFields({
   nicknames: string[];
   names: NameVariantRow[];
   options: ConfigurableOptionRow[];
+  citations: CitationRow[];
+  sourcesList: SourceRow[];
+  hasParent: boolean;
   onChanged: () => Promise<void>;
   canDelete: boolean;
   onDeleted: () => void;
 }) {
+  const [addEventOpen, setAddEventOpen] = useState(false);
   const updatePersonMutation = useMutation({ mutationFn: updatePerson, onSuccess: onChanged });
   const removePersonMutation = useMutation({ mutationFn: removePerson, onSuccess: onDeleted });
   const removeNameMutation = useMutation({ mutationFn: removeName });
@@ -405,6 +427,10 @@ function PersonFields({
     await onChanged();
   };
 
+  const birthSplit = splitHistoricalDateText(person.birth?.original ?? "");
+  const deathSplit = splitHistoricalDateText(person.death?.original ?? "");
+  const burialSplit = splitHistoricalDateText(person.burial?.original ?? "");
+
   const form = useForm({
     defaultValues: {
       given: person.given,
@@ -412,14 +438,38 @@ function PersonFields({
       sex: person.sex,
       titlePrefix: person.titlePrefix ?? "",
       suffix: person.suffix ?? "",
-      birthOriginal: person.birth?.original ?? "",
+      birthQuality: birthSplit.quality,
+      birthValue: birthSplit.value,
+      birthEndValue: birthSplit.endValue,
       birthPlace: person.birthPlace ?? "",
-      deathOriginal: person.death?.original ?? "",
+      deathQuality: deathSplit.quality,
+      deathValue: deathSplit.value,
+      deathEndValue: deathSplit.endValue,
       deathPlace: person.deathPlace ?? "",
+      causeOfDeath: person.causeOfDeath ?? "",
+      burialQuality: burialSplit.quality,
+      burialValue: burialSplit.value,
+      burialEndValue: burialSplit.endValue,
+      burialPlace: person.burialPlace ?? "",
       notes: person.notes ?? "",
       isLiving: person.isLiving,
     },
     onSubmit: async ({ value, formApi }) => {
+      const birthOriginal = joinHistoricalDateText({
+        quality: value.birthQuality,
+        value: value.birthValue,
+        endValue: value.birthEndValue,
+      });
+      const deathOriginal = joinHistoricalDateText({
+        quality: value.deathQuality,
+        value: value.deathValue,
+        endValue: value.deathEndValue,
+      });
+      const burialOriginal = joinHistoricalDateText({
+        quality: value.burialQuality,
+        value: value.burialValue,
+        endValue: value.burialEndValue,
+      });
       await updatePersonMutation.mutateAsync({
         data: {
           id: person.id,
@@ -433,21 +483,21 @@ function PersonFields({
           // the text alone (without it happening to still parse to the same
           // bounds) would leave a stale earliest/latest attached to new words.
           birth:
-            value.birthOriginal.trim() === ""
+            birthOriginal === null
               ? null
-              : {
-                  original: value.birthOriginal.trim(),
-                  ...parseHistoricalDate(value.birthOriginal.trim()),
-                },
+              : { original: birthOriginal, ...parseHistoricalDate(birthOriginal) },
           birthPlace: value.birthPlace.trim() === "" ? null : value.birthPlace,
           death:
-            value.deathOriginal.trim() === ""
+            deathOriginal === null
               ? null
-              : {
-                  original: value.deathOriginal.trim(),
-                  ...parseHistoricalDate(value.deathOriginal.trim()),
-                },
+              : { original: deathOriginal, ...parseHistoricalDate(deathOriginal) },
           deathPlace: value.deathPlace.trim() === "" ? null : value.deathPlace,
+          causeOfDeath: value.causeOfDeath.trim() === "" ? null : value.causeOfDeath,
+          burial:
+            burialOriginal === null
+              ? null
+              : { original: burialOriginal, ...parseHistoricalDate(burialOriginal) },
+          burialPlace: value.burialPlace.trim() === "" ? null : value.burialPlace,
           notes: value.notes.trim() === "" ? null : value.notes,
           isLiving: value.isLiving,
         },
@@ -461,195 +511,283 @@ function PersonFields({
   const isLiving = useStore(form.store, (state) => state.values.isLiving);
   const isDirty = useStore(form.store, (state) => state.isDirty);
   const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+  const birthQuality = useStore(form.store, (state) => state.values.birthQuality);
+  const birthValue = useStore(form.store, (state) => state.values.birthValue);
+  const birthEndValue = useStore(form.store, (state) => state.values.birthEndValue);
+  const deathQuality = useStore(form.store, (state) => state.values.deathQuality);
+  const deathValue = useStore(form.store, (state) => state.values.deathValue);
+  const deathEndValue = useStore(form.store, (state) => state.values.deathEndValue);
+  const burialQuality = useStore(form.store, (state) => state.values.burialQuality);
+  const burialValue = useStore(form.store, (state) => state.values.burialValue);
+  const burialEndValue = useStore(form.store, (state) => state.values.burialEndValue);
 
   const age = calculateAge(person);
   const birthDisplay = formatDisplayDate(person.birth);
   const deathDisplay = formatDisplayDate(person.death);
-  const birthLine = birthDisplay
-    ? `Born ${birthDisplay}${person.isLiving && age !== null ? ` (${age})` : ""}`
-    : null;
-  const deathLine = !person.isLiving
-    ? `${deathDisplay ? `Died ${deathDisplay}` : "Died"}${age !== null ? ` (${age})` : ""}`
-    : null;
+
+  // The page header's birth/death line — date *and* place together
+  // ("b. 14 March 1838 · Give Sogn, Vejle Amt").
+  const birthSummary = [birthDisplay, person.birthPlace].filter(Boolean).join(" · ") || null;
+  const deathSummary = person.isLiving
+    ? null
+    : [deathDisplay, person.deathPlace].filter(Boolean).join(" · ") || null;
+
+  // The first alternate name (any type but the primary "birth" one), with
+  // its earliest citation's source title in parens if it has one — mirrors
+  // the mockup's single "Also known as" line.
+  const akaName = names.find((name) => name.nameType !== "birth");
+  const akaCitation = akaName
+    ? citations.find((citation) => citation.factType === "name" && citation.factId === akaName.id)
+    : undefined;
+  const akaSource = akaCitation
+    ? sourcesList.find((source) => source.id === akaCitation.sourceId)
+    : undefined;
+
+  const completeness = calculateResearchCompleteness({
+    hasBirthDate: person.birth?.earliest != null || person.birth?.latest != null,
+    hasDeathDateOrLiving:
+      person.isLiving || person.death?.earliest != null || person.death?.latest != null,
+    hasParent,
+    hasCitation: citations.length > 0,
+    hasPhoto: person.photoPath != null,
+  });
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-4">
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <GenderIcon sex={person.sex} />
-            {formatFullPersonName({ ...person, nickname: nicknames })}
-            <CopyableText value={person.publicId} className="font-normal" />
-          </CardTitle>
-          {birthLine && (
-            <CardDescription className="flex items-center gap-1.5">
-              <Cake className="size-3.5 shrink-0" aria-hidden="true" />
-              {birthLine}
-            </CardDescription>
-          )}
-          {deathLine && (
-            <CardDescription className="flex items-center gap-1.5">
-              <Cross className="size-3.5 shrink-0" aria-hidden="true" />
-              {deathLine}
-            </CardDescription>
-          )}
-        </div>
-        <PersonPhoto person={person} onChanged={onChanged} />
-      </CardHeader>
-      <CardContent>
-        <form
-          className="grid gap-4 sm:grid-cols-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            // TanStack Form rethrows onSubmit's rejection after resetting
-            // isSubmitting — caught here only to avoid an unhandled
-            // rejection; the failure itself is surfaced via update.isError
-            // below.
-            void form.handleSubmit().catch(() => {});
-          }}
-        >
-          <div className="flex items-end justify-between gap-4 sm:col-span-2">
-            <form.Field name="sex">
-              {(field) => (
-                <LabeledField label="Gender">
-                  <Select
-                    aria-label="Gender"
-                    value={field.state.value}
-                    onChange={(value) => {
-                      if (value) field.handleChange(sexSchema.parse(value));
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {sexSchema.options.map((option) => (
-                        <SelectItem key={option} id={option}>
-                          {SEX_LABELS[option]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </LabeledField>
+    <div className="space-y-6">
+      <Card>
+        <CardContent className="flex flex-col gap-4 pt-6 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            <PersonPhoto person={person} onChanged={onChanged} size="lg" />
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">
+                  <CopyableText value={person.publicId} className="font-mono text-foreground" />
+                </Badge>
+                <Badge variant="outline">{SEX_LABELS[person.sex]}</Badge>
+                {person.relationshipToRoot && (
+                  <Badge className="border-transparent bg-primary/10 text-primary">
+                    {RELATIONSHIP_TO_ROOT_LABELS[person.relationshipToRoot]}
+                  </Badge>
+                )}
+              </div>
+              <h1 className="text-2xl font-bold sm:text-3xl">
+                {formatFullPersonName({ ...person, nickname: nicknames })}
+              </h1>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                {birthSummary && (
+                  <span>
+                    <span className="font-medium text-foreground">b.</span> {birthSummary}
+                    {person.isLiving && age !== null ? ` · Age ${age}` : ""}
+                  </span>
+                )}
+                {!person.isLiving && (
+                  <span>
+                    <span className="font-medium text-foreground">d.</span> {deathSummary ?? "—"}
+                    {age !== null ? ` · Age ${age}` : ""}
+                  </span>
+                )}
+              </div>
+              {akaName && (
+                <p className="text-sm text-muted-foreground">
+                  Also known as:{" "}
+                  <span className="text-foreground">{formatPersonName(akaName)}</span>
+                  {akaSource ? ` (${akaSource.title})` : ""}
+                </p>
               )}
-            </form.Field>
-            <form.Field name="isLiving">
-              {(field) => (
-                <Switch
-                  isSelected={field.state.value}
-                  onChange={(isSelected) => field.handleChange(isSelected)}
-                >
-                  Living
-                </Switch>
-              )}
-            </form.Field>
+            </div>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
-            <form.Field name="given">
-              {(field) => (
-                <LabeledField label="First names">
-                  <Input
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  />
-                </LabeledField>
-              )}
-            </form.Field>
-            <form.Field name="surname">
-              {(field) => (
-                <LabeledField label="Last names">
-                  <Input
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  />
-                </LabeledField>
-              )}
-            </form.Field>
-          </div>
-          <div className="space-y-2 text-sm sm:col-span-2">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Alternate names</span>
-              <Dialog isOpen={addNameOpen} onOpenChange={setAddNameOpen}>
-                <Button type="button" variant="ghost" size="icon" aria-label="Add alternate name">
-                  <PlusIcon className="size-4" />
+          <div className="flex flex-col items-stretch gap-3 sm:w-56 sm:items-end">
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              <Link
+                to="/tree"
+                search={{ personId: person.id }}
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+              >
+                <Network className="size-4" /> View in tree
+              </Link>
+              <Dialog isOpen={addEventOpen} onOpenChange={setAddEventOpen}>
+                <Button size="sm">
+                  <PlusIcon className="size-4" /> Add event
                 </Button>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Add alternate name</DialogTitle>
+                    <DialogTitle>Add event</DialogTitle>
                   </DialogHeader>
-                  <NameForm
+                  <EventForm
                     personId={person.id}
-                    name={null}
+                    event={null}
+                    citations={citations}
+                    sourcesList={sourcesList}
                     options={options}
                     onDone={async () => {
-                      setAddNameOpen(false);
+                      setAddEventOpen(false);
                       await onChanged();
                     }}
+                    onChanged={onChanged}
                   />
                 </DialogContent>
               </Dialog>
             </div>
-            {names.length > 0 && (
-              <div className="space-y-2">
-                {names.map((name) => (
-                  <NameRow
-                    key={name.id}
-                    personId={person.id}
-                    name={name}
-                    options={options}
-                    onChanged={onChanged}
-                    onRemove={() => void removeNameById(name.id)}
-                  />
-                ))}
-              </div>
-            )}
+            <ProgressBar label="Research completeness" value={completeness} />
           </div>
-          <form.Field name="titlePrefix">
-            {(field) => (
-              <LabeledField label="Title / prefix">
-                <Autocomplete
-                  aria-label="Title / prefix"
-                  placeholder="e.g. Dr., Rev."
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={field.handleChange}
-                  options={titlePrefixOptions}
-                  isClearable
-                />
-              </LabeledField>
-            )}
-          </form.Field>
-          <form.Field name="suffix">
-            {(field) => (
-              <LabeledField label="Suffix">
-                <Autocomplete
-                  aria-label="Suffix"
-                  placeholder="e.g. Jr., III"
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={field.handleChange}
-                  options={suffixOptions}
-                  isClearable
-                />
-              </LabeledField>
-            )}
-          </form.Field>
-          <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
-            <form.Field name="birthOriginal">
+        </CardContent>
+      </Card>
+
+      <form
+        className="space-y-6"
+        onSubmit={(event) => {
+          event.preventDefault();
+          // TanStack Form rethrows onSubmit's rejection after resetting
+          // isSubmitting — caught here only to avoid an unhandled rejection;
+          // the failure itself is surfaced via update.isError below.
+          void form.handleSubmit().catch(() => {});
+        }}
+      >
+        <Card>
+          <CardHeader>
+            <CardTitle>Names &amp; gender</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <form.Field name="sex">
+                {(field) => (
+                  <LabeledField label="Gender">
+                    <ButtonRadioGroup
+                      aria-label="Gender"
+                      value={field.state.value}
+                      onChange={(value) => field.handleChange(value)}
+                      options={sexSchema.options.map((option) => ({
+                        value: option,
+                        label: SEX_LABELS[option],
+                      }))}
+                    />
+                  </LabeledField>
+                )}
+              </form.Field>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
+              <form.Field name="given">
+                {(field) => (
+                  <LabeledField label="First names">
+                    <Input
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(event) => field.handleChange(event.target.value)}
+                    />
+                  </LabeledField>
+                )}
+              </form.Field>
+              <form.Field name="surname">
+                {(field) => (
+                  <LabeledField label="Last names">
+                    <Input
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(event) => field.handleChange(event.target.value)}
+                    />
+                  </LabeledField>
+                )}
+              </form.Field>
+            </div>
+            <div className="space-y-2 text-sm sm:col-span-2">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Alternate names</span>
+                <Dialog isOpen={addNameOpen} onOpenChange={setAddNameOpen}>
+                  <Button type="button" variant="ghost" size="icon" aria-label="Add alternate name">
+                    <PlusIcon className="size-4" />
+                  </Button>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add alternate name</DialogTitle>
+                    </DialogHeader>
+                    <NameForm
+                      personId={person.id}
+                      name={null}
+                      options={options}
+                      onDone={async () => {
+                        setAddNameOpen(false);
+                        await onChanged();
+                      }}
+                    />
+                  </DialogContent>
+                </Dialog>
+              </div>
+              {names.length > 0 && (
+                <div className="space-y-2">
+                  {names.map((name) => (
+                    <NameRow
+                      key={name.id}
+                      personId={person.id}
+                      name={name}
+                      options={options}
+                      onChanged={onChanged}
+                      onRemove={() => void removeNameById(name.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+            <form.Field name="titlePrefix">
               {(field) => (
-                <LabeledField label="Date of Birth">
-                  <HistoricalDateInput
-                    placeholder="e.g. abt 1854"
+                <LabeledField label="Title / prefix">
+                  <Autocomplete
+                    aria-label="Title / prefix"
+                    placeholder="e.g. Dr., Rev."
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={field.handleChange}
-                    preview={historicalDatePreview(field.state.value)}
+                    options={titlePrefixOptions}
+                    isClearable
                   />
                 </LabeledField>
               )}
             </form.Field>
+            <form.Field name="suffix">
+              {(field) => (
+                <LabeledField label="Suffix">
+                  <Autocomplete
+                    aria-label="Suffix"
+                    placeholder="e.g. Jr., III"
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={field.handleChange}
+                    options={suffixOptions}
+                    isClearable
+                  />
+                </LabeledField>
+              )}
+            </form.Field>
+            <form.Field name="notes">
+              {(field) => (
+                <LabeledField label="Notes" className="sm:col-span-2" asDiv>
+                  <MarkdownEditor
+                    aria-label="Notes"
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                  />
+                </LabeledField>
+              )}
+            </form.Field>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Birth</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <LabeledField label="Date of Birth">
+              <HistoricalDateInput
+                placeholder="e.g. 1854"
+                quality={birthQuality}
+                onQualityChange={(quality) => form.setFieldValue("birthQuality", quality)}
+                value={birthValue}
+                onChange={(value) => form.setFieldValue("birthValue", value)}
+                endValue={birthEndValue}
+                onEndChange={(value) => form.setFieldValue("birthEndValue", value)}
+                preview={historicalDateFieldPreview(birthQuality, birthValue, birthEndValue)}
+              />
+            </LabeledField>
             <form.Field name="birthPlace">
               {(field) => (
                 <LabeledField label="Place of Birth">
@@ -661,88 +799,139 @@ function PersonFields({
                 </LabeledField>
               )}
             </form.Field>
-          </div>
-          {!isLiving && (
-            <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
-              <form.Field name="deathOriginal">
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Living status &amp; death</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <form.Field name="isLiving">
                 {(field) => (
-                  <LabeledField label="Date of Death">
-                    <HistoricalDateInput
-                      placeholder="e.g. 12 MAR 1901"
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={field.handleChange}
-                      preview={historicalDatePreview(field.state.value)}
-                    />
-                  </LabeledField>
-                )}
-              </form.Field>
-              <form.Field name="deathPlace">
-                {(field) => (
-                  <LabeledField label="Place of Death">
-                    <Input
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(event) => field.handleChange(event.target.value)}
+                  <LabeledField label="Is this person living?">
+                    <ButtonRadioGroup
+                      aria-label="Is this person living?"
+                      value={field.state.value ? "living" : "deceased"}
+                      onChange={(value) => field.handleChange(value === "living")}
+                      options={[
+                        { value: "living", label: "Living" },
+                        { value: "deceased", label: "Deceased" },
+                      ]}
                     />
                   </LabeledField>
                 )}
               </form.Field>
             </div>
-          )}
-          <form.Field name="notes">
-            {(field) => (
-              <LabeledField label="Notes" className="sm:col-span-2" asDiv>
-                <MarkdownEditor
-                  aria-label="Notes"
-                  value={field.state.value}
-                  onChange={field.handleChange}
-                />
-              </LabeledField>
+            {!isLiving && (
+              <>
+                <LabeledField label="Date of Death">
+                  <HistoricalDateInput
+                    placeholder="e.g. 12 MAR 1901"
+                    quality={deathQuality}
+                    onQualityChange={(quality) => form.setFieldValue("deathQuality", quality)}
+                    value={deathValue}
+                    onChange={(value) => form.setFieldValue("deathValue", value)}
+                    endValue={deathEndValue}
+                    onEndChange={(value) => form.setFieldValue("deathEndValue", value)}
+                    preview={historicalDateFieldPreview(deathQuality, deathValue, deathEndValue)}
+                  />
+                </LabeledField>
+                <form.Field name="deathPlace">
+                  {(field) => (
+                    <LabeledField label="Place of Death">
+                      <Input
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(event) => field.handleChange(event.target.value)}
+                      />
+                    </LabeledField>
+                  )}
+                </form.Field>
+                <LabeledField label="Burial date">
+                  <HistoricalDateInput
+                    placeholder="e.g. c. Nov 1901"
+                    quality={burialQuality}
+                    onQualityChange={(quality) => form.setFieldValue("burialQuality", quality)}
+                    value={burialValue}
+                    onChange={(value) => form.setFieldValue("burialValue", value)}
+                    endValue={burialEndValue}
+                    onEndChange={(value) => form.setFieldValue("burialEndValue", value)}
+                    preview={historicalDateFieldPreview(burialQuality, burialValue, burialEndValue)}
+                  />
+                </LabeledField>
+                <form.Field name="burialPlace">
+                  {(field) => (
+                    <LabeledField label="Burial place">
+                      <Input
+                        placeholder="Cemetery or churchyard"
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(event) => field.handleChange(event.target.value)}
+                      />
+                    </LabeledField>
+                  )}
+                </form.Field>
+                <form.Field name="causeOfDeath">
+                  {(field) => (
+                    <LabeledField label="Cause of death" className="sm:col-span-2">
+                      <Input
+                        placeholder="As written in the record, e.g. Alderdomssvaghed"
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(event) => field.handleChange(event.target.value)}
+                      />
+                    </LabeledField>
+                  )}
+                </form.Field>
+              </>
             )}
-          </form.Field>
-          <div className="flex items-center justify-between gap-4 sm:col-span-2">
+          </CardContent>
+        </Card>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
             <SaveButton isDirty={isDirty} isPending={isSubmitting}>
               Save
             </SaveButton>
-            {canDelete && (
-              <AlertDialog>
-                <Button type="button" variant="outline" className="text-destructive">
-                  <Trash2Icon /> Delete
-                </Button>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete {formatFullPersonName(person)}?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This permanently removes them and everything recorded about them — alternate
-                      names, life events, sources and citations. This cannot be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      onPress={() => removePersonMutation.mutate({ data: { id: person.id } })}
-                    >
-                      Delete
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            )}
+            <Button type="button" variant="outline" onPress={() => form.reset()}>
+              Cancel
+            </Button>
           </div>
-          {updatePersonMutation.isError && (
-            <p className="text-sm text-destructive sm:col-span-2">
-              {updatePersonMutation.error.message}
-            </p>
+          {canDelete && (
+            <AlertDialog>
+              <Button type="button" variant="outline" className="text-destructive">
+                <Trash2Icon /> Delete
+              </Button>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete {formatFullPersonName(person)}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This permanently removes them and everything recorded about them — alternate
+                    names, life events, sources and citations. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onPress={() => removePersonMutation.mutate({ data: { id: person.id } })}
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
-          {removePersonMutation.isError && (
-            <p className="text-sm text-destructive sm:col-span-2">
-              {removePersonMutation.error.message}
-            </p>
-          )}
-        </form>
-      </CardContent>
-    </Card>
+        </div>
+        {updatePersonMutation.isError && (
+          <p className="text-sm text-destructive">{updatePersonMutation.error.message}</p>
+        )}
+        {removePersonMutation.isError && (
+          <p className="text-sm text-destructive">{removePersonMutation.error.message}</p>
+        )}
+      </form>
+    </div>
   );
 }
 
@@ -771,6 +960,19 @@ function historicalDatePreview(text: string): HistoricalDatePreview | null {
 }
 
 /**
+ * Same as `historicalDatePreview`, but from a quality dropdown's split parts
+ * rather than the raw assembled string — every `HistoricalDateInput` call
+ * site holds its date this way now, so this is the one they all preview from.
+ */
+function historicalDateFieldPreview(
+  quality: HistoricalDateQuality,
+  value: string,
+  endValue: string,
+): HistoricalDatePreview | null {
+  return historicalDatePreview(joinHistoricalDateText({ quality, value, endValue }) ?? "");
+}
+
+/**
  * Upload/delete go through this app's own /api/people/$id/photo proxy route
  * (same-origin, cookies ride along automatically) — see
  * routes/api/people/$id/photo.ts. The `<img>` read below still points
@@ -778,10 +980,21 @@ function historicalDatePreview(text: string): HistoricalDatePreview | null {
  * `<img src>` isn't subject to CORS regardless, so proxying it would add
  * nothing. See `publicBackendUrl`'s doc comment in lib/env.ts.
  */
-function PersonPhoto({ person, onChanged }: { person: PersonRow; onChanged: () => Promise<void> }) {
+function PersonPhoto({
+  person,
+  onChanged,
+  size = "sm",
+}: {
+  person: PersonRow;
+  onChanged: () => Promise<void>;
+  /** "lg" is the large, rounded-square avatar on the view-mode header. */
+  size?: "sm" | "lg";
+}) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const photoUrl = person.photoPath ? `${publicBackendUrl}/uploads/${person.photoPath}` : null;
+  const dimensionClass = size === "lg" ? "size-24" : "size-16";
+  const roundingClass = size === "lg" ? "rounded-xl" : "rounded-full";
 
   const upload = async (file: File) => {
     setUploading(true);
@@ -821,16 +1034,23 @@ function PersonPhoto({ person, onChanged }: { person: PersonRow; onChanged: () =
       />
       <Button
         variant="ghost"
-        className="group relative size-16 rounded-full p-0"
+        className={cn("group relative p-0", dimensionClass, roundingClass)}
         isDisabled={uploading}
         onPress={() => fileInputRef.current?.click()}
         aria-label={photoUrl ? "Change photo" : "Upload photo"}
       >
-        <Avatar className="size-16">
+        <Avatar className={cn(dimensionClass, roundingClass)}>
           {photoUrl && <AvatarImage src={photoUrl} alt={formatPersonName(person)} />}
-          <AvatarFallback className="text-base">{initials(person)}</AvatarFallback>
+          <AvatarFallback className={size === "lg" ? "text-2xl" : "text-base"}>
+            {initials(person)}
+          </AvatarFallback>
         </Avatar>
-        <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white opacity-0 transition-opacity group-data-hovered:opacity-100">
+        <span
+          className={cn(
+            "absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 transition-opacity group-data-hovered:opacity-100",
+            roundingClass,
+          )}
+        >
           {uploading ? (
             <span className="text-xs">…</span>
           ) : (
@@ -1158,24 +1378,28 @@ function UnionForm({
   const updateUnionMutation = useMutation({ mutationFn: updateUnion });
   const [status, setStatus] = useState<UnionStatus>(unionStatusSchema.parse(union.status));
 
+  const startSplit = splitHistoricalDateText(union.startDate?.original ?? "");
+
   const form = useForm({
     defaultValues: {
-      startDate: union.startDate?.original ?? "",
+      startQuality: startSplit.quality,
+      startValue: startSplit.value,
+      startEndValue: startSplit.endValue,
       startPlace: union.startPlace ?? "",
       notes: union.notes ?? "",
     },
     onSubmit: async ({ value }) => {
+      const startDate = joinHistoricalDateText({
+        quality: value.startQuality,
+        value: value.startValue,
+        endValue: value.startEndValue,
+      });
       await updateUnionMutation.mutateAsync({
         data: {
           id: union.id,
           status,
           startDate:
-            value.startDate.trim() === ""
-              ? null
-              : {
-                  original: value.startDate.trim(),
-                  ...parseHistoricalDate(value.startDate.trim()),
-                },
+            startDate === null ? null : { original: startDate, ...parseHistoricalDate(startDate) },
           startPlace: value.startPlace.trim() === "" ? null : value.startPlace,
           notes: value.notes.trim() === "" ? null : value.notes,
         },
@@ -1186,6 +1410,9 @@ function UnionForm({
 
   const formIsDirty = useStore(form.store, (state) => state.isDirty);
   const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+  const startQuality = useStore(form.store, (state) => state.values.startQuality);
+  const startValue = useStore(form.store, (state) => state.values.startValue);
+  const startEndValue = useStore(form.store, (state) => state.values.startEndValue);
   // status is tracked outside the form (it drives a Select, not a
   // form.Field), so the form's own isDirty misses a status-only change.
   const isDirty = formIsDirty || status !== union.status;
@@ -1216,17 +1443,16 @@ function UnionForm({
           ))}
         </SelectContent>
       </Select>
-      <form.Field name="startDate">
-        {(field) => (
-          <HistoricalDateInput
-            placeholder="Marriage date, e.g. 12 JUN 1920"
-            value={field.state.value}
-            onBlur={field.handleBlur}
-            onChange={field.handleChange}
-            preview={historicalDatePreview(field.state.value)}
-          />
-        )}
-      </form.Field>
+      <HistoricalDateInput
+        placeholder="Marriage date, e.g. 12 JUN 1920"
+        quality={startQuality}
+        onQualityChange={(quality) => form.setFieldValue("startQuality", quality)}
+        value={startValue}
+        onChange={(value) => form.setFieldValue("startValue", value)}
+        endValue={startEndValue}
+        onEndChange={(value) => form.setFieldValue("startEndValue", value)}
+        preview={historicalDateFieldPreview(startQuality, startValue, startEndValue)}
+      />
       <form.Field name="startPlace">
         {(field) => (
           <Input
@@ -1273,7 +1499,9 @@ function AddRelative({
   const [query, setQuery] = useState("");
   const [parentage, setParentage] = useState<Parentage>("unknown");
   const [unionStatus, setUnionStatus] = useState<UnionStatus>("married");
-  const [unionDate, setUnionDate] = useState("");
+  const [unionQuality, setUnionQuality] = useState<HistoricalDateQuality>("exact");
+  const [unionValue, setUnionValue] = useState("");
+  const [unionEndValue, setUnionEndValue] = useState("");
   const [unionPlace, setUnionPlace] = useState("");
   const [unionNotes, setUnionNotes] = useState("");
 
@@ -1290,6 +1518,12 @@ function AddRelative({
 
   const options = (search.data?.items ?? []).filter((candidate) => !excludeIds.has(candidate.id));
 
+  const unionOriginal = joinHistoricalDateText({
+    quality: unionQuality,
+    value: unionValue,
+    endValue: unionEndValue,
+  });
+
   const link = async (target: PersonRow) => {
     if (kind === "spouse") {
       await addUnionMutation.mutateAsync({
@@ -1298,9 +1532,9 @@ function AddRelative({
           personBId: target.id,
           status: unionStatus,
           startDate:
-            unionDate.trim() === ""
+            unionOriginal === null
               ? null
-              : { original: unionDate.trim(), ...parseHistoricalDate(unionDate.trim()) },
+              : { original: unionOriginal, ...parseHistoricalDate(unionOriginal) },
           startPlace: unionPlace.trim() === "" ? null : unionPlace,
           notes: unionNotes.trim() === "" ? null : unionNotes,
         },
@@ -1382,9 +1616,13 @@ function AddRelative({
               </Select>
               <HistoricalDateInput
                 placeholder="Date, e.g. 12 JUN 1920"
-                value={unionDate}
-                onChange={setUnionDate}
-                preview={historicalDatePreview(unionDate)}
+                quality={unionQuality}
+                onQualityChange={setUnionQuality}
+                value={unionValue}
+                onChange={setUnionValue}
+                endValue={unionEndValue}
+                onEndChange={setUnionEndValue}
+                preview={historicalDateFieldPreview(unionQuality, unionValue, unionEndValue)}
               />
               <Input
                 placeholder="Place"
@@ -1442,7 +1680,7 @@ function AddRelative({
                 personId={personId}
                 parentage={parentage}
                 unionStatus={unionStatus}
-                unionDate={unionDate}
+                unionOriginal={unionOriginal}
                 unionPlace={unionPlace}
                 unionNotes={unionNotes}
                 onDone={async () => {
@@ -1463,7 +1701,7 @@ function CreateAndLinkForm({
   personId,
   parentage,
   unionStatus,
-  unionDate,
+  unionOriginal,
   unionPlace,
   unionNotes,
   onDone,
@@ -1472,7 +1710,7 @@ function CreateAndLinkForm({
   personId: string;
   parentage: Parentage;
   unionStatus: UnionStatus;
-  unionDate: string;
+  unionOriginal: string | null;
   unionPlace: string;
   unionNotes: string;
   onDone: () => Promise<void>;
@@ -1492,9 +1730,9 @@ function CreateAndLinkForm({
             personBId: created.id,
             status: unionStatus,
             startDate:
-              unionDate.trim() === ""
+              unionOriginal === null
                 ? null
-                : { original: unionDate.trim(), ...parseHistoricalDate(unionDate.trim()) },
+                : { original: unionOriginal, ...parseHistoricalDate(unionOriginal) },
             startPlace: unionPlace.trim() === "" ? null : unionPlace,
             notes: unionNotes.trim() === "" ? null : unionNotes,
           },
@@ -2089,25 +2327,31 @@ function NameForm({
   const initialNameType: NameVariantType = name?.nameType ?? "birth";
   const [nameType, setNameType] = useState(initialNameType);
 
+  const sinceSplit = splitHistoricalDateText(name?.since?.original ?? "");
+
   const form = useForm({
     defaultValues: {
       given: name?.given ?? "",
       surname: name?.surname ?? "",
-      sinceOriginal: name?.since?.original ?? "",
+      sinceQuality: sinceSplit.quality,
+      sinceValue: sinceSplit.value,
+      sinceEndValue: sinceSplit.endValue,
       notes: name?.notes ?? "",
     },
     onSubmit: async ({ value }) => {
+      const sinceOriginal = joinHistoricalDateText({
+        quality: value.sinceQuality,
+        value: value.sinceValue,
+        endValue: value.sinceEndValue,
+      });
       const payload = {
         nameType,
         given: value.given,
         surname: value.surname,
         since:
-          value.sinceOriginal.trim() === ""
+          sinceOriginal === null
             ? null
-            : {
-                original: value.sinceOriginal.trim(),
-                ...parseHistoricalDate(value.sinceOriginal.trim()),
-              },
+            : { original: sinceOriginal, ...parseHistoricalDate(sinceOriginal) },
         notes: value.notes.trim() === "" ? null : value.notes,
       };
       if (name) {
@@ -2120,6 +2364,9 @@ function NameForm({
   });
 
   const formIsDirty = useStore(form.store, (state) => state.isDirty);
+  const sinceQuality = useStore(form.store, (state) => state.values.sinceQuality);
+  const sinceValue = useStore(form.store, (state) => state.values.sinceValue);
+  const sinceEndValue = useStore(form.store, (state) => state.values.sinceEndValue);
   const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
   // nameType is tracked outside the form (it drives a Select, not a form.Field),
   // so the form's own isDirty misses a type-only change — combine both.
@@ -2169,17 +2416,16 @@ function NameForm({
           />
         )}
       </form.Field>
-      <form.Field name="sinceOriginal">
-        {(field) => (
-          <HistoricalDateInput
-            placeholder="Since, e.g. 12 JUN 1998"
-            value={field.state.value}
-            onBlur={field.handleBlur}
-            onChange={field.handleChange}
-            preview={historicalDatePreview(field.state.value)}
-          />
-        )}
-      </form.Field>
+      <HistoricalDateInput
+        placeholder="Since, e.g. 12 JUN 1998"
+        quality={sinceQuality}
+        onQualityChange={(quality) => form.setFieldValue("sinceQuality", quality)}
+        value={sinceValue}
+        onChange={(value) => form.setFieldValue("sinceValue", value)}
+        endValue={sinceEndValue}
+        onEndChange={(value) => form.setFieldValue("sinceEndValue", value)}
+        preview={historicalDateFieldPreview(sinceQuality, sinceValue, sinceEndValue)}
+      />
       <form.Field name="notes">
         {(field) => (
           <MarkdownEditor
@@ -2398,10 +2644,14 @@ function EventForm({
   const [eventType, setEventType] = useState(initialEventType);
   const [details, setDetails] = useState<Record<string, string>>(initialDetails);
 
+  const dateSplit = splitHistoricalDateText(event?.date?.original ?? "");
+
   const form = useForm({
     defaultValues: {
       label: event?.label ?? "",
-      dateOriginal: event?.date?.original ?? "",
+      dateQuality: dateSplit.quality,
+      dateValue: dateSplit.value,
+      dateEndValue: dateSplit.endValue,
       place: event?.place ?? "",
       notes: event?.notes ?? "",
     },
@@ -2410,16 +2660,18 @@ function EventForm({
       const detailEntries = detailFields
         .map(({ key }) => [key, (details[key] ?? "").trim()] as const)
         .filter(([, fieldValue]) => fieldValue !== "");
+      const dateOriginal = joinHistoricalDateText({
+        quality: value.dateQuality,
+        value: value.dateValue,
+        endValue: value.dateEndValue,
+      });
       const payload = {
         eventType,
         label: value.label.trim() === "" ? null : value.label.trim(),
         date:
-          value.dateOriginal.trim() === ""
+          dateOriginal === null
             ? null
-            : {
-                original: value.dateOriginal.trim(),
-                ...parseHistoricalDate(value.dateOriginal.trim()),
-              },
+            : { original: dateOriginal, ...parseHistoricalDate(dateOriginal) },
         place: value.place.trim() === "" ? null : value.place,
         details: detailEntries.length > 0 ? Object.fromEntries(detailEntries) : null,
         notes: value.notes.trim() === "" ? null : value.notes,
@@ -2436,6 +2688,9 @@ function EventForm({
   const formIsDirty = useStore(form.store, (state) => state.isDirty);
   const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
   const label = useStore(form.store, (state) => state.values.label);
+  const dateQuality = useStore(form.store, (state) => state.values.dateQuality);
+  const dateValue = useStore(form.store, (state) => state.values.dateValue);
+  const dateEndValue = useStore(form.store, (state) => state.values.dateEndValue);
   const needsLabel = eventType === "other" && label.trim() === "";
   // eventType/details are tracked outside the form (a Select and per-type
   // detail inputs, not form.Fields), so the form's own isDirty misses a
@@ -2494,16 +2749,16 @@ function EventForm({
           )}
         </form.Field>
       )}
-      <form.Field name="dateOriginal">
-        {(field) => (
-          <HistoricalDateInput
-            placeholder="Date, e.g. 1902 or abt 1902"
-            value={field.state.value}
-            onChange={field.handleChange}
-            preview={historicalDatePreview(field.state.value)}
-          />
-        )}
-      </form.Field>
+      <HistoricalDateInput
+        placeholder="Date, e.g. 1902"
+        quality={dateQuality}
+        onQualityChange={(quality) => form.setFieldValue("dateQuality", quality)}
+        value={dateValue}
+        onChange={(value) => form.setFieldValue("dateValue", value)}
+        endValue={dateEndValue}
+        onEndChange={(value) => form.setFieldValue("dateEndValue", value)}
+        preview={historicalDateFieldPreview(dateQuality, dateValue, dateEndValue)}
+      />
       <form.Field name="place">
         {(field) => (
           <Input

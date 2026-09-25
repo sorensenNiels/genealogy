@@ -11,6 +11,7 @@ import type {
   HistoricalDate,
   Parentage,
   PedigreeNode,
+  RelationshipToRoot,
   UpdateNameVariant,
   UpdatePerson,
   UpdatePersonEvent,
@@ -37,6 +38,7 @@ import {
   treeAround,
   unions,
   upsertPersonNode,
+  userProfiles,
   type Database,
   type PersonEventRow,
   type PersonNameRow,
@@ -75,14 +77,17 @@ function resolveDate(date: HistoricalDate | null | undefined): HistoricalDate | 
   return { ...date, ...parseHistoricalDate(date.original) };
 }
 
-/** Postgres SQLSTATE 23505 — a `UNIQUE`/primary-key constraint was violated. */
+/**
+ * Postgres SQLSTATE 23505 — a `UNIQUE`/primary-key constraint was violated.
+ * Drizzle wraps the raw `pg` error in a `DrizzleQueryError`, which puts the
+ * original error (the one that actually carries `.code`) on `.cause` rather
+ * than spreading it onto itself — checking `error.code` alone here would
+ * silently never match.
+ */
 function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === "23505"
-  );
+  if (typeof error !== "object" || error === null) return false;
+  const { code, cause } = error as { code?: unknown; cause?: { code?: unknown } };
+  return code === "23505" || cause?.code === "23505";
 }
 
 export interface UploadedPhoto {
@@ -186,8 +191,51 @@ export class PersonService {
       .filter((value): value is string => value !== null && value.trim() !== "");
   }
 
-  async byId(id: string): Promise<PersonWithVitals> {
-    return this.getOneWithVitals(this.db, id);
+  /**
+   * `relationshipToRoot` is optional in the return type, not always-present,
+   * because the frontend also reuses this same `PersonRow`-shaped type as a
+   * generic "person object" stand-in for data that actually came from
+   * `list`/`relatives` (which don't compute it) — see e.g. `Combobox<PersonRow>`
+   * search results in `$personId.tsx`. Making it required there would force
+   * every one of those unrelated call sites to fake the field.
+   */
+  async byId(
+    id: string,
+    viewerUserId: string,
+  ): Promise<PersonWithVitals & { relationshipToRoot?: RelationshipToRoot }> {
+    const [person, relationshipToRoot] = await Promise.all([
+      this.getOneWithVitals(this.db, id),
+      this.relationshipToRoot(id, viewerUserId),
+    ]);
+    return { ...person, relationshipToRoot };
+  }
+
+  /**
+   * Relative to whichever account is viewing — each logged-in user has their
+   * own "this is me" link (`userProfiles.personId`, set from the Profile
+   * page), not one tree-wide root, so two accounts looking at the same
+   * person can see different badges. Only computed for a single person's own
+   * page (`byId`) — not folded into `getOneWithVitals`, which backs the
+   * list/tree/relatives reads too and would otherwise run an extra graph
+   * traversal per row for something only ever shown one person at a time.
+   */
+  private async relationshipToRoot(id: string, viewerUserId: string): Promise<RelationshipToRoot> {
+    const [profile] = await this.db
+      .select({ personId: userProfiles.personId })
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, viewerUserId))
+      .limit(1);
+    const rootId = profile?.personId;
+    if (!rootId) return null;
+    if (rootId === id) return "root";
+
+    const [ancestors, descendants] = await Promise.all([
+      ancestorsOf(this.pool, rootId),
+      descendantsOf(this.pool, rootId),
+    ]);
+    if (ancestors.some((node) => node.personId === id)) return "ancestor";
+    if (descendants.some((node) => node.personId === id)) return "descendant";
+    return null;
   }
 
   private async getOneWithVitals(db: Database, id: string): Promise<PersonWithVitals> {
@@ -209,9 +257,19 @@ export class PersonService {
    * to retry, so there's no reason not to handle it.
    */
   async create(input: CreatePerson): Promise<PersonWithVitals> {
-    const { birth, birthPlace, death, deathPlace, ...personInput } = input;
+    const {
+      birth,
+      birthPlace,
+      death,
+      deathPlace,
+      causeOfDeath,
+      burial,
+      burialPlace,
+      ...personInput
+    } = input;
     const resolvedBirth = resolveDate(birth);
     const resolvedDeath = resolveDate(death);
+    const resolvedBurial = resolveDate(burial);
     for (let attempt = 1; ; attempt++) {
       try {
         // Each attempt must fully resolve before the next can know whether a
@@ -228,7 +286,15 @@ export class PersonService {
           }
           await upsertPersonNode(this.pool, row.id, { client });
           await this.upsertVitalEvent(tx, row.id, "birth", resolvedBirth, birthPlace);
-          await this.upsertVitalEvent(tx, row.id, "death", resolvedDeath, deathPlace);
+          await this.upsertVitalEvent(
+            tx,
+            row.id,
+            "death",
+            resolvedDeath,
+            deathPlace,
+            causeOfDeath !== undefined ? { causeOfDeath } : undefined,
+          );
+          await this.upsertVitalEvent(tx, row.id, "burial", resolvedBurial, burialPlace);
           return this.getOneWithVitals(tx, row.id);
         });
       } catch (error) {
@@ -242,13 +308,24 @@ export class PersonService {
   /**
    * The graph node is keyed by `id` alone, so nothing there changes. Wrapped
    * in `inGraphTransaction` purely for its plain-Postgres transaction
-   * semantics (the `persons` row and the birth/death event upserts below
-   * must commit together) — no graph write happens here.
+   * semantics (the `persons` row and the vital event upserts below must
+   * commit together) — no graph write happens here.
    */
   async update(input: UpdatePerson): Promise<PersonWithVitals> {
-    const { id, birth, birthPlace, death, deathPlace, ...patch } = input;
+    const {
+      id,
+      birth,
+      birthPlace,
+      death,
+      deathPlace,
+      causeOfDeath,
+      burial,
+      burialPlace,
+      ...patch
+    } = input;
     const resolvedBirth = resolveDate(birth);
     const resolvedDeath = resolveDate(death);
+    const resolvedBurial = resolveDate(burial);
     return inGraphTransaction(this.pool, async (client) => {
       const tx = createDatabase(client);
       const [row] = await tx
@@ -260,17 +337,29 @@ export class PersonService {
         throw new NotFoundException(`No person with id ${id}`);
       }
       await this.upsertVitalEvent(tx, id, "birth", resolvedBirth, birthPlace);
-      await this.upsertVitalEvent(tx, id, "death", resolvedDeath, deathPlace);
+      await this.upsertVitalEvent(
+        tx,
+        id,
+        "death",
+        resolvedDeath,
+        deathPlace,
+        causeOfDeath !== undefined ? { causeOfDeath } : undefined,
+      );
+      await this.upsertVitalEvent(tx, id, "burial", resolvedBurial, burialPlace);
       return this.getOneWithVitals(tx, id);
     });
   }
 
   /**
-   * Finds the person's existing "birth"/"death" `person_events` row, if any,
-   * and creates, updates, or deletes it to match — merging with whatever
-   * wasn't touched by this call, so `date` and `place` can be patched
-   * independently (mirrors `updatePersonEventSchema`'s own field-by-field
-   * optionality). A result with neither date nor place left deletes the row
+   * Finds the person's existing "birth"/"death"/"burial" `person_events` row,
+   * if any, and creates, updates, or deletes it to match — merging with
+   * whatever wasn't touched by this call, so `date`/`place`/`detailsPatch`
+   * can each be patched independently (mirrors `updatePersonEventSchema`'s
+   * own field-by-field optionality). `detailsPatch` is merged key-by-key onto
+   * whatever `details` the row already has (e.g. "death"'s `informant`, set
+   * separately via the generic Add Event dialog) rather than replacing the
+   * whole bag — a key mapped to `null`/blank removes just that key. A result
+   * with no date, no place and an empty details bag left deletes the row
    * (and any citations pointing at it, same as `removeEvent`) rather than
    * leaving an empty event behind — this is what makes `create`/`update`
    * still feel like plain nullable `persons` columns from the caller's side,
@@ -279,14 +368,20 @@ export class PersonService {
   private async upsertVitalEvent(
     tx: Database,
     personId: string,
-    eventType: "birth" | "death",
+    eventType: "birth" | "death" | "burial",
     date: HistoricalDate | null | undefined,
     place: string | null | undefined,
+    detailsPatch?: Record<string, string | null | undefined>,
   ): Promise<void> {
-    if (date === undefined && place === undefined) return;
+    if (date === undefined && place === undefined && detailsPatch === undefined) return;
 
     const [existing] = await tx
-      .select({ id: personEvents.id, date: personEvents.date, place: personEvents.place })
+      .select({
+        id: personEvents.id,
+        date: personEvents.date,
+        place: personEvents.place,
+        details: personEvents.details,
+      })
       .from(personEvents)
       .where(and(eq(personEvents.personId, personId), eq(personEvents.eventType, eventType)))
       .limit(1);
@@ -294,7 +389,20 @@ export class PersonService {
     const nextDate = date !== undefined ? date : (existing?.date ?? null);
     const nextPlace = place !== undefined ? place : (existing?.place ?? null);
 
-    if (nextDate === null && nextPlace === null) {
+    let nextDetails = existing?.details ?? null;
+    if (detailsPatch !== undefined) {
+      const merged = { ...nextDetails };
+      for (const [key, value] of Object.entries(detailsPatch)) {
+        if (value === null || value === undefined || value.trim() === "") {
+          delete merged[key];
+        } else {
+          merged[key] = value.trim();
+        }
+      }
+      nextDetails = Object.keys(merged).length > 0 ? merged : null;
+    }
+
+    if (nextDate === null && nextPlace === null && nextDetails === null) {
       if (existing) {
         await tx.delete(personEvents).where(eq(personEvents.id, existing.id));
         await tx
@@ -307,12 +415,12 @@ export class PersonService {
     if (existing) {
       await tx
         .update(personEvents)
-        .set({ date: nextDate, place: nextPlace, updatedAt: new Date() })
+        .set({ date: nextDate, place: nextPlace, details: nextDetails, updatedAt: new Date() })
         .where(eq(personEvents.id, existing.id));
     } else {
       await tx
         .insert(personEvents)
-        .values({ personId, eventType, date: nextDate, place: nextPlace });
+        .values({ personId, eventType, date: nextDate, place: nextPlace, details: nextDetails });
     }
   }
 
@@ -327,7 +435,7 @@ export class PersonService {
    * it got deleted would be worse than asking the caller to unlink first.
    */
   async remove(id: string): Promise<void> {
-    const person = await this.byId(id);
+    const person = await this.getOneWithVitals(this.db, id);
     const [relatives, unionRows] = await Promise.all([this.relatives(id), this.listUnions(id)]);
     if (
       relatives.parents.length > 0 ||
@@ -359,7 +467,7 @@ export class PersonService {
    * all-tRPC API — multipart file upload doesn't fit tRPC's JSON contract.
    */
   async setPhoto(id: string, file: UploadedPhoto): Promise<PersonWithVitals> {
-    const person = await this.byId(id);
+    const person = await this.getOneWithVitals(this.db, id);
     const uploadsDir = this.config.getOrThrow<string>("UPLOADS_DIR");
     await mkdir(uploadsDir, { recursive: true });
 
@@ -379,7 +487,7 @@ export class PersonService {
   }
 
   async removePhoto(id: string): Promise<PersonWithVitals> {
-    const person = await this.byId(id);
+    const person = await this.getOneWithVitals(this.db, id);
     if (person.photoPath) {
       const uploadsDir = this.config.getOrThrow<string>("UPLOADS_DIR");
       await rm(join(uploadsDir, person.photoPath), { force: true });
@@ -467,7 +575,7 @@ export class PersonService {
    * generation-at-a-time queries rather than one).
    */
   async tree(id: string, ancestorGenerations: number, descendantGenerations: number) {
-    await this.byId(id);
+    await this.getOneWithVitals(this.db, id);
     const graph = await treeAround(this.pool, id, ancestorGenerations, descendantGenerations);
     const people =
       graph.personIds.length > 0

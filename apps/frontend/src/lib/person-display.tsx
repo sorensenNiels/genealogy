@@ -1,4 +1,4 @@
-import type { Sex } from "@genealogy/core";
+import type { RelationshipToRoot, Sex } from "@genealogy/core";
 import { CircleHelp, Mars, Venus } from "lucide-react";
 
 // Stored values stay the M/F/U schema; only the displayed labels change here.
@@ -8,6 +8,17 @@ export const SEX_LABELS: Record<Sex, string> = {
   M: "Male",
   F: "Female",
   U: "Unknown",
+};
+
+/**
+ * Labels for the badge shown on a person's page relative to whoever is
+ * currently viewing — each account has its own "this is me" link (set from
+ * the Profile page), not one tree-wide root, so this is per-viewer.
+ */
+export const RELATIONSHIP_TO_ROOT_LABELS: Record<Exclude<RelationshipToRoot, null>, string> = {
+  root: "This is you",
+  ancestor: "Direct ancestor",
+  descendant: "Direct descendant",
 };
 
 interface ConfigurableOptionLike {

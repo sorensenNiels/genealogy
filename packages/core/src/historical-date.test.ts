@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatHistoricalDate,
+  joinHistoricalDateText,
   parseHistoricalDate,
   parseHistoricalDateDetailed,
   resolveHistoricalDate,
+  splitHistoricalDateText,
 } from "./historical-date.js";
 
 describe("parseHistoricalDate", () => {
@@ -63,6 +65,16 @@ describe("parseHistoricalDate", () => {
     expect(parseHistoricalDate("circa 12 MAR 1901")).toEqual({
       earliest: "1901-03-12",
       latest: "1901-03-12",
+    });
+    // "c." is the standard genealogical shorthand for "circa" — as common as
+    // (if not more common than) the spelled-out word.
+    expect(parseHistoricalDate("c. Nov 1986")).toEqual({
+      earliest: "1986-11-01",
+      latest: "1986-11-30",
+    });
+    expect(parseHistoricalDate("c 1854")).toEqual({
+      earliest: "1854-01-01",
+      latest: "1854-12-31",
     });
   });
 
@@ -248,5 +260,125 @@ describe("resolveHistoricalDate", () => {
       latest: "1860-12-31",
       display: "Between 1850 and 1860",
     });
+  });
+});
+
+describe("splitHistoricalDateText", () => {
+  it("splits a bare date as exact", () => {
+    expect(splitHistoricalDateText("12 MAR 1901")).toEqual({
+      quality: "exact",
+      value: "12 MAR 1901",
+      endValue: "",
+    });
+  });
+
+  it("splits an approximate qualifier off the value", () => {
+    expect(splitHistoricalDateText("abt 1854")).toEqual({
+      quality: "about",
+      value: "1854",
+      endValue: "",
+    });
+    expect(splitHistoricalDateText("circa 1854")).toEqual({
+      quality: "about",
+      value: "1854",
+      endValue: "",
+    });
+    expect(splitHistoricalDateText("c. 1854")).toEqual({
+      quality: "about",
+      value: "1854",
+      endValue: "",
+    });
+  });
+
+  it("splits before/after off the value", () => {
+    expect(splitHistoricalDateText("bef 1920")).toEqual({
+      quality: "before",
+      value: "1920",
+      endValue: "",
+    });
+    expect(splitHistoricalDateText("aft 1920")).toEqual({
+      quality: "after",
+      value: "1920",
+      endValue: "",
+    });
+  });
+
+  it("splits a between range into its two sides", () => {
+    expect(splitHistoricalDateText("BET 1850 AND 1860")).toEqual({
+      quality: "between",
+      value: "1850",
+      endValue: "1860",
+    });
+  });
+
+  it("doesn't require the remainder to already be a valid date", () => {
+    // Mid-typing: the qualifier is enough to pick the quality even before
+    // the date part itself resolves to anything.
+    expect(splitHistoricalDateText("abt 18")).toEqual({
+      quality: "about",
+      value: "18",
+      endValue: "",
+    });
+  });
+
+  it("falls back to exact for from-to and unreadable text, keeping the wording intact", () => {
+    expect(splitHistoricalDateText("FROM 1900 TO 1905")).toEqual({
+      quality: "exact",
+      value: "FROM 1900 TO 1905",
+      endValue: "",
+    });
+    expect(splitHistoricalDateText("sometime in the war")).toEqual({
+      quality: "exact",
+      value: "sometime in the war",
+      endValue: "",
+    });
+  });
+
+  it("returns an empty exact split for blank text", () => {
+    expect(splitHistoricalDateText("")).toEqual({ quality: "exact", value: "", endValue: "" });
+    expect(splitHistoricalDateText("   ")).toEqual({ quality: "exact", value: "", endValue: "" });
+  });
+});
+
+describe("joinHistoricalDateText", () => {
+  it("joins each quality with its qualifier word", () => {
+    expect(joinHistoricalDateText({ quality: "exact", value: "1901", endValue: "" })).toBe("1901");
+    expect(joinHistoricalDateText({ quality: "about", value: "1854", endValue: "" })).toBe(
+      "About 1854",
+    );
+    expect(joinHistoricalDateText({ quality: "before", value: "1920", endValue: "" })).toBe(
+      "Before 1920",
+    );
+    expect(joinHistoricalDateText({ quality: "after", value: "1920", endValue: "" })).toBe(
+      "After 1920",
+    );
+    expect(joinHistoricalDateText({ quality: "between", value: "1850", endValue: "1860" })).toBe(
+      "Between 1850 and 1860",
+    );
+  });
+
+  it("returns null when the value is blank", () => {
+    expect(joinHistoricalDateText({ quality: "exact", value: "", endValue: "" })).toBeNull();
+    expect(joinHistoricalDateText({ quality: "about", value: "  ", endValue: "" })).toBeNull();
+  });
+
+  it("returns null for a between with either side blank", () => {
+    expect(joinHistoricalDateText({ quality: "between", value: "1850", endValue: "" })).toBeNull();
+    expect(joinHistoricalDateText({ quality: "between", value: "", endValue: "1860" })).toBeNull();
+  });
+
+  it("round-trips through the parser for every quality", () => {
+    for (const parts of [
+      { quality: "exact", value: "12 MAR 1901", endValue: "" },
+      { quality: "about", value: "1854", endValue: "" },
+      { quality: "before", value: "1920", endValue: "" },
+      { quality: "after", value: "1920", endValue: "" },
+      { quality: "between", value: "1850", endValue: "1860" },
+    ] as const) {
+      const joined = joinHistoricalDateText(parts);
+      expect(joined).not.toBeNull();
+      expect(splitHistoricalDateText(joined ?? "")).toEqual(parts);
+      expect(parseHistoricalDateDetailed(joined ?? "").kind).toBe(parts.quality);
+    }
   });
 });

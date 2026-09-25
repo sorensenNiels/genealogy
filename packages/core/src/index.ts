@@ -4,6 +4,7 @@ export * from "./historical-date.js";
 export * from "./name-variant.js";
 export * from "./person-event.js";
 export * from "./person.js";
+export * from "./profile.js";
 export * from "./relationship.js";
 export * from "./source.js";
 export * from "./union.js";

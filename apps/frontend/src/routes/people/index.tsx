@@ -127,8 +127,9 @@ function People() {
   });
 
   // Creates a blank record (every field on CreatePerson defaults) and drops
-  // straight onto its own page — the same "person ui" used for editing — to
-  // fill in, rather than asking for a name up front in the list toolbar.
+  // straight onto its own page — the same always-editable "person ui" used
+  // for editing anyone else — to fill in, rather than asking for a name up
+  // front in the list toolbar.
   const createPersonMutation = useMutation({
     mutationFn: createPerson,
     onSuccess: async (person) => {
@@ -146,7 +147,7 @@ function People() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold">Person list</h1>
+          <h1 className="text-2xl font-semibold">People</h1>
           <p className="text-sm text-muted-foreground">
             {people.data ? `${people.data.total} recorded` : "Loading…"}
           </p>

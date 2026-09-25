@@ -58,7 +58,7 @@ export class PersonRouter {
 
       byId: protectedProcedure
         .input(z.object({ id: personIdSchema }))
-        .query(({ input }) => this.persons.byId(input.id)),
+        .query(({ input, ctx }) => this.persons.byId(input.id, ctx.session.user.id)),
 
       create: protectedProcedure
         .input(createPersonSchema)

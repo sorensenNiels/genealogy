@@ -156,11 +156,95 @@ function boundsOf(parsed: ParsedHistoricalDate): {
   }
 }
 
-const APPROXIMATE = /^(?:abt|about|circa|cal|est|estimated)\.?\s+/i;
+const APPROXIMATE = /^(?:abt|about|circa|c|cal|est|estimated)\.?\s+/i;
 const BEFORE = /^(?:bef|before)\.?\s+(.+)$/i;
 const AFTER = /^(?:aft|after)\.?\s+(.+)$/i;
 const BETWEEN = /^(?:bet|between)\.?\s+(.+?)\s+and\s+(.+)$/i;
 const FROM_TO = /^from\s+(.+?)\s+to\s+(.+)$/i;
+
+/**
+ * The five qualities the date-entry UI offers as a dropdown, front of the
+ * date field. A deliberate subset of `ParsedHistoricalDate`'s `kind`: there is
+ * no dropdown option for `from-to` (see `splitHistoricalDateText`) or
+ * `unparsed` (not a quality anyone would pick — it's what typing produces
+ * before it resolves to one of the other five).
+ */
+export type DateQuality = "exact" | "about" | "before" | "after" | "between";
+
+/**
+ * Pulls a date's free-text wording apart into the pieces a quality dropdown +
+ * value input(s) UI edits directly — the inverse of `joinHistoricalDateText`.
+ * Deliberately more lenient than `parseHistoricalDateDetailed`: it only
+ * checks for a qualifier prefix, not whether the remaining text is currently
+ * a valid date, so the dropdown doesn't flip back to "Exact" while someone is
+ * mid-typing a year. Text in the `from-to` shape ("FROM 1900 TO 1905"), or
+ * anything with no recognized qualifier, falls back to `{ quality: "exact",
+ * value: <the whole trimmed text> }` — nothing is lost, it just sits in the
+ * plain value box until the user edits it through the new controls.
+ */
+export function splitHistoricalDateText(text: string): {
+  quality: DateQuality;
+  value: string;
+  endValue: string;
+} {
+  const trimmed = text.trim();
+  if (trimmed === "") return { quality: "exact", value: "", endValue: "" };
+
+  const between = BETWEEN.exec(trimmed);
+  if (between) {
+    return {
+      quality: "between",
+      value: (between[1] ?? "").trim(),
+      endValue: (between[2] ?? "").trim(),
+    };
+  }
+
+  const before = BEFORE.exec(trimmed);
+  if (before) return { quality: "before", value: (before[1] ?? "").trim(), endValue: "" };
+
+  const after = AFTER.exec(trimmed);
+  if (after) return { quality: "after", value: (after[1] ?? "").trim(), endValue: "" };
+
+  if (APPROXIMATE.test(trimmed)) {
+    return { quality: "about", value: trimmed.replace(APPROXIMATE, "").trim(), endValue: "" };
+  }
+
+  return { quality: "exact", value: trimmed, endValue: "" };
+}
+
+/**
+ * Assembles a quality + value(s) back into the free-text wording
+ * `parseHistoricalDate`/`resolveDate` already understand — the inverse of
+ * `splitHistoricalDateText`. Produces the same wording
+ * `formatHistoricalDate` displays ("About 1854", "Between 1900 and 1905"), so
+ * it round-trips through the existing parser without any changes there.
+ * Returns null rather than a half-formed string when there isn't enough to
+ * make a real date yet (an empty value, or — for `between` — either side
+ * empty); callers use that directly as their "is this date empty" check.
+ */
+export function joinHistoricalDateText(parts: {
+  quality: DateQuality;
+  value: string;
+  endValue: string;
+}): string | null {
+  const value = parts.value.trim();
+  if (value === "") return null;
+
+  switch (parts.quality) {
+    case "exact":
+      return value;
+    case "about":
+      return `About ${value}`;
+    case "before":
+      return `Before ${value}`;
+    case "after":
+      return `After ${value}`;
+    case "between": {
+      const endValue = parts.endValue.trim();
+      return endValue === "" ? null : `Between ${value} and ${endValue}`;
+    }
+  }
+}
 
 const MONTHS: Record<string, number> = {
   jan: 1,

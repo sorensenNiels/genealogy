@@ -1,4 +1,5 @@
 import type { EventDetails, HistoricalDate } from "@genealogy/core";
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -9,6 +10,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -361,6 +363,36 @@ export const personImmichLinks = pgTable(
   (table) => [index("person_immich_links_person_idx").on(table.personId)],
 );
 
+/**
+ * The one app-owned table that reaches into better-auth's `user` — every
+ * other reference to it (`session.userId`, `account.userId`) belongs to
+ * better-auth itself. Holds what's specific to a logged-in account rather
+ * than to a person record: which person in the tree they are (if any) and
+ * their phone number. `personId` is nullable — an account with no linked
+ * person just has no "this is you" badge or relationship-to-viewer
+ * computation (see `PersonService.relationshipToRoot`) — and at most one
+ * account can claim any given person, enforced by the partial unique index
+ * below rather than in application code alone, so a bug can't silently let
+ * two accounts both claim to be the same person.
+ */
+export const userProfiles = pgTable(
+  "user_profiles",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => user.id, { onDelete: "cascade" }),
+    personId: uuid("person_id").references(() => persons.id, { onDelete: "set null" }),
+    phoneNumber: text("phone_number"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("user_profiles_person_id_idx")
+      .on(table.personId)
+      .where(sql`${table.personId} is not null`),
+  ],
+);
+
 export const schema = {
   persons,
   personNames,
@@ -370,6 +402,7 @@ export const schema = {
   citations,
   configurableOptions,
   personImmichLinks,
+  userProfiles,
   sexEnum,
   citationFactTypeEnum,
   user,
@@ -387,3 +420,4 @@ export type SourceRow = typeof sources.$inferSelect;
 export type CitationRow = typeof citations.$inferSelect;
 export type ConfigurableOptionRow = typeof configurableOptions.$inferSelect;
 export type PersonImmichLinkRow = typeof personImmichLinks.$inferSelect;
+export type UserProfileRow = typeof userProfiles.$inferSelect;

@@ -5,6 +5,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { AUTH, type Auth } from "../auth/auth.module.js";
 import { ImmichRouter } from "../immich/immich.router.js";
 import { PersonRouter } from "../person/person.router.js";
+import { ProfileRouter } from "../profile/profile.router.js";
 import { SettingsRouter } from "../settings/settings.router.js";
 import { SourceRouter } from "../source/source.router.js";
 import { publicProcedure, router } from "./trpc.base.js";
@@ -19,6 +20,7 @@ export class TrpcRouter {
     private readonly source: SourceRouter,
     private readonly settings: SettingsRouter,
     private readonly immich: ImmichRouter,
+    private readonly profile: ProfileRouter,
     @Inject(AUTH) private readonly auth: Auth,
   ) {}
 
@@ -32,6 +34,7 @@ export class TrpcRouter {
       source: this.source.build(),
       settings: this.settings.build(),
       immich: this.immich.build(),
+      profile: this.profile.build(),
     });
   }
 
