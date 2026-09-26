@@ -23,6 +23,7 @@ import {
   addSpouseOf,
   ancestorsOf,
   birthEvents,
+  childrenOf,
   citations,
   configurableOptions,
   createDatabase,
@@ -157,6 +158,8 @@ export interface RelativesResult {
   parents: (PersonWithVitals & { parentage: Parentage })[];
   spouses: PersonWithVitals[];
   children: PersonWithVitals[];
+  /** Anyone sharing at least one of this person's own parents — half-siblings included. */
+  siblings: PersonWithVitals[];
 }
 
 export interface TreeResult {
@@ -709,7 +712,7 @@ export class PersonService {
     return this.getOneWithVitals(this.db, id);
   }
 
-  /** Direct parents, spouses and children, resolved to full rows for display. */
+  /** Direct parents, spouses, children and siblings, resolved to full rows for display. */
   async relatives(id: string): Promise<RelativesResult> {
     const [parentEdges, spouseNodes, childNodes] = await Promise.all([
       parentsOf(this.pool, id),
@@ -717,8 +720,22 @@ export class PersonService {
       descendantsOf(this.pool, id, 1),
     ]);
 
+    // Siblings aren't a direct edge — they're anyone who shares at least one
+    // of this person's own parents (half-siblings included), so this is a
+    // parentsOf + childrenOf composition rather than a dedicated graph query.
+    const siblingEdgesByParent = await Promise.all(
+      parentEdges.map((edge) => childrenOf(this.pool, edge.personId)),
+    );
+    const siblingIds = new Set(
+      siblingEdgesByParent
+        .flat()
+        .map((edge) => edge.personId)
+        .filter((childId) => childId !== id),
+    );
+
     const ids = [
       ...new Set([...parentEdges, ...spouseNodes, ...childNodes].map((node) => node.personId)),
+      ...siblingIds,
     ];
     const rows =
       ids.length > 0 ? await personsWithVitals(this.db).where(inArray(persons.id, ids)) : [];
@@ -733,6 +750,10 @@ export class PersonService {
       }),
       spouses: toRows(spouseNodes),
       children: toRows(childNodes),
+      siblings: [...siblingIds].flatMap((siblingId) => {
+        const row = byId.get(siblingId);
+        return row ? [row] : [];
+      }),
     };
   }
 

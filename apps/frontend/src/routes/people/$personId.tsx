@@ -39,7 +39,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/av
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button, buttonVariants } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
-import { Card, CardContent, CardHeader, CardTitle } from "@genealogy/ui/components/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@genealogy/ui/components/card";
+import { Checkbox } from "@genealogy/ui/components/checkbox";
 import {
   Combobox,
   ComboboxContent,
@@ -390,6 +397,7 @@ function PersonDetailRoute() {
   const parents = relatives.data?.parents ?? [];
   const spouses = relatives.data?.spouses ?? [];
   const children = relatives.data?.children ?? [];
+  const siblings = relatives.data?.siblings ?? [];
   const unionRows = unions.data ?? [];
   const nicknames = (names.data ?? [])
     .filter((name) => name.nameType === "nickname")
@@ -400,6 +408,7 @@ function PersonDetailRoute() {
     ...parents.map((p) => p.id),
     ...spouses.map((p) => p.id),
     ...children.map((p) => p.id),
+    ...siblings.map((p) => p.id),
   ]);
   // Mirrors the guard in PersonService.remove — a union can outlive the
   // SPOUSE_OF edge it came from (see unlinkSpouse), so it counts too.
@@ -429,48 +438,40 @@ function PersonDetailRoute() {
           Print summary →
         </Link>
       </div>
-      <PersonFields
+      <PersonHeaderCard
         person={person.data}
-        nicknames={nicknames}
         names={names.data ?? []}
-        options={options.data ?? []}
         citations={citationsList.data ?? []}
         sourcesList={sourcesList.data ?? []}
+        options={options.data ?? []}
         hasParent={parents.length > 0}
         onChanged={refresh}
         canDelete={canDelete}
         onDeleted={() => navigate({ to: "/people" })}
       />
+      <div className="space-y-6">
+        <NamesGenderCard
+          person={person.data}
+          names={names.data ?? []}
+          options={options.data ?? []}
+          onChanged={refresh}
+        />
+        <BirthCard person={person.data} onChanged={refresh} />
+        <LivingStatusDeathCard person={person.data} onChanged={refresh} />
+      </div>
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-3">
-            <ParentsSection
-              personId={personId}
-              parents={parents}
-              excludeIds={excludeIds}
-              options={options.data ?? []}
-              onChanged={refresh}
-            />
-            <RelativesSection
-              title="Spouses"
-              kind="spouse"
-              personId={personId}
-              relatives={spouses}
-              excludeIds={excludeIds}
-              options={options.data ?? []}
-              onChanged={refresh}
-              unions={unions.data ?? []}
-            />
-            <RelativesSection
-              title="Children"
-              kind="child"
-              personId={personId}
-              relatives={children}
-              excludeIds={excludeIds}
-              options={options.data ?? []}
-              onChanged={refresh}
-            />
-          </div>
+          <FamilyCard
+            personId={personId}
+            parents={parents}
+            spouses={spouses}
+            childRelatives={children}
+            siblings={siblings}
+            excludeIds={excludeIds}
+            options={options.data ?? []}
+            unions={unions.data ?? []}
+            onChanged={refresh}
+          />
           <PersonPhotosCard personId={personId} />
           <CitationsSection
             personId={personId}
@@ -506,143 +507,39 @@ function PersonDetailRoute() {
   );
 }
 
-function PersonFields({
+/**
+ * The identity header: photo, name, badges, birth/death summary, the
+ * tree/event actions, the research-completeness bar, and (since it's a
+ * person-wide action with no natural home in any one of the field cards
+ * below) Delete. Read-only except for the photo, which is already its own
+ * instant-apply control (see `PersonPhoto`) — nothing here needs a Save
+ * button of its own.
+ */
+function PersonHeaderCard({
   person,
-  nicknames,
   names,
-  options,
   citations,
   sourcesList,
+  options,
   hasParent,
   onChanged,
   canDelete,
   onDeleted,
 }: {
   person: PersonRow;
-  nicknames: string[];
   names: NameVariantRow[];
-  options: ConfigurableOptionRow[];
   citations: CitationRow[];
   sourcesList: SourceRow[];
+  options: ConfigurableOptionRow[];
   hasParent: boolean;
   onChanged: () => Promise<void>;
   canDelete: boolean;
   onDeleted: () => void;
 }) {
   const [addEventOpen, setAddEventOpen] = useState(false);
-  const updatePersonMutation = useMutation({ mutationFn: updatePerson, onSuccess: onChanged });
   const removePersonMutation = useMutation({ mutationFn: removePerson, onSuccess: onDeleted });
-  const removeNameMutation = useMutation({ mutationFn: removeName });
-  const titlePrefixesQuery = useQuery({
-    queryKey: ["person", "listTitlePrefixes"],
-    queryFn: () => listTitlePrefixes(),
-  });
-  const suffixesQuery = useQuery({
-    queryKey: ["person", "listSuffixes"],
-    queryFn: () => listSuffixes(),
-  });
-  const titlePrefixOptions = mergeOptions(STANDARD_TITLE_PREFIXES, titlePrefixesQuery.data);
-  const suffixOptions = mergeOptions(STANDARD_SUFFIXES, suffixesQuery.data);
-  const [addNameOpen, setAddNameOpen] = useState(false);
 
-  const removeNameById = async (id: string) => {
-    await removeNameMutation.mutateAsync({ data: { id } });
-    await onChanged();
-  };
-
-  const birthSplit = splitHistoricalDateText(person.birth?.original ?? "");
-  const deathSplit = splitHistoricalDateText(person.death?.original ?? "");
-  const burialSplit = splitHistoricalDateText(person.burial?.original ?? "");
-
-  const form = useForm({
-    defaultValues: {
-      given: person.given,
-      surname: person.surname,
-      sex: person.sex,
-      titlePrefix: person.titlePrefix ?? "",
-      suffix: person.suffix ?? "",
-      birthQuality: birthSplit.quality,
-      birthValue: birthSplit.value,
-      birthEndValue: birthSplit.endValue,
-      birthPlace: person.birthPlace ?? "",
-      deathQuality: deathSplit.quality,
-      deathValue: deathSplit.value,
-      deathEndValue: deathSplit.endValue,
-      deathPlace: person.deathPlace ?? "",
-      causeOfDeath: person.causeOfDeath ?? "",
-      burialQuality: burialSplit.quality,
-      burialValue: burialSplit.value,
-      burialEndValue: burialSplit.endValue,
-      burialPlace: person.burialPlace ?? "",
-      notes: person.notes ?? "",
-      isLiving: person.isLiving,
-    },
-    onSubmit: async ({ value, formApi }) => {
-      const birthOriginal = joinHistoricalDateText({
-        quality: value.birthQuality,
-        value: value.birthValue,
-        endValue: value.birthEndValue,
-      });
-      const deathOriginal = joinHistoricalDateText({
-        quality: value.deathQuality,
-        value: value.deathValue,
-        endValue: value.deathEndValue,
-      });
-      const burialOriginal = joinHistoricalDateText({
-        quality: value.burialQuality,
-        value: value.burialValue,
-        endValue: value.burialEndValue,
-      });
-      await updatePersonMutation.mutateAsync({
-        data: {
-          id: person.id,
-          given: value.given,
-          surname: value.surname,
-          sex: value.sex,
-          titlePrefix: value.titlePrefix.trim() === "" ? null : value.titlePrefix,
-          suffix: value.suffix.trim() === "" ? null : value.suffix,
-          // Bounds are recomputed from the current wording on every save, not
-          // carried over from what was previously stored — otherwise editing
-          // the text alone (without it happening to still parse to the same
-          // bounds) would leave a stale earliest/latest attached to new words.
-          birth:
-            birthOriginal === null
-              ? null
-              : { original: birthOriginal, ...parseHistoricalDate(birthOriginal) },
-          birthPlace: value.birthPlace.trim() === "" ? null : value.birthPlace,
-          death:
-            deathOriginal === null
-              ? null
-              : { original: deathOriginal, ...parseHistoricalDate(deathOriginal) },
-          deathPlace: value.deathPlace.trim() === "" ? null : value.deathPlace,
-          causeOfDeath: value.causeOfDeath.trim() === "" ? null : value.causeOfDeath,
-          burial:
-            burialOriginal === null
-              ? null
-              : { original: burialOriginal, ...parseHistoricalDate(burialOriginal) },
-          burialPlace: value.burialPlace.trim() === "" ? null : value.burialPlace,
-          notes: value.notes.trim() === "" ? null : value.notes,
-          isLiving: value.isLiving,
-        },
-      });
-      // Rebaselines dirty-tracking against what was just saved — the values
-      // themselves don't change, only the "clean" snapshot they're compared to.
-      formApi.reset(value);
-    },
-  });
-
-  const isLiving = useStore(form.store, (state) => state.values.isLiving);
-  const isDirty = useStore(form.store, (state) => state.isDirty);
-  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
-  const birthQuality = useStore(form.store, (state) => state.values.birthQuality);
-  const birthValue = useStore(form.store, (state) => state.values.birthValue);
-  const birthEndValue = useStore(form.store, (state) => state.values.birthEndValue);
-  const deathQuality = useStore(form.store, (state) => state.values.deathQuality);
-  const deathValue = useStore(form.store, (state) => state.values.deathValue);
-  const deathEndValue = useStore(form.store, (state) => state.values.deathEndValue);
-  const burialQuality = useStore(form.store, (state) => state.values.burialQuality);
-  const burialValue = useStore(form.store, (state) => state.values.burialValue);
-  const burialEndValue = useStore(form.store, (state) => state.values.burialEndValue);
+  const nicknames = names.filter((name) => name.nameType === "nickname").map((name) => name.given);
 
   const age = calculateAge(person);
   const birthDisplay = formatDisplayDate(person.birth);
@@ -676,244 +573,215 @@ function PersonFields({
   });
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardContent className="flex flex-col gap-4 pt-6 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-            <PersonPhoto person={person} onChanged={onChanged} size="lg" />
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline">
-                  <CopyableText value={person.publicId} className="font-mono text-foreground" />
+    <Card>
+      <CardContent className="flex flex-col gap-4 pt-6 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+          <PersonPhoto person={person} onChanged={onChanged} size="lg" />
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">
+                <CopyableText value={person.publicId} className="font-mono text-foreground" />
+              </Badge>
+              <Badge variant="outline">{SEX_LABELS[person.sex]}</Badge>
+              {person.relationshipToRoot && (
+                <Badge className="border-transparent bg-primary/10 text-primary">
+                  {RELATIONSHIP_TO_ROOT_LABELS[person.relationshipToRoot]}
                 </Badge>
-                <Badge variant="outline">{SEX_LABELS[person.sex]}</Badge>
-                {person.relationshipToRoot && (
-                  <Badge className="border-transparent bg-primary/10 text-primary">
-                    {RELATIONSHIP_TO_ROOT_LABELS[person.relationshipToRoot]}
-                  </Badge>
-                )}
-              </div>
-              <h1 className="text-2xl font-bold sm:text-3xl">
-                {formatFullPersonName({ ...person, nickname: nicknames })}
-              </h1>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                {birthSummary && (
-                  <span>
-                    <span className="font-medium text-foreground">b.</span> {birthSummary}
-                    {person.isLiving && age !== null ? ` · Age ${age}` : ""}
-                  </span>
-                )}
-                {!person.isLiving && (
-                  <span>
-                    <span className="font-medium text-foreground">d.</span> {deathSummary ?? "—"}
-                    {age !== null ? ` · Age ${age}` : ""}
-                  </span>
-                )}
-              </div>
-              {akaName && (
-                <p className="text-sm text-muted-foreground">
-                  Also known as:{" "}
-                  <span className="text-foreground">{formatPersonName(akaName)}</span>
-                  {akaSource ? ` (${akaSource.title})` : ""}
-                </p>
               )}
             </div>
+            <h1 className="text-2xl font-bold sm:text-3xl">
+              {formatFullPersonName({ ...person, nickname: nicknames })}
+            </h1>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+              {birthSummary && (
+                <span>
+                  <span className="font-medium text-foreground">b.</span> {birthSummary}
+                  {person.isLiving && age !== null ? ` · Age ${age}` : ""}
+                </span>
+              )}
+              {!person.isLiving && (
+                <span>
+                  <span className="font-medium text-foreground">d.</span> {deathSummary ?? "—"}
+                  {age !== null ? ` · Age ${age}` : ""}
+                </span>
+              )}
+            </div>
+            {akaName && (
+              <p className="text-sm text-muted-foreground">
+                Also known as: <span className="text-foreground">{formatPersonName(akaName)}</span>
+                {akaSource ? ` (${akaSource.title})` : ""}
+              </p>
+            )}
           </div>
-          <div className="flex flex-col items-stretch gap-3 sm:w-56 sm:items-end">
-            <div className="flex flex-wrap gap-2 sm:justify-end">
-              <Link
-                to="/tree"
-                search={{ personId: person.id }}
-                className={buttonVariants({ variant: "outline", size: "sm" })}
-              >
-                <Network className="size-4" /> View in tree
-              </Link>
-              <Dialog isOpen={addEventOpen} onOpenChange={setAddEventOpen}>
-                <Button size="sm">
-                  <PlusIcon className="size-4" /> Add event
+        </div>
+        <div className="flex flex-col items-stretch gap-3 sm:w-56 sm:items-end">
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <Link
+              to="/tree"
+              search={{ personId: person.id }}
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              <Network className="size-4" /> View in tree
+            </Link>
+            <Dialog isOpen={addEventOpen} onOpenChange={setAddEventOpen}>
+              <Button size="sm">
+                <PlusIcon className="size-4" /> Add event
+              </Button>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add event</DialogTitle>
+                </DialogHeader>
+                <EventForm
+                  personId={person.id}
+                  event={null}
+                  citations={citations}
+                  sourcesList={sourcesList}
+                  options={options}
+                  onDone={async () => {
+                    setAddEventOpen(false);
+                    await onChanged();
+                  }}
+                  onChanged={onChanged}
+                />
+              </DialogContent>
+            </Dialog>
+            {canDelete && (
+              <AlertDialog>
+                <Button type="button" variant="outline" size="sm" className="text-destructive">
+                  <Trash2Icon /> Delete
                 </Button>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Add event</DialogTitle>
-                  </DialogHeader>
-                  <EventForm
-                    personId={person.id}
-                    event={null}
-                    citations={citations}
-                    sourcesList={sourcesList}
-                    options={options}
-                    onDone={async () => {
-                      setAddEventOpen(false);
-                      await onChanged();
-                    }}
-                    onChanged={onChanged}
-                  />
-                </DialogContent>
-              </Dialog>
-            </div>
-            <ProgressBar label="Research completeness" value={completeness} />
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete {formatFullPersonName(person)}?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This permanently removes them and everything recorded about them — alternate
+                      names, life events, sources and citations. This cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onPress={() => removePersonMutation.mutate({ data: { id: person.id } })}
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </div>
-        </CardContent>
-      </Card>
+          <ProgressBar label="Research completeness" value={completeness} />
+          {removePersonMutation.isError && (
+            <p className="text-sm text-destructive">{removePersonMutation.error.message}</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
-      <form
-        className="space-y-6"
-        onSubmit={(event) => {
-          event.preventDefault();
-          // TanStack Form rethrows onSubmit's rejection after resetting
-          // isSubmitting — caught here only to avoid an unhandled rejection;
-          // the failure itself is surfaced via update.isError below.
-          void form.handleSubmit().catch(() => {});
-        }}
-      >
-        <Card>
-          <CardHeader>
-            <CardTitle>Names &amp; gender</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <form.Field name="sex">
-                {(field) => (
-                  <LabeledField label="Gender">
-                    <ButtonRadioGroup
-                      aria-label="Gender"
-                      value={field.state.value}
-                      onChange={(value) => field.handleChange(value)}
-                      options={sexSchema.options.map((option) => ({
-                        value: option,
-                        label: SEX_LABELS[option],
-                      }))}
-                    />
-                  </LabeledField>
-                )}
-              </form.Field>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
-              <form.Field name="given">
-                {(field) => (
-                  <LabeledField label="First names">
-                    <Input
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(event) => field.handleChange(event.target.value)}
-                    />
-                  </LabeledField>
-                )}
-              </form.Field>
-              <form.Field name="surname">
-                {(field) => (
-                  <LabeledField label="Last names">
-                    <Input
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(event) => field.handleChange(event.target.value)}
-                    />
-                  </LabeledField>
-                )}
-              </form.Field>
-            </div>
-            <div className="space-y-2 text-sm sm:col-span-2">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Alternate names</span>
-                <Dialog isOpen={addNameOpen} onOpenChange={setAddNameOpen}>
-                  <Button type="button" variant="ghost" size="icon" aria-label="Add alternate name">
-                    <PlusIcon className="size-4" />
-                  </Button>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add alternate name</DialogTitle>
-                    </DialogHeader>
-                    <NameForm
-                      personId={person.id}
-                      name={null}
-                      options={options}
-                      onDone={async () => {
-                        setAddNameOpen(false);
-                        await onChanged();
-                      }}
-                    />
-                  </DialogContent>
-                </Dialog>
-              </div>
-              {names.length > 0 && (
-                <div className="space-y-2">
-                  {names.map((name) => (
-                    <NameRow
-                      key={name.id}
-                      personId={person.id}
-                      name={name}
-                      options={options}
-                      onChanged={onChanged}
-                      onRemove={() => void removeNameById(name.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-            <form.Field name="titlePrefix">
-              {(field) => (
-                <LabeledField label="Title / prefix">
-                  <Autocomplete
-                    aria-label="Title / prefix"
-                    placeholder="e.g. Dr., Rev."
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={field.handleChange}
-                    options={titlePrefixOptions}
-                    isClearable
-                  />
-                </LabeledField>
-              )}
-            </form.Field>
-            <form.Field name="suffix">
-              {(field) => (
-                <LabeledField label="Suffix">
-                  <Autocomplete
-                    aria-label="Suffix"
-                    placeholder="e.g. Jr., III"
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={field.handleChange}
-                    options={suffixOptions}
-                    isClearable
-                  />
-                </LabeledField>
-              )}
-            </form.Field>
-            <form.Field name="notes">
-              {(field) => (
-                <LabeledField label="Notes" className="sm:col-span-2" asDiv>
-                  <MarkdownEditor
-                    aria-label="Notes"
-                    value={field.state.value}
-                    onChange={field.handleChange}
-                  />
-                </LabeledField>
-              )}
-            </form.Field>
-          </CardContent>
-        </Card>
+/**
+ * Names, gender, and alternate names — its own form/mutation/Save/Cancel,
+ * independent of Birth and Living status & death below, so the three cards
+ * can be edited (and, later, rearranged) without one's unsaved changes
+ * touching another's.
+ */
+function NamesGenderCard({
+  person,
+  names,
+  options,
+  onChanged,
+}: {
+  person: PersonRow;
+  names: NameVariantRow[];
+  options: ConfigurableOptionRow[];
+  onChanged: () => Promise<void>;
+}) {
+  const updatePersonMutation = useMutation({ mutationFn: updatePerson, onSuccess: onChanged });
+  const removeNameMutation = useMutation({ mutationFn: removeName });
+  const titlePrefixesQuery = useQuery({
+    queryKey: ["person", "listTitlePrefixes"],
+    queryFn: () => listTitlePrefixes(),
+  });
+  const suffixesQuery = useQuery({
+    queryKey: ["person", "listSuffixes"],
+    queryFn: () => listSuffixes(),
+  });
+  const titlePrefixOptions = mergeOptions(STANDARD_TITLE_PREFIXES, titlePrefixesQuery.data);
+  const suffixOptions = mergeOptions(STANDARD_SUFFIXES, suffixesQuery.data);
+  const [addNameOpen, setAddNameOpen] = useState(false);
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Birth</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <LabeledField label="Date of Birth">
-              <HistoricalDateInput
-                placeholder="e.g. 1854"
-                quality={birthQuality}
-                onQualityChange={(quality) => form.setFieldValue("birthQuality", quality)}
-                value={birthValue}
-                onChange={(value) => form.setFieldValue("birthValue", value)}
-                endValue={birthEndValue}
-                onEndChange={(value) => form.setFieldValue("birthEndValue", value)}
-                preview={historicalDateFieldPreview(birthQuality, birthValue, birthEndValue)}
-              />
-            </LabeledField>
-            <form.Field name="birthPlace">
+  const removeNameById = async (id: string) => {
+    await removeNameMutation.mutateAsync({ data: { id } });
+    await onChanged();
+  };
+
+  const form = useForm({
+    defaultValues: {
+      given: person.given,
+      surname: person.surname,
+      sex: person.sex,
+      titlePrefix: person.titlePrefix ?? "",
+      suffix: person.suffix ?? "",
+      notes: person.notes ?? "",
+    },
+    onSubmit: async ({ value, formApi }) => {
+      await updatePersonMutation.mutateAsync({
+        data: {
+          id: person.id,
+          given: value.given,
+          surname: value.surname,
+          sex: value.sex,
+          titlePrefix: value.titlePrefix.trim() === "" ? null : value.titlePrefix,
+          suffix: value.suffix.trim() === "" ? null : value.suffix,
+          notes: value.notes.trim() === "" ? null : value.notes,
+        },
+      });
+      // Rebaselines dirty-tracking against what was just saved — the values
+      // themselves don't change, only the "clean" snapshot they're compared to.
+      formApi.reset(value);
+    },
+  });
+
+  const isDirty = useStore(form.store, (state) => state.isDirty);
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        // TanStack Form rethrows onSubmit's rejection after resetting
+        // isSubmitting — caught here only to avoid an unhandled rejection;
+        // the failure itself is surfaced via update.isError below.
+        void form.handleSubmit().catch(() => {});
+      }}
+    >
+      <Card>
+        <CardHeader>
+          <CardTitle>Names &amp; gender</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <form.Field name="sex">
               {(field) => (
-                <LabeledField label="Place of Birth">
+                <LabeledField label="Gender">
+                  <ButtonRadioGroup
+                    aria-label="Gender"
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    options={sexSchema.options.map((option) => ({
+                      value: option,
+                      label: SEX_LABELS[option],
+                    }))}
+                  />
+                </LabeledField>
+              )}
+            </form.Field>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
+            <form.Field name="given">
+              {(field) => (
+                <LabeledField label="First names">
                   <Input
                     value={field.state.value}
                     onBlur={field.handleBlur}
@@ -922,98 +790,99 @@ function PersonFields({
                 </LabeledField>
               )}
             </form.Field>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Living status &amp; death</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <form.Field name="isLiving">
-                {(field) => (
-                  <LabeledField label="Is this person living?">
-                    <ButtonRadioGroup
-                      aria-label="Is this person living?"
-                      value={field.state.value ? "living" : "deceased"}
-                      onChange={(value) => field.handleChange(value === "living")}
-                      options={[
-                        { value: "living", label: "Living" },
-                        { value: "deceased", label: "Deceased" },
-                      ]}
-                    />
-                  </LabeledField>
-                )}
-              </form.Field>
+            <form.Field name="surname">
+              {(field) => (
+                <LabeledField label="Last names">
+                  <Input
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                  />
+                </LabeledField>
+              )}
+            </form.Field>
+          </div>
+          <div className="space-y-2 text-sm sm:col-span-2">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Alternate names</span>
+              <Dialog isOpen={addNameOpen} onOpenChange={setAddNameOpen}>
+                <Button type="button" variant="ghost" size="icon" aria-label="Add alternate name">
+                  <PlusIcon className="size-4" />
+                </Button>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add alternate name</DialogTitle>
+                  </DialogHeader>
+                  <NameForm
+                    personId={person.id}
+                    name={null}
+                    options={options}
+                    onDone={async () => {
+                      setAddNameOpen(false);
+                      await onChanged();
+                    }}
+                  />
+                </DialogContent>
+              </Dialog>
             </div>
-            {!isLiving && (
-              <>
-                <LabeledField label="Date of Death">
-                  <HistoricalDateInput
-                    placeholder="e.g. 12 MAR 1901"
-                    quality={deathQuality}
-                    onQualityChange={(quality) => form.setFieldValue("deathQuality", quality)}
-                    value={deathValue}
-                    onChange={(value) => form.setFieldValue("deathValue", value)}
-                    endValue={deathEndValue}
-                    onEndChange={(value) => form.setFieldValue("deathEndValue", value)}
-                    preview={historicalDateFieldPreview(deathQuality, deathValue, deathEndValue)}
+            {names.length > 0 && (
+              <div className="space-y-2">
+                {names.map((name) => (
+                  <NameRow
+                    key={name.id}
+                    personId={person.id}
+                    name={name}
+                    options={options}
+                    onChanged={onChanged}
+                    onRemove={() => void removeNameById(name.id)}
                   />
-                </LabeledField>
-                <form.Field name="deathPlace">
-                  {(field) => (
-                    <LabeledField label="Place of Death">
-                      <Input
-                        value={field.state.value}
-                        onBlur={field.handleBlur}
-                        onChange={(event) => field.handleChange(event.target.value)}
-                      />
-                    </LabeledField>
-                  )}
-                </form.Field>
-                <LabeledField label="Burial date">
-                  <HistoricalDateInput
-                    placeholder="e.g. c. Nov 1901"
-                    quality={burialQuality}
-                    onQualityChange={(quality) => form.setFieldValue("burialQuality", quality)}
-                    value={burialValue}
-                    onChange={(value) => form.setFieldValue("burialValue", value)}
-                    endValue={burialEndValue}
-                    onEndChange={(value) => form.setFieldValue("burialEndValue", value)}
-                    preview={historicalDateFieldPreview(burialQuality, burialValue, burialEndValue)}
-                  />
-                </LabeledField>
-                <form.Field name="burialPlace">
-                  {(field) => (
-                    <LabeledField label="Burial place">
-                      <Input
-                        placeholder="Cemetery or churchyard"
-                        value={field.state.value}
-                        onBlur={field.handleBlur}
-                        onChange={(event) => field.handleChange(event.target.value)}
-                      />
-                    </LabeledField>
-                  )}
-                </form.Field>
-                <form.Field name="causeOfDeath">
-                  {(field) => (
-                    <LabeledField label="Cause of death" className="sm:col-span-2">
-                      <Input
-                        placeholder="As written in the record, e.g. Alderdomssvaghed"
-                        value={field.state.value}
-                        onBlur={field.handleBlur}
-                        onChange={(event) => field.handleChange(event.target.value)}
-                      />
-                    </LabeledField>
-                  )}
-                </form.Field>
-              </>
+                ))}
+              </div>
             )}
-          </CardContent>
-        </Card>
-
-        <div className="flex items-center justify-between gap-4">
+          </div>
+          <form.Field name="titlePrefix">
+            {(field) => (
+              <LabeledField label="Title / prefix">
+                <Autocomplete
+                  aria-label="Title / prefix"
+                  placeholder="e.g. Dr., Rev."
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={field.handleChange}
+                  options={titlePrefixOptions}
+                  isClearable
+                />
+              </LabeledField>
+            )}
+          </form.Field>
+          <form.Field name="suffix">
+            {(field) => (
+              <LabeledField label="Suffix">
+                <Autocomplete
+                  aria-label="Suffix"
+                  placeholder="e.g. Jr., III"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={field.handleChange}
+                  options={suffixOptions}
+                  isClearable
+                />
+              </LabeledField>
+            )}
+          </form.Field>
+          <form.Field name="notes">
+            {(field) => (
+              <LabeledField label="Notes" className="sm:col-span-2" asDiv>
+                <MarkdownEditor
+                  aria-label="Notes"
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                />
+              </LabeledField>
+            )}
+          </form.Field>
+        </CardContent>
+        <CardFooter className="flex-col items-stretch gap-2">
           <div className="flex items-center gap-2">
             <SaveButton isDirty={isDirty} isPending={isSubmitting}>
               Save
@@ -1022,39 +891,286 @@ function PersonFields({
               Cancel
             </Button>
           </div>
-          {canDelete && (
-            <AlertDialog>
-              <Button type="button" variant="outline" className="text-destructive">
-                <Trash2Icon /> Delete
-              </Button>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete {formatFullPersonName(person)}?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This permanently removes them and everything recorded about them — alternate
-                    names, life events, sources and citations. This cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onPress={() => removePersonMutation.mutate({ data: { id: person.id } })}
-                  >
-                    Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+          {updatePersonMutation.isError && (
+            <p className="text-sm text-destructive">{updatePersonMutation.error.message}</p>
           )}
-        </div>
-        {updatePersonMutation.isError && (
-          <p className="text-sm text-destructive">{updatePersonMutation.error.message}</p>
-        )}
-        {removePersonMutation.isError && (
-          <p className="text-sm text-destructive">{removePersonMutation.error.message}</p>
-        )}
-      </form>
-    </div>
+        </CardFooter>
+      </Card>
+    </form>
+  );
+}
+
+/** Birth date and place — its own form/mutation/Save/Cancel; see the comment on `NamesGenderCard`. */
+function BirthCard({ person, onChanged }: { person: PersonRow; onChanged: () => Promise<void> }) {
+  const updatePersonMutation = useMutation({ mutationFn: updatePerson, onSuccess: onChanged });
+  const birthSplit = splitHistoricalDateText(person.birth?.original ?? "");
+
+  const form = useForm({
+    defaultValues: {
+      birthQuality: birthSplit.quality,
+      birthValue: birthSplit.value,
+      birthEndValue: birthSplit.endValue,
+      birthPlace: person.birthPlace ?? "",
+    },
+    onSubmit: async ({ value, formApi }) => {
+      const birthOriginal = joinHistoricalDateText({
+        quality: value.birthQuality,
+        value: value.birthValue,
+        endValue: value.birthEndValue,
+      });
+      await updatePersonMutation.mutateAsync({
+        data: {
+          id: person.id,
+          // Bounds are recomputed from the current wording on every save, not
+          // carried over from what was previously stored — otherwise editing
+          // the text alone (without it happening to still parse to the same
+          // bounds) would leave a stale earliest/latest attached to new words.
+          birth:
+            birthOriginal === null
+              ? null
+              : { original: birthOriginal, ...parseHistoricalDate(birthOriginal) },
+          birthPlace: value.birthPlace.trim() === "" ? null : value.birthPlace,
+        },
+      });
+      formApi.reset(value);
+    },
+  });
+
+  const isDirty = useStore(form.store, (state) => state.isDirty);
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+  const birthQuality = useStore(form.store, (state) => state.values.birthQuality);
+  const birthValue = useStore(form.store, (state) => state.values.birthValue);
+  const birthEndValue = useStore(form.store, (state) => state.values.birthEndValue);
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit().catch(() => {});
+      }}
+    >
+      <Card>
+        <CardHeader>
+          <CardTitle>Birth</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <LabeledField label="Date of Birth">
+            <HistoricalDateInput
+              placeholder="e.g. 1854"
+              quality={birthQuality}
+              onQualityChange={(quality) => form.setFieldValue("birthQuality", quality)}
+              value={birthValue}
+              onChange={(value) => form.setFieldValue("birthValue", value)}
+              endValue={birthEndValue}
+              onEndChange={(value) => form.setFieldValue("birthEndValue", value)}
+              preview={historicalDateFieldPreview(birthQuality, birthValue, birthEndValue)}
+            />
+          </LabeledField>
+          <form.Field name="birthPlace">
+            {(field) => (
+              <LabeledField label="Place of Birth">
+                <Input
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => field.handleChange(event.target.value)}
+                />
+              </LabeledField>
+            )}
+          </form.Field>
+        </CardContent>
+        <CardFooter className="flex-col items-stretch gap-2">
+          <div className="flex items-center gap-2">
+            <SaveButton isDirty={isDirty} isPending={isSubmitting}>
+              Save
+            </SaveButton>
+            <Button type="button" variant="outline" onPress={() => form.reset()}>
+              Cancel
+            </Button>
+          </div>
+          {updatePersonMutation.isError && (
+            <p className="text-sm text-destructive">{updatePersonMutation.error.message}</p>
+          )}
+        </CardFooter>
+      </Card>
+    </form>
+  );
+}
+
+/** Living status, death and burial — its own form/mutation/Save/Cancel; see the comment on `NamesGenderCard`. */
+function LivingStatusDeathCard({
+  person,
+  onChanged,
+}: {
+  person: PersonRow;
+  onChanged: () => Promise<void>;
+}) {
+  const updatePersonMutation = useMutation({ mutationFn: updatePerson, onSuccess: onChanged });
+  const deathSplit = splitHistoricalDateText(person.death?.original ?? "");
+  const burialSplit = splitHistoricalDateText(person.burial?.original ?? "");
+
+  const form = useForm({
+    defaultValues: {
+      isLiving: person.isLiving,
+      deathQuality: deathSplit.quality,
+      deathValue: deathSplit.value,
+      deathEndValue: deathSplit.endValue,
+      deathPlace: person.deathPlace ?? "",
+      causeOfDeath: person.causeOfDeath ?? "",
+      burialQuality: burialSplit.quality,
+      burialValue: burialSplit.value,
+      burialEndValue: burialSplit.endValue,
+      burialPlace: person.burialPlace ?? "",
+    },
+    onSubmit: async ({ value, formApi }) => {
+      const deathOriginal = joinHistoricalDateText({
+        quality: value.deathQuality,
+        value: value.deathValue,
+        endValue: value.deathEndValue,
+      });
+      const burialOriginal = joinHistoricalDateText({
+        quality: value.burialQuality,
+        value: value.burialValue,
+        endValue: value.burialEndValue,
+      });
+      await updatePersonMutation.mutateAsync({
+        data: {
+          id: person.id,
+          isLiving: value.isLiving,
+          death:
+            deathOriginal === null
+              ? null
+              : { original: deathOriginal, ...parseHistoricalDate(deathOriginal) },
+          deathPlace: value.deathPlace.trim() === "" ? null : value.deathPlace,
+          causeOfDeath: value.causeOfDeath.trim() === "" ? null : value.causeOfDeath,
+          burial:
+            burialOriginal === null
+              ? null
+              : { original: burialOriginal, ...parseHistoricalDate(burialOriginal) },
+          burialPlace: value.burialPlace.trim() === "" ? null : value.burialPlace,
+        },
+      });
+      formApi.reset(value);
+    },
+  });
+
+  const isLiving = useStore(form.store, (state) => state.values.isLiving);
+  const isDirty = useStore(form.store, (state) => state.isDirty);
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+  const deathQuality = useStore(form.store, (state) => state.values.deathQuality);
+  const deathValue = useStore(form.store, (state) => state.values.deathValue);
+  const deathEndValue = useStore(form.store, (state) => state.values.deathEndValue);
+  const burialQuality = useStore(form.store, (state) => state.values.burialQuality);
+  const burialValue = useStore(form.store, (state) => state.values.burialValue);
+  const burialEndValue = useStore(form.store, (state) => state.values.burialEndValue);
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit().catch(() => {});
+      }}
+    >
+      <Card>
+        <CardHeader>
+          <CardTitle>Living status &amp; death</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <form.Field name="isLiving">
+              {(field) => (
+                <LabeledField label="Is this person living?">
+                  <ButtonRadioGroup
+                    aria-label="Is this person living?"
+                    value={field.state.value ? "living" : "deceased"}
+                    onChange={(value) => field.handleChange(value === "living")}
+                    options={[
+                      { value: "living", label: "Living" },
+                      { value: "deceased", label: "Deceased" },
+                    ]}
+                  />
+                </LabeledField>
+              )}
+            </form.Field>
+          </div>
+          {!isLiving && (
+            <>
+              <LabeledField label="Date of Death">
+                <HistoricalDateInput
+                  placeholder="e.g. 12 MAR 1901"
+                  quality={deathQuality}
+                  onQualityChange={(quality) => form.setFieldValue("deathQuality", quality)}
+                  value={deathValue}
+                  onChange={(value) => form.setFieldValue("deathValue", value)}
+                  endValue={deathEndValue}
+                  onEndChange={(value) => form.setFieldValue("deathEndValue", value)}
+                  preview={historicalDateFieldPreview(deathQuality, deathValue, deathEndValue)}
+                />
+              </LabeledField>
+              <form.Field name="deathPlace">
+                {(field) => (
+                  <LabeledField label="Place of Death">
+                    <Input
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(event) => field.handleChange(event.target.value)}
+                    />
+                  </LabeledField>
+                )}
+              </form.Field>
+              <LabeledField label="Burial date">
+                <HistoricalDateInput
+                  placeholder="e.g. c. Nov 1901"
+                  quality={burialQuality}
+                  onQualityChange={(quality) => form.setFieldValue("burialQuality", quality)}
+                  value={burialValue}
+                  onChange={(value) => form.setFieldValue("burialValue", value)}
+                  endValue={burialEndValue}
+                  onEndChange={(value) => form.setFieldValue("burialEndValue", value)}
+                  preview={historicalDateFieldPreview(burialQuality, burialValue, burialEndValue)}
+                />
+              </LabeledField>
+              <form.Field name="burialPlace">
+                {(field) => (
+                  <LabeledField label="Burial place">
+                    <Input
+                      placeholder="Cemetery or churchyard"
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(event) => field.handleChange(event.target.value)}
+                    />
+                  </LabeledField>
+                )}
+              </form.Field>
+              <form.Field name="causeOfDeath">
+                {(field) => (
+                  <LabeledField label="Cause of death" className="sm:col-span-2">
+                    <Input
+                      placeholder="As written in the record, e.g. Alderdomssvaghed"
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(event) => field.handleChange(event.target.value)}
+                    />
+                  </LabeledField>
+                )}
+              </form.Field>
+            </>
+          )}
+        </CardContent>
+        <CardFooter className="flex-col items-stretch gap-2">
+          <div className="flex items-center gap-2">
+            <SaveButton isDirty={isDirty} isPending={isSubmitting}>
+              Save
+            </SaveButton>
+            <Button type="button" variant="outline" onPress={() => form.reset()}>
+              Cancel
+            </Button>
+          </div>
+          {updatePersonMutation.isError && (
+            <p className="text-sm text-destructive">{updatePersonMutation.error.message}</p>
+          )}
+        </CardFooter>
+      </Card>
+    </form>
   );
 }
 
@@ -1293,9 +1409,9 @@ function RelativesSection({
       : [];
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle className="text-base">{title}</CardTitle>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium">{title}</span>
         <AddRelative
           kind={kind}
           personId={personId}
@@ -1303,8 +1419,8 @@ function RelativesSection({
           options={options}
           onChanged={onChanged}
         />
-      </CardHeader>
-      <CardContent className="space-y-2">
+      </div>
+      <div className="space-y-2">
         {relatives.map((relative) => {
           const union = unions.find(
             (candidate) =>
@@ -1358,8 +1474,68 @@ function RelativesSection({
             onChanged={onChanged}
           />
         ))}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Siblings aren't a direct edge the way Parents/Spouses/Children each are —
+ * "sibling" just means sharing one of this person's own parents, so there's
+ * no single edge here to remove. Read-only plus Add, then: closing a sibling
+ * relationship means editing that shared parent's own children (already
+ * possible from that parent's own Family card), not a duplicate destructive
+ * action here.
+ */
+function SiblingsSection({
+  siblings,
+  parents,
+  excludeIds,
+  options,
+  onChanged,
+}: {
+  siblings: PersonRow[];
+  parents: ParentRow[];
+  excludeIds: Set<string>;
+  options: ConfigurableOptionRow[];
+  onChanged: () => Promise<void>;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium">Siblings</span>
+        {parents.length > 0 && (
+          <AddSibling
+            parents={parents}
+            excludeIds={excludeIds}
+            options={options}
+            onChanged={onChanged}
+          />
+        )}
+      </div>
+      {parents.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Add a parent first to record siblings.</p>
+      ) : (
+        <div className="space-y-2">
+          {siblings.map((sibling) => (
+            <Link
+              key={sibling.id}
+              to="/people/$personId"
+              params={{ personId: sibling.id }}
+              className="block text-sm hover:underline"
+            >
+              {formatPersonName(sibling)}
+              {formatLifespan(sibling) && (
+                <span className="ml-1 text-muted-foreground">({formatLifespan(sibling)})</span>
+              )}
+            </Link>
+          ))}
+          {siblings.length === 0 && (
+            <p className="text-sm text-muted-foreground">No siblings recorded yet.</p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1909,6 +2085,312 @@ function CreateAndLinkForm({
 }
 
 /**
+ * Adding a sibling really means linking a person as a *child of one of this
+ * person's own parents* — there's no direct edge between siblings the way
+ * there is for Parents/Spouses/Children. With two recorded parents, which
+ * one(s) to attach to is a real choice (both = full sibling, one = half),
+ * so that's a small picker here rather than assumed; with exactly one
+ * parent there's nothing to choose, so it's skipped.
+ */
+function AddSibling({
+  parents,
+  excludeIds,
+  options,
+  onChanged,
+}: {
+  parents: ParentRow[];
+  excludeIds: Set<string>;
+  options: ConfigurableOptionRow[];
+  onChanged: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"search" | "create">("search");
+  const [query, setQuery] = useState("");
+  const [parentage, setParentage] = useState<Parentage>("unknown");
+  const [selectedParentIds, setSelectedParentIds] = useState<Set<string>>(
+    () => new Set(parents.map((parent) => parent.id)),
+  );
+
+  const trimmedQuery = query.trim();
+  const searchInput = { limit: 10, offset: 0, search: trimmedQuery === "" ? null : trimmedQuery };
+  const search = useQuery({
+    queryKey: ["person", "list", searchInput],
+    queryFn: () => listPersons({ data: searchInput }),
+    enabled: open && mode === "search",
+  });
+  const searchOptions = (search.data?.items ?? []).filter(
+    (candidate) => !excludeIds.has(candidate.id),
+  );
+
+  const createPersonMutation = useMutation({ mutationFn: createPerson });
+  const linkParentMutation = useMutation({ mutationFn: linkParent });
+  const canSubmit = selectedParentIds.size > 0;
+
+  const linkToSelectedParents = (childId: string) =>
+    Promise.all(
+      [...selectedParentIds].map((parentId) =>
+        linkParentMutation.mutateAsync({ data: { parentId, childId, parentage } }),
+      ),
+    );
+
+  const link = async (target: PersonRow) => {
+    await linkToSelectedParents(target.id);
+    setOpen(false);
+    await onChanged();
+  };
+
+  const createAndLink = async (value: { given: string; surname: string }) => {
+    const created = await createPersonMutation.mutateAsync({ data: value });
+    await linkToSelectedParents(created.id);
+    setOpen(false);
+    await onChanged();
+  };
+
+  const parentPicker = parents.length > 1 && (
+    <div className="space-y-1">
+      <p className="text-sm text-muted-foreground">Shared parent(s)</p>
+      {parents.map((parent) => (
+        <Checkbox
+          key={parent.id}
+          isSelected={selectedParentIds.has(parent.id)}
+          onChange={(checked) => {
+            setSelectedParentIds((previous) => {
+              const next = new Set(previous);
+              if (checked) {
+                next.add(parent.id);
+              } else {
+                next.delete(parent.id);
+              }
+              return next;
+            });
+          }}
+        >
+          {formatPersonName(parent)}
+        </Checkbox>
+      ))}
+      {!canSubmit && <p className="text-sm text-destructive">Select at least one parent.</p>}
+    </div>
+  );
+
+  return (
+    <Dialog
+      isOpen={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) {
+          setMode("search");
+          setQuery("");
+        }
+      }}
+    >
+      <Tooltip>
+        <Button variant="outline" size="icon" aria-label="Add sibling">
+          <PlusIcon className="size-4" />
+        </Button>
+        <TooltipContent>Add sibling</TooltipContent>
+      </Tooltip>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add sibling</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <Select
+            aria-label="Parentage"
+            value={parentage}
+            onChange={(value) => {
+              if (value) setParentage(parentageSchema.parse(value));
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {optionsFor(options, "parentage").map((option) => (
+                <SelectItem key={option.key} id={option.key}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {parentPicker}
+          {mode === "search" ? (
+            <>
+              <Combobox<PersonRow>
+                aria-label="Search people"
+                items={searchOptions}
+                inputValue={query}
+                onInputChange={setQuery}
+                onChange={(value) => {
+                  const target = searchOptions.find((candidate) => candidate.id === value);
+                  if (target && canSubmit) void link(target);
+                }}
+              >
+                <ComboboxInput placeholder="Search people…" />
+                <ComboboxContent<PersonRow>
+                  renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
+                >
+                  {(item) => (
+                    <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
+                      {formatPersonName(item)}
+                      {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
+                    </ComboboxItem>
+                  )}
+                </ComboboxContent>
+              </Combobox>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full"
+                onPress={() => setMode("create")}
+              >
+                + Create new person
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" onPress={() => setMode("search")}>
+                ← Search instead
+              </Button>
+              <AddSiblingCreateForm canSubmit={canSubmit} onSubmit={createAndLink} />
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AddSiblingCreateForm({
+  canSubmit,
+  onSubmit,
+}: {
+  canSubmit: boolean;
+  onSubmit: (value: { given: string; surname: string }) => Promise<void>;
+}) {
+  const form = useForm({
+    defaultValues: { given: "", surname: "" },
+    onSubmit: async ({ value, formApi }) => {
+      await onSubmit(value);
+      formApi.reset();
+    },
+  });
+
+  const isDirty = useStore(form.store, (state) => state.isDirty);
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <form.Field name="given">
+        {(field) => (
+          <Input
+            placeholder="First names"
+            value={field.state.value}
+            onChange={(event) => field.handleChange(event.target.value)}
+          />
+        )}
+      </form.Field>
+      <form.Field name="surname">
+        {(field) => (
+          <Input
+            placeholder="Last names"
+            value={field.state.value}
+            onChange={(event) => field.handleChange(event.target.value)}
+          />
+        )}
+      </form.Field>
+      <DialogFooter>
+        <SaveButton isDirty={isDirty} isPending={isSubmitting} isDisabled={!canSubmit}>
+          {isSubmitting ? "Creating…" : "Create and link"}
+        </SaveButton>
+      </DialogFooter>
+    </form>
+  );
+}
+
+/**
+ * Parents, Spouses, Children and Siblings, stacked as labeled subsections of
+ * one card rather than four separate ones — same underlying sections/add
+ * flows as before (`ParentsSection`/`RelativesSection`/`SiblingsSection`),
+ * just sharing one `Card` frame so the four read as a single "Family" group.
+ */
+function FamilyCard({
+  personId,
+  parents,
+  spouses,
+  childRelatives,
+  siblings,
+  excludeIds,
+  options,
+  unions,
+  onChanged,
+}: {
+  personId: string;
+  parents: ParentRow[];
+  spouses: PersonRow[];
+  childRelatives: PersonRow[];
+  siblings: PersonRow[];
+  excludeIds: Set<string>;
+  options: ConfigurableOptionRow[];
+  unions: UnionRow[];
+  onChanged: () => Promise<void>;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Family</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <ParentsSection
+          personId={personId}
+          parents={parents}
+          excludeIds={excludeIds}
+          options={options}
+          onChanged={onChanged}
+        />
+        <div className="border-t pt-4">
+          <RelativesSection
+            title="Spouses"
+            kind="spouse"
+            personId={personId}
+            relatives={spouses}
+            excludeIds={excludeIds}
+            options={options}
+            onChanged={onChanged}
+            unions={unions}
+          />
+        </div>
+        <div className="border-t pt-4">
+          <RelativesSection
+            title="Children"
+            kind="child"
+            personId={personId}
+            relatives={childRelatives}
+            excludeIds={excludeIds}
+            options={options}
+            onChanged={onChanged}
+          />
+        </div>
+        <div className="border-t pt-4">
+          <SiblingsSection
+            siblings={siblings}
+            parents={parents}
+            excludeIds={excludeIds}
+            options={options}
+            onChanged={onChanged}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
  * Parents get their own layout rather than reusing RelativesSection: a birth
  * father and mother are the common case and read better as named slots than
  * as an undifferentiated list, while adoptive/step/foster parents — and any
@@ -1941,37 +2423,37 @@ function ParentsSection({
   const others = parents.filter((parent) => parent !== father && parent !== mother);
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle className="text-base">Parents</CardTitle>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium">Parents</span>
         <AddOtherParent
           personId={personId}
           excludeIds={excludeIds}
           options={options}
           onChanged={onChanged}
         />
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-3">
-          <ParentSlot
-            label="Father"
-            personId={personId}
-            parent={father}
-            presetSex="M"
-            excludeIds={excludeIds}
-            onRemove={remove}
-            onChanged={onChanged}
-          />
-          <ParentSlot
-            label="Mother"
-            personId={personId}
-            parent={mother}
-            presetSex="F"
-            excludeIds={excludeIds}
-            onRemove={remove}
-            onChanged={onChanged}
-          />
-        </div>
+      </div>
+      <div className="space-y-3">
+        <ParentSlot
+          label="Father"
+          personId={personId}
+          parent={father}
+          presetSex="M"
+          excludeIds={excludeIds}
+          onRemove={remove}
+          onChanged={onChanged}
+        />
+        <ParentSlot
+          label="Mother"
+          personId={personId}
+          parent={mother}
+          presetSex="F"
+          excludeIds={excludeIds}
+          onRemove={remove}
+          onChanged={onChanged}
+        />
+      </div>
+      {others.length > 0 && (
         <div className="space-y-2">
           {others.map((parent) => (
             <div key={parent.id} className="flex items-center justify-between gap-2 text-sm">
@@ -2000,8 +2482,8 @@ function ParentsSection({
             </div>
           ))}
         </div>
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
 }
 
