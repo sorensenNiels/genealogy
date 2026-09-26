@@ -1,12 +1,6 @@
 import { Button } from "@genealogy/ui/components/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@genealogy/ui/components/card";
 import { Input } from "@genealogy/ui/components/input";
+import { SectionCard } from "@genealogy/ui/components/section-card";
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -49,86 +43,82 @@ function Login() {
 
   return (
     <div className="mx-auto max-w-sm">
-      <Card>
-        <CardHeader>
-          <CardTitle>{mode === "sign-in" ? "Sign in" : "Create an account"}</CardTitle>
-          <CardDescription>
-            {mode === "sign-in" ? "Welcome back." : "Start recording your family tree."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form
-            className="space-y-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void form.handleSubmit();
-            }}
-          >
-            {mode === "sign-up" && (
-              <form.Field name="name">
-                {(field) => (
-                  <Input
-                    placeholder="Name"
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                    aria-label="Name"
-                  />
-                )}
-              </form.Field>
+      <SectionCard
+        title={mode === "sign-in" ? "Sign in" : "Create an account"}
+        description={mode === "sign-in" ? "Welcome back." : "Start recording your family tree."}
+        contentClassName="space-y-4"
+      >
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+        >
+          {mode === "sign-up" && (
+            <form.Field name="name">
+              {(field) => (
+                <Input
+                  placeholder="Name"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => field.handleChange(event.target.value)}
+                  aria-label="Name"
+                />
+              )}
+            </form.Field>
+          )}
+          <form.Field name="email">
+            {(field) => (
+              <Input
+                type="email"
+                placeholder="Email"
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(event) => field.handleChange(event.target.value)}
+                aria-label="Email"
+              />
             )}
-            <form.Field name="email">
-              {(field) => (
-                <Input
-                  type="email"
-                  placeholder="Email"
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                  aria-label="Email"
-                />
-              )}
-            </form.Field>
-            <form.Field name="password">
-              {(field) => (
-                <Input
-                  type="password"
-                  placeholder="Password"
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                  aria-label="Password"
-                />
-              )}
-            </form.Field>
+          </form.Field>
+          <form.Field name="password">
+            {(field) => (
+              <Input
+                type="password"
+                placeholder="Password"
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(event) => field.handleChange(event.target.value)}
+                aria-label="Password"
+              />
+            )}
+          </form.Field>
 
-            {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
-            <Button type="submit" className="w-full">
-              {mode === "sign-in" ? "Sign in" : "Sign up"}
-            </Button>
-          </form>
-
-          <Button
-            variant="outline"
-            className="w-full"
-            onPress={() => authClient.signIn.social({ provider: "google", callbackURL: "/" })}
-          >
-            Continue with Google
+          <Button type="submit" className="w-full">
+            {mode === "sign-in" ? "Sign in" : "Sign up"}
           </Button>
+        </form>
 
-          <button
-            type="button"
-            className="text-sm text-muted-foreground hover:text-foreground"
-            onClick={() => {
-              setMode(mode === "sign-in" ? "sign-up" : "sign-in");
-              setError(null);
-            }}
-          >
-            {mode === "sign-in" ? "Need an account? Sign up" : "Already have an account? Sign in"}
-          </button>
-        </CardContent>
-      </Card>
+        <Button
+          variant="outline"
+          className="w-full"
+          onPress={() => authClient.signIn.social({ provider: "google", callbackURL: "/" })}
+        >
+          Continue with Google
+        </Button>
+
+        <button
+          type="button"
+          className="text-sm text-muted-foreground hover:text-foreground"
+          onClick={() => {
+            setMode(mode === "sign-in" ? "sign-up" : "sign-in");
+            setError(null);
+          }}
+        >
+          {mode === "sign-in" ? "Need an account? Sign up" : "Already have an account? Sign in"}
+        </button>
+      </SectionCard>
     </div>
   );
 }

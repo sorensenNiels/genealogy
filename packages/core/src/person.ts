@@ -1,11 +1,11 @@
 import { z } from "zod";
 
 /**
- * Genealogical sex as recorded by a source, not gender identity. The GEDCOM
- * vocabulary is kept deliberately, because it is what imports and exports speak.
+ * Genealogical gender as recorded by a source. The GEDCOM `sex` vocabulary
+ * (M/F/U) is kept deliberately, because it is what imports and exports speak.
  */
-export const sexSchema = z.enum(["M", "F", "U"]);
-export type Sex = z.infer<typeof sexSchema>;
+export const genderSchema = z.enum(["M", "F", "U"]);
+export type Gender = z.infer<typeof genderSchema>;
 
 export const personIdSchema = z.uuid();
 export type PersonId = z.infer<typeof personIdSchema>;
@@ -44,7 +44,7 @@ export type PersonName = z.infer<typeof personNameSchema>;
 
 export const personSchema = personNameSchema.extend({
   id: personIdSchema,
-  sex: sexSchema,
+  gender: genderSchema,
   /** Formal title or prefix as recorded by a source: "Dr.", "Rev.", "Sir". */
   titlePrefix: z.string().nullable(),
   /** Generational or honorific suffix: "Jr.", "III". */
@@ -84,7 +84,7 @@ export type Person = z.infer<typeof personSchema>;
 export const createPersonSchema = z.object({
   given: z.string().trim().default(""),
   surname: z.string().trim().default(""),
-  sex: sexSchema.default("U"),
+  gender: genderSchema.default("U"),
   titlePrefix: z.string().trim().nullable().default(null),
   suffix: z.string().trim().nullable().default(null),
   birth: historicalDateSchema.nullable().default(null),
@@ -105,7 +105,7 @@ export const updatePersonSchema = z.object({
   id: personIdSchema,
   given: z.string().trim().optional(),
   surname: z.string().trim().optional(),
-  sex: sexSchema.optional(),
+  gender: genderSchema.optional(),
   titlePrefix: z.string().trim().nullable().optional(),
   suffix: z.string().trim().nullable().optional(),
   birth: historicalDateSchema.nullable().optional(),

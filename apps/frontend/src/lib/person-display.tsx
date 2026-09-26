@@ -1,10 +1,10 @@
-import type { RelationshipToRoot, Sex } from "@genealogy/core";
+import type { Gender, RelationshipToRoot } from "@genealogy/core";
 import { CircleHelp, Mars, Venus } from "lucide-react";
 
-// Stored values stay the M/F/U schema; only the displayed labels change here.
-// Revisit once i18n lands — this should become a translation lookup, not a
-// hardcoded English map.
-export const SEX_LABELS: Record<Sex, string> = {
+// Stored values stay the M/F/U GEDCOM schema; only the displayed labels
+// change here. Revisit once i18n lands — this should become a translation
+// lookup, not a hardcoded English map.
+export const GENDER_LABELS: Record<Gender, string> = {
   M: "Male",
   F: "Female",
   U: "Unknown",
@@ -47,13 +47,19 @@ export function labelFor<T extends ConfigurableOptionLike>(
   return optionsFor(all, topic).find((option) => option.key === key)?.label ?? key;
 }
 
-export function GenderIcon({ sex, className = "size-5" }: { sex: Sex; className?: string }) {
+export function GenderIcon({
+  gender,
+  className = "size-5",
+}: {
+  gender: Gender;
+  className?: string;
+}) {
   const props = {
     className: `${className} shrink-0 text-muted-foreground`,
     "aria-hidden": true,
   } as const;
-  if (sex === "M") return <Mars {...props} />;
-  if (sex === "F") return <Venus {...props} />;
+  if (gender === "M") return <Mars {...props} />;
+  if (gender === "F") return <Venus {...props} />;
   return <CircleHelp {...props} />;
 }
 
@@ -65,13 +71,13 @@ export function initials(person: { given: string; surname: string }): string {
 
 /**
  * Background/text pair for the People list's avatar-initials fallback — the
- * one place in the app that colors by sex, so a row is scannable at a
+ * one place in the app that colors by gender, so a row is scannable at a
  * glance without reading the Gender column. Plain Tailwind palette classes
  * rather than new theme tokens, since this is a single-purpose accent, not a
  * reusable design-system color.
  */
-export function avatarColorClass(sex: Sex): string {
-  if (sex === "M") return "bg-blue-100 text-blue-700";
-  if (sex === "F") return "bg-pink-100 text-pink-700";
+export function avatarColorClass(gender: Gender): string {
+  if (gender === "M") return "bg-blue-100 text-blue-700";
+  if (gender === "F") return "bg-pink-100 text-pink-700";
   return "bg-muted text-muted-foreground";
 }

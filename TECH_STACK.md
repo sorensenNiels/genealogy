@@ -645,7 +645,7 @@ plain `text` for this (see migration `0015`); `parentage` never had a column
 at all, since it already lived as a bare agtype string on the graph edge.
 
 Two dropdowns stay hardcoded on purpose: `citationFactType`
-(person/name/event/union) and `sex` (M/F/U) are structural — code branches on
+(person/name/event/union) and `gender` (M/F/U) are structural — code branches on
 their exact value in ways a runtime-editable list can't safely support (e.g.
 a citation's `factId` is required or forbidden depending on `factType`).
 Three individual `event_type` option keys are seeded `isProtected: true` for
@@ -948,7 +948,7 @@ These are open, and nothing in the code presumes an answer:
   services) and revisit `trustedOrigins`/cookie attributes accordingly if
   they end up on different domains.
 - **GEDCOM import and export.** The domain model is shaped for it —
-  `HistoricalDate` keeps the source's own wording, and `sex` uses the GEDCOM
+  `HistoricalDate` keeps the source's own wording, and `gender` uses the GEDCOM
   vocabulary — but no importer/exporter exists. Date parsing/display
   (`packages/core/src/historical-date.ts`) is a first pass at the wordings
   this app's own fields produce — exact day/month/year, month/year, bare

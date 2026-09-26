@@ -231,7 +231,7 @@ prompted it.
 person-display.tsx`, rather than a hardcoded `Record<Type, string>` label
   map. The only exception is a field that's genuinely structural — code
   branches on the exact value in a way a runtime-editable list can't safely
-  support (`citationFactType`, `sex`) — and even then, prefer tying it to the
+  support (`citationFactType`, `gender`) — and even then, prefer tying it to the
   database if there's any real doubt; ask rather than assume it's structural.
 - **A Save/Add button that submits a form: always `SaveButton`**
   (`@genealogy/ui/components/save-button`), never a bare `Button

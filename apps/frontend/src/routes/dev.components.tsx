@@ -41,16 +41,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@genealogy/ui/components/dialog";
+import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import {
   HistoricalDateInput,
   type HistoricalDateQuality,
 } from "@genealogy/ui/components/historical-date-input";
 import { Input } from "@genealogy/ui/components/input";
+import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { MarkdownContent } from "@genealogy/ui/components/markdown-content";
 import { MarkdownEditor } from "@genealogy/ui/components/markdown-editor";
 import { Popover, PopoverContent } from "@genealogy/ui/components/popover";
 import { ProgressBar } from "@genealogy/ui/components/progress-bar";
+import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
+import { SectionCard } from "@genealogy/ui/components/section-card";
 import {
   Select,
   SelectContent,
@@ -78,6 +82,7 @@ import {
 import { ThemeToggle } from "@genealogy/ui/components/theme-toggle";
 import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
 import { createFileRoute } from "@tanstack/react-router";
+import { PlusIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 // Not linked from the main nav — a dev-only reference for checking every
@@ -134,12 +139,12 @@ function HistoricalDateDemo({ label, initialValue }: { label: string; initialVal
 }
 
 function ButtonRadioGroupDemo() {
-  const [sex, setSex] = useState<"M" | "F" | "U">("U");
+  const [gender, setGender] = useState<"M" | "F" | "U">("U");
   return (
     <ButtonRadioGroup
       aria-label="Gender"
-      value={sex}
-      onChange={setSex}
+      value={gender}
+      onChange={setGender}
       options={[
         { value: "M", label: "Male" },
         { value: "F", label: "Female" },
@@ -226,8 +231,46 @@ function ComponentsShowcase() {
         </Card>
       </Section>
 
+      <Section title="Section Card">
+        <SectionCard title="Karen Sørensen" description="1928–2004" className="w-72">
+          <p className="text-sm text-muted-foreground">Born in Aarhus, Denmark.</p>
+        </SectionCard>
+        <SectionCard
+          title="Sources & citations"
+          titleClassName="text-base"
+          className="w-72"
+          action={
+            <Button variant="outline" size="icon" aria-label="Add citation">
+              <PlusIcon className="size-4" />
+            </Button>
+          }
+        >
+          <p className="text-sm text-muted-foreground">No citations recorded yet.</p>
+        </SectionCard>
+        <SectionCard
+          title="Birth"
+          className="w-72"
+          footer={
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="outline">Cancel</Button>
+              <SaveButton isDirty isPending={false}>
+                Save
+              </SaveButton>
+            </div>
+          }
+        >
+          <p className="text-sm text-muted-foreground">Form fields go here.</p>
+        </SectionCard>
+      </Section>
+
       <Section title="Input">
         <Input placeholder="First names" className="max-w-56" />
+      </Section>
+
+      <Section title="Labeled Field">
+        <LabeledField label="First names" className="max-w-56">
+          <Input placeholder="First names" />
+        </LabeledField>
       </Section>
 
       <Section title="Copyable Text">
@@ -327,7 +370,7 @@ function ComponentsShowcase() {
       </Section>
 
       <Section title="Select">
-        <Select aria-label="Sex" defaultValue="U">
+        <Select aria-label="Gender" defaultValue="U">
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -361,6 +404,22 @@ function ComponentsShowcase() {
         </Dialog>
       </Section>
 
+      <Section title="Form Dialog">
+        <FormDialog
+          trigger={<Button variant="outline">+ Add citation</Button>}
+          title="Add citation"
+        >
+          {(close) => (
+            <>
+              <p className="text-sm text-muted-foreground">Form fields go here.</p>
+              <DialogFooter>
+                <Button onPress={close}>Save</Button>
+              </DialogFooter>
+            </>
+          )}
+        </FormDialog>
+      </Section>
+
       <Section title="Alert dialog">
         <AlertDialog>
           <Button variant="destructive">Delete…</Button>
@@ -377,6 +436,18 @@ function ComponentsShowcase() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+      </Section>
+
+      <Section title="Remove Button">
+        <RemoveButton itemLabel="this citation" onConfirm={() => {}} />
+        <RemoveButton
+          itemLabel="Karen Sørensen"
+          title="Delete Karen Sørensen?"
+          description="This permanently removes them and everything recorded about them. This cannot be undone."
+          actionLabel="Delete"
+          onConfirm={() => {}}
+          trigger={<Button variant="destructive">Delete…</Button>}
+        />
       </Section>
 
       <Section title="Combobox">
@@ -400,7 +471,7 @@ function ComponentsShowcase() {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Sex</TableHead>
+              <TableHead>Gender</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

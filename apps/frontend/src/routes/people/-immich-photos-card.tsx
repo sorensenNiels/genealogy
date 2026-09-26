@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Button } from "@genealogy/ui/components/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@genealogy/ui/components/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@genealogy/ui/components/dialog";
+import { FormDialog } from "@genealogy/ui/components/form-dialog";
+import { SectionCard } from "@genealogy/ui/components/section-card";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { XIcon } from "lucide-react";
 import { useState } from "react";
@@ -60,60 +60,59 @@ function PersonPhotosCardContent({ personId }: { personId: string }) {
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle className="text-base">Photos</CardTitle>
-        <LinkFaceDialog personId={personId} onLinked={refresh} />
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {linked.data && linked.data.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {linked.data.map((person) => (
-              <span
-                key={person.linkId}
-                className="flex items-center gap-1.5 rounded-full border py-1 pr-2 pl-1 text-xs"
+    <SectionCard
+      title="Photos"
+      titleClassName="text-base"
+      contentClassName="space-y-4"
+      action={<LinkFaceDialog personId={personId} onLinked={refresh} />}
+    >
+      {linked.data && linked.data.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {linked.data.map((person) => (
+            <span
+              key={person.linkId}
+              className="flex items-center gap-1.5 rounded-full border py-1 pr-2 pl-1 text-xs"
+            >
+              <Avatar className="size-5">
+                <AvatarImage src={`/api/immich/people/${person.id}/thumbnail`} alt="" />
+                <AvatarFallback className="text-[10px]">?</AvatarFallback>
+              </Avatar>
+              {person.name.trim() || "Unnamed"}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-4"
+                aria-label={`Unlink ${person.name.trim() || "this face"}`}
+                onPress={() => void unlink(person.linkId)}
               >
-                <Avatar className="size-5">
-                  <AvatarImage src={`/api/immich/people/${person.id}/thumbnail`} alt="" />
-                  <AvatarFallback className="text-[10px]">?</AvatarFallback>
-                </Avatar>
-                {person.name.trim() || "Unnamed"}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-4"
-                  aria-label={`Unlink ${person.name.trim() || "this face"}`}
-                  onPress={() => void unlink(person.linkId)}
-                >
-                  <XIcon className="size-3" />
-                </Button>
-              </span>
-            ))}
-          </div>
-        )}
-        {photos.isPending ? (
-          <p className="text-xs text-muted-foreground">Loading photos…</p>
-        ) : photos.data && photos.data.length > 0 ? (
-          <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-            {photos.data.map((asset) => (
-              <div key={asset.id} className="aspect-square overflow-hidden rounded bg-muted">
-                <img
-                  src={`/api/immich/assets/${asset.id}/thumbnail`}
-                  alt={asset.originalFileName}
-                  loading="lazy"
-                  className="size-full object-cover"
-                />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            No linked photos yet — link a face to find them.
-          </p>
-        )}
-      </CardContent>
-    </Card>
+                <XIcon className="size-3" />
+              </Button>
+            </span>
+          ))}
+        </div>
+      )}
+      {photos.isPending ? (
+        <p className="text-xs text-muted-foreground">Loading photos…</p>
+      ) : photos.data && photos.data.length > 0 ? (
+        <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+          {photos.data.map((asset) => (
+            <div key={asset.id} className="aspect-square overflow-hidden rounded bg-muted">
+              <img
+                src={`/api/immich/assets/${asset.id}/thumbnail`}
+                alt={asset.originalFileName}
+                loading="lazy"
+                className="size-full object-cover"
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          No linked photos yet — link a face to find them.
+        </p>
+      )}
+    </SectionCard>
   );
 }
 
@@ -134,11 +133,11 @@ function LinkFaceDialog({
   });
   const linkMutation = useMutation({ mutationFn: linkImmichPerson });
 
-  const link = async (immichPersonId: string) => {
+  const link = async (immichPersonId: string, close: () => void) => {
     setError(null);
     try {
       await linkMutation.mutateAsync({ data: { personId, immichPersonId } });
-      setOpen(false);
+      close();
       await onLinked();
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : "Could not link");
@@ -146,8 +145,13 @@ function LinkFaceDialog({
   };
 
   return (
-    <Dialog
-      isOpen={open}
+    <FormDialog
+      trigger={
+        <Button type="button" variant="outline" size="sm">
+          + Link a face
+        </Button>
+      }
+      title="Link a face"
       onOpenChange={(next) => {
         setOpen(next);
         if (!next) {
@@ -156,61 +160,57 @@ function LinkFaceDialog({
         }
       }}
     >
-      <Button type="button" variant="outline" size="sm">
-        + Link a face
-      </Button>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Link a face</DialogTitle>
-        </DialogHeader>
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        {people.isPending ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : people.data && people.data.people.length > 0 ? (
-          <div className="grid grid-cols-4 gap-2">
-            {people.data.people.map((person) => (
-              <Button
-                key={person.id}
-                type="button"
-                variant="ghost"
-                className="h-auto flex-col gap-1 py-2"
-                isDisabled={linkMutation.isPending}
-                onPress={() => void link(person.id)}
-              >
-                <Avatar className="size-14">
-                  <AvatarImage src={`/api/immich/people/${person.id}/thumbnail`} alt="" />
-                  <AvatarFallback>?</AvatarFallback>
-                </Avatar>
-                <span className="w-full truncate text-xs font-normal">
-                  {person.name.trim() || "Unnamed"}
-                </span>
-              </Button>
-            ))}
+      {(close) => (
+        <>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          {people.isPending ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : people.data && people.data.people.length > 0 ? (
+            <div className="grid grid-cols-4 gap-2">
+              {people.data.people.map((person) => (
+                <Button
+                  key={person.id}
+                  type="button"
+                  variant="ghost"
+                  className="h-auto flex-col gap-1 py-2"
+                  isDisabled={linkMutation.isPending}
+                  onPress={() => void link(person.id, close)}
+                >
+                  <Avatar className="size-14">
+                    <AvatarImage src={`/api/immich/people/${person.id}/thumbnail`} alt="" />
+                    <AvatarFallback>?</AvatarFallback>
+                  </Avatar>
+                  <span className="w-full truncate text-xs font-normal">
+                    {person.name.trim() || "Unnamed"}
+                  </span>
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No people found in Immich yet.</p>
+          )}
+          <div className="flex justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              isDisabled={page === 1}
+              onPress={() => setPage((current) => current - 1)}
+            >
+              Previous
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              isDisabled={!people.data?.hasNextPage}
+              onPress={() => setPage((current) => current + 1)}
+            >
+              Next
+            </Button>
           </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No people found in Immich yet.</p>
-        )}
-        <div className="flex justify-between">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            isDisabled={page === 1}
-            onPress={() => setPage((current) => current - 1)}
-          >
-            Previous
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            isDisabled={!people.data?.hasNextPage}
-            onPress={() => setPage((current) => current + 1)}
-          >
-            Next
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </>
+      )}
+    </FormDialog>
   );
 }

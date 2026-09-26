@@ -1,32 +1,18 @@
 import type { AppRouter } from "@genealogy/backend";
 import { configurableTopicSchema, TOPIC_LABELS, type ConfigurableTopic } from "@genealogy/core";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@genealogy/ui/components/alert-dialog";
 import { Button } from "@genealogy/ui/components/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@genealogy/ui/components/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@genealogy/ui/components/dialog";
+import { DialogFooter } from "@genealogy/ui/components/dialog";
+import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import { Input } from "@genealogy/ui/components/input";
+import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
-import { useForm, useStore } from "@tanstack/react-form";
+import { SectionCard } from "@genealogy/ui/components/section-card";
+import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
+import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
-import { useState } from "react";
 
 import {
   addOption,
@@ -85,43 +71,43 @@ function TopicCard({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
-  const [addOpen, setAddOpen] = useState(false);
-
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle className="text-base">{TOPIC_LABELS[topic]}</CardTitle>
-        <Dialog isOpen={addOpen} onOpenChange={setAddOpen}>
-          <Button variant="outline" size="sm">
-            + Add
-          </Button>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add {TOPIC_LABELS[topic].toLowerCase()} option</DialogTitle>
-            </DialogHeader>
+    <SectionCard
+      title={TOPIC_LABELS[topic]}
+      titleClassName="text-base"
+      contentClassName="space-y-2"
+      action={
+        <FormDialog
+          trigger={
+            <Button variant="outline" size="sm">
+              + Add
+            </Button>
+          }
+          title={`Add ${TOPIC_LABELS[topic].toLowerCase()} option`}
+        >
+          {(close) => (
             <AddOptionForm
               topic={topic}
               onDone={async () => {
-                setAddOpen(false);
+                close();
                 await onChanged();
               }}
             />
-          </DialogContent>
-        </Dialog>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {options.length === 0 && <p className="text-sm text-muted-foreground">None recorded.</p>}
-        {options.map((option, index) => (
-          <OptionRow
-            key={option.id}
-            option={option}
-            isFirst={index === 0}
-            isLast={index === options.length - 1}
-            onChanged={onChanged}
-          />
-        ))}
-      </CardContent>
-    </Card>
+          )}
+        </FormDialog>
+      }
+    >
+      {options.length === 0 && <p className="text-sm text-muted-foreground">None recorded.</p>}
+      {options.map((option, index) => (
+        <OptionRow
+          key={option.id}
+          option={option}
+          isFirst={index === 0}
+          isLast={index === options.length - 1}
+          onChanged={onChanged}
+        />
+      ))}
+    </SectionCard>
   );
 }
 
@@ -138,7 +124,6 @@ function OptionRow({
 }) {
   const moveOptionMutation = useMutation({ mutationFn: moveOption });
   const removeOptionMutation = useMutation({ mutationFn: removeOption });
-  const [editOpen, setEditOpen] = useState(false);
 
   const move = async (direction: "up" | "down") => {
     await moveOptionMutation.mutateAsync({ data: { id: option.id, direction } });
@@ -176,43 +161,32 @@ function OptionRow({
           >
             <ChevronDownIcon className="size-4" />
           </Button>
-          <Dialog isOpen={editOpen} onOpenChange={setEditOpen}>
-            <Button variant="ghost" size="sm">
-              Edit
-            </Button>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Edit option</DialogTitle>
-              </DialogHeader>
+          <FormDialog
+            trigger={
+              <Button variant="ghost" size="sm">
+                Edit
+              </Button>
+            }
+            title="Edit option"
+          >
+            {(close) => (
               <EditOptionForm
                 option={option}
                 onDone={async () => {
-                  setEditOpen(false);
+                  close();
                   await onChanged();
                 }}
               />
-            </DialogContent>
-          </Dialog>
+            )}
+          </FormDialog>
           {option.isProtected ? (
             <span className="text-xs text-muted-foreground">Built-in</span>
           ) : (
-            <AlertDialog>
-              <Button variant="ghost" size="sm">
-                Remove
-              </Button>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Remove "{option.label}"?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This cannot be undone. Removal is refused if any record still uses it.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onPress={() => void remove()}>Remove</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <RemoveButton
+              itemLabel={`"${option.label}"`}
+              description="This cannot be undone. Removal is refused if any record still uses it."
+              onConfirm={() => void remove()}
+            />
           )}
         </div>
       </div>
@@ -246,8 +220,7 @@ function AddOptionForm({
     },
   });
 
-  const isDirty = useStore(form.store, (state) => state.isDirty);
-  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+  const { isDirty, isSubmitting } = useFormDirtyPending(form);
 
   return (
     <form
@@ -306,8 +279,7 @@ function EditOptionForm({
     },
   });
 
-  const isDirty = useStore(form.store, (state) => state.isDirty);
-  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+  const { isDirty, isSubmitting } = useFormDirtyPending(form);
 
   return (
     <form

@@ -2,7 +2,6 @@ import type { AppRouter } from "@genealogy/backend";
 import { formatLifespan, formatPersonName } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
-import { Card, CardContent, CardHeader, CardTitle } from "@genealogy/ui/components/card";
 import {
   Combobox,
   ComboboxContent,
@@ -11,9 +10,12 @@ import {
   ComboboxItem,
 } from "@genealogy/ui/components/combobox";
 import { Input } from "@genealogy/ui/components/input";
+import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { SaveButton } from "@genealogy/ui/components/save-button";
+import { SectionCard } from "@genealogy/ui/components/section-card";
+import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { useTheme } from "@genealogy/ui/hooks/use-theme";
-import { useForm, useStore } from "@tanstack/react-form";
+import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
@@ -57,9 +59,9 @@ function ProfileRoute() {
 }
 
 /**
- * One form, one Save button, spanning all three cards below — mirrors the
- * person page's own pattern (one `<form>` wrapping several `<Card>`s with a
- * single footer). "Change password" isn't part of it: it always starts
+ * One form, one Save button, spanning all three `SectionCard`s below (the
+ * button itself lives outside them, not in any one card's own footer).
+ * "Change password" isn't part of it: it always starts
  * blank, so there's no clean/dirty baseline to save against — it stays its
  * own one-shot action, same reason login.tsx's sign-in/sign-up buttons are
  * plain too. Picking a person in "Who you are in the tree" also stays
@@ -97,8 +99,7 @@ function ProfileForm({
       formApi.reset(value);
     },
   });
-  const isDirty = useStore(form.store, (state) => state.isDirty);
-  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+  const { isDirty, isSubmitting } = useFormDirtyPending(form);
 
   return (
     <form
@@ -108,79 +109,61 @@ function ProfileForm({
         void form.handleSubmit();
       }}
     >
-      <Card>
-        <CardHeader>
-          <CardTitle>Account</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Email</p>
-            <p className="text-sm">{email}</p>
-          </div>
-          <form.Field name="name">
-            {(field) => (
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Display name</p>
-                <Input
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-              </div>
-            )}
-          </form.Field>
-          <div className="border-t pt-4">
-            <ChangePassword />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Theme</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ThemePicker />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>This is you</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <form.Field name="phoneNumber">
-            {(field) => (
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Phone number</p>
-                <Input
-                  type="tel"
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-              </div>
-            )}
-          </form.Field>
-          <div className="space-y-2 border-t pt-4">
-            <p className="text-sm text-muted-foreground">Who you are in the tree</p>
-            {personId ? (
-              <LinkedPerson
-                personId={personId}
-                onUnlink={() => updateProfileMutation.mutate({ data: { personId: null } })}
-                isPending={updateProfileMutation.isPending}
+      <SectionCard title="Account" contentClassName="space-y-6">
+        <LabeledField label="Email" asDiv>
+          <p className="text-sm">{email}</p>
+        </LabeledField>
+        <form.Field name="name">
+          {(field) => (
+            <LabeledField label="Display name">
+              <Input
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(event) => field.handleChange(event.target.value)}
               />
-            ) : (
-              <PersonPicker
-                onPick={(id) => updateProfileMutation.mutate({ data: { personId: id } })}
+            </LabeledField>
+          )}
+        </form.Field>
+        <div className="border-t pt-4">
+          <ChangePassword />
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Theme">
+        <ThemePicker />
+      </SectionCard>
+
+      <SectionCard title="This is you" contentClassName="space-y-6">
+        <form.Field name="phoneNumber">
+          {(field) => (
+            <LabeledField label="Phone number">
+              <Input
+                type="tel"
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(event) => field.handleChange(event.target.value)}
               />
-            )}
-            {updateProfileMutation.isError && (
-              <p className="text-sm text-destructive">{updateProfileMutation.error.message}</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+            </LabeledField>
+          )}
+        </form.Field>
+        <div className="space-y-2 border-t pt-4">
+          <p className="text-sm text-muted-foreground">Who you are in the tree</p>
+          {personId ? (
+            <LinkedPerson
+              personId={personId}
+              onUnlink={() => updateProfileMutation.mutate({ data: { personId: null } })}
+              isPending={updateProfileMutation.isPending}
+            />
+          ) : (
+            <PersonPicker
+              onPick={(id) => updateProfileMutation.mutate({ data: { personId: id } })}
+            />
+          )}
+          {updateProfileMutation.isError && (
+            <p className="text-sm text-destructive">{updateProfileMutation.error.message}</p>
+          )}
+        </div>
+      </SectionCard>
 
       <div className="flex items-center gap-2">
         <SaveButton isDirty={isDirty} isPending={isSubmitting}>

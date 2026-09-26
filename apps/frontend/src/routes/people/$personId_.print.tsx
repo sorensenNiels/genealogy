@@ -107,8 +107,8 @@ function PrintRoute() {
         <section>
           <h2 className="mb-2 font-semibold">Vitals</h2>
           <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm">
-            <dt className="text-muted-foreground">Sex</dt>
-            <dd>{record.sex}</dd>
+            <dt className="text-muted-foreground">Gender</dt>
+            <dd>{record.gender}</dd>
             <dt className="text-muted-foreground">Born</dt>
             <dd>
               {formatDisplayDate(record.birth) ?? "—"}

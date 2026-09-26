@@ -1,22 +1,15 @@
-import { calculateAge, formatLifespan, formatPersonName, type Sex } from "@genealogy/core";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@genealogy/ui/components/alert-dialog";
+import { calculateAge, formatLifespan, formatPersonName, type Gender } from "@genealogy/core";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button, buttonVariants } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
-import { Card, CardContent, CardHeader, CardTitle } from "@genealogy/ui/components/card";
+import { Card, CardContent } from "@genealogy/ui/components/card";
 import { Checkbox } from "@genealogy/ui/components/checkbox";
 import { CopyableText } from "@genealogy/ui/components/copyable-text";
 import { Input } from "@genealogy/ui/components/input";
+import { LabeledField } from "@genealogy/ui/components/labeled-field";
+import { RemoveButton } from "@genealogy/ui/components/remove-button";
+import { SectionCard } from "@genealogy/ui/components/section-card";
 import {
   Select,
   SelectContent,
@@ -45,7 +38,7 @@ import {
   GenderIcon,
   initials,
   labelFor,
-  SEX_LABELS,
+  GENDER_LABELS,
 } from "../../lib/person-display";
 import { createPerson, listPersons, removePerson } from "../../server/functions/person.functions";
 import { listOptions } from "../../server/functions/settings.functions";
@@ -82,7 +75,7 @@ function People() {
   const [place, setPlace] = useState("");
   const [bornAfter, setBornAfter] = useState("");
   const [bornBefore, setBornBefore] = useState("");
-  const [sex, setSex] = useState<"all" | Sex>("all");
+  const [gender, setGender] = useState<"all" | Gender>("all");
   const [hasCitation, setHasCitation] = useState(false);
   const [missingBirthRecord, setMissingBirthRecord] = useState(false);
   const [hasOpenResearchNote, setHasOpenResearchNote] = useState(false);
@@ -100,7 +93,7 @@ function People() {
     setPlace("");
     setBornAfter("");
     setBornBefore("");
-    setSex("all");
+    setGender("all");
     setHasCitation(false);
     setMissingBirthRecord(false);
     setHasOpenResearchNote(false);
@@ -112,7 +105,7 @@ function People() {
     limit: PAGE_SIZE,
     offset,
     search: search.trim() === "" ? null : search.trim(),
-    sex: sex === "all" ? null : sex,
+    gender: gender === "all" ? null : gender,
     place: place.trim() === "" ? null : place.trim(),
     bornAfter: bornAfter.trim() === "" ? null : Number(bornAfter),
     bornBefore: bornBefore.trim() === "" ? null : Number(bornBefore),
@@ -166,111 +159,110 @@ function People() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
-        <Card className="h-fit">
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle className="text-base">Filters</CardTitle>
+        <SectionCard
+          className="h-fit"
+          title="Filters"
+          titleClassName="text-base"
+          contentClassName="space-y-4"
+          action={
             <Button type="button" variant="ghost" size="sm" onPress={resetFilters}>
               Reset
             </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Birth or death place</p>
+          }
+        >
+          <LabeledField label="Birth or death place" asDiv>
+            <Input
+              value={place}
+              onChange={(event) => {
+                setPlace(event.target.value);
+                resetToFirstPage();
+              }}
+              aria-label="Filter by birth or death place"
+            />
+          </LabeledField>
+
+          <LabeledField label="Born between" asDiv>
+            <div className="flex items-center gap-2">
               <Input
-                value={place}
+                type="number"
+                aria-label="Born after year"
+                placeholder="From"
+                value={bornAfter}
                 onChange={(event) => {
-                  setPlace(event.target.value);
+                  setBornAfter(event.target.value);
                   resetToFirstPage();
                 }}
-                aria-label="Filter by birth or death place"
+              />
+              <Input
+                type="number"
+                aria-label="Born before year"
+                placeholder="To"
+                value={bornBefore}
+                onChange={(event) => {
+                  setBornBefore(event.target.value);
+                  resetToFirstPage();
+                }}
               />
             </div>
+          </LabeledField>
 
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Born between</p>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  aria-label="Born after year"
-                  placeholder="From"
-                  value={bornAfter}
-                  onChange={(event) => {
-                    setBornAfter(event.target.value);
-                    resetToFirstPage();
-                  }}
-                />
-                <Input
-                  type="number"
-                  aria-label="Born before year"
-                  placeholder="To"
-                  value={bornBefore}
-                  onChange={(event) => {
-                    setBornBefore(event.target.value);
-                    resetToFirstPage();
-                  }}
-                />
-              </div>
-            </div>
+          <LabeledField label="Gender" asDiv>
+            <ButtonRadioGroup
+              aria-label="Filter by gender"
+              value={gender}
+              onChange={(value) => {
+                setGender(value);
+                resetToFirstPage();
+              }}
+              options={[
+                { value: "all", label: "All" },
+                { value: "M", label: "Male" },
+                { value: "F", label: "Female" },
+              ]}
+              className="flex-wrap"
+            />
+          </LabeledField>
 
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Sex</p>
-              <ButtonRadioGroup
-                aria-label="Filter by sex"
-                value={sex}
-                onChange={(value) => {
-                  setSex(value);
-                  resetToFirstPage();
-                }}
-                options={[
-                  { value: "all", label: "All" },
-                  { value: "M", label: "Male" },
-                  { value: "F", label: "Female" },
-                ]}
-                className="flex-wrap"
-              />
-            </div>
-
-            <div className="space-y-2 border-t pt-4">
-              <p className="text-sm text-muted-foreground">Research status</p>
-              <Checkbox
-                isSelected={hasCitation}
-                onChange={(value) => {
-                  setHasCitation(value);
-                  resetToFirstPage();
-                }}
-              >
-                Has primary source
-              </Checkbox>
-              <Checkbox
-                isSelected={missingBirthRecord}
-                onChange={(value) => {
-                  setMissingBirthRecord(value);
-                  resetToFirstPage();
-                }}
-              >
-                Missing birth record
-              </Checkbox>
-              <Checkbox
-                isSelected={hasOpenResearchNote}
-                onChange={(value) => {
-                  setHasOpenResearchNote(value);
-                  resetToFirstPage();
-                }}
-              >
-                Has open research notes
-              </Checkbox>
-              <Checkbox
-                isSelected={directAncestorsOnly}
-                onChange={(value) => {
-                  setDirectAncestorsOnly(value);
-                  resetToFirstPage();
-                }}
-              >
-                Direct ancestors only
-              </Checkbox>
-            </div>
-          </CardContent>
-        </Card>
+          <div className="space-y-2 border-t pt-4">
+            <p className="text-sm text-muted-foreground">Research status</p>
+            <Checkbox
+              isSelected={hasCitation}
+              onChange={(value) => {
+                setHasCitation(value);
+                resetToFirstPage();
+              }}
+            >
+              Has primary source
+            </Checkbox>
+            <Checkbox
+              isSelected={missingBirthRecord}
+              onChange={(value) => {
+                setMissingBirthRecord(value);
+                resetToFirstPage();
+              }}
+            >
+              Missing birth record
+            </Checkbox>
+            <Checkbox
+              isSelected={hasOpenResearchNote}
+              onChange={(value) => {
+                setHasOpenResearchNote(value);
+                resetToFirstPage();
+              }}
+            >
+              Has open research notes
+            </Checkbox>
+            <Checkbox
+              isSelected={directAncestorsOnly}
+              onChange={(value) => {
+                setDirectAncestorsOnly(value);
+                resetToFirstPage();
+              }}
+            >
+              Direct ancestors only
+            </Checkbox>
+          </div>
+        </SectionCard>
 
         <Card>
           <CardContent className="space-y-4">
@@ -408,7 +400,7 @@ function buildColumns(options: ConfigurableOptionRow[]) {
           >
             <Avatar className="size-8">
               {photoUrl && <AvatarImage src={photoUrl} alt="" />}
-              <AvatarFallback className={`text-xs ${avatarColorClass(person.sex)}`}>
+              <AvatarFallback className={`text-xs ${avatarColorClass(person.gender)}`}>
                 {initials(person)}
               </AvatarFallback>
             </Avatar>
@@ -417,13 +409,13 @@ function buildColumns(options: ConfigurableOptionRow[]) {
         );
       },
     }),
-    helper.accessor("sex", {
-      id: "sex",
+    helper.accessor("gender", {
+      id: "gender",
       header: "Gender",
       cell: (context) => (
         <span className="flex items-center gap-1.5">
-          <GenderIcon sex={context.getValue()} className="size-4" />
-          {SEX_LABELS[context.getValue()]}
+          <GenderIcon gender={context.getValue()} className="size-4" />
+          {GENDER_LABELS[context.getValue()]}
         </span>
       ),
     }),
@@ -531,33 +523,23 @@ function DeletePersonAction({ person }: { person: PersonListItem }) {
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <AlertDialog>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={`Delete ${formatPersonName(person)}`}
-          isDisabled={removePersonMutation.isPending}
-        >
-          <Trash2Icon className="size-4 text-destructive" />
-        </Button>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {formatPersonName(person)}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This permanently removes them and everything recorded about them — alternate names,
-              life events, sources and citations. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onPress={() => removePersonMutation.mutate({ data: { id: person.id } })}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <RemoveButton
+        itemLabel={formatPersonName(person)}
+        title={`Delete ${formatPersonName(person)}?`}
+        description="This permanently removes them and everything recorded about them — alternate names, life events, sources and citations. This cannot be undone."
+        actionLabel="Delete"
+        onConfirm={() => removePersonMutation.mutate({ data: { id: person.id } })}
+        trigger={
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Delete ${formatPersonName(person)}`}
+            isDisabled={removePersonMutation.isPending}
+          >
+            <Trash2Icon className="size-4 text-destructive" />
+          </Button>
+        }
+      />
       {removePersonMutation.isError && (
         <p className="text-xs text-destructive">{removePersonMutation.error.message}</p>
       )}

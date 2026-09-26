@@ -14,7 +14,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-export const sexEnum = pgEnum("sex", ["M", "F", "U"]);
+export const genderEnum = pgEnum("gender", ["M", "F", "U"]);
 
 /**
  * The relational half of a person. The graph half — who their parents and
@@ -40,7 +40,7 @@ export const persons = pgTable(
     // this holds every given name a person has, middle ones included.
     given: text("given").notNull().default(""),
     surname: text("surname").notNull().default(""),
-    sex: sexEnum("sex").notNull().default("U"),
+    gender: genderEnum("gender").notNull().default("U"),
 
     // Single-valued, unlike the name history in `personNames` below.
     titlePrefix: text("title_prefix"),
@@ -426,7 +426,7 @@ export const schema = {
   personImmichLinks,
   userProfiles,
   researchNotes,
-  sexEnum,
+  genderEnum,
   citationFactTypeEnum,
   user,
   session,

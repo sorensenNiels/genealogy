@@ -1,4 +1,4 @@
-import { formatLifespan, formatPersonName, type Sex } from "@genealogy/core";
+import { formatLifespan, formatPersonName, type Gender } from "@genealogy/core";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Button, buttonVariants } from "@genealogy/ui/components/button";
 import {
@@ -117,16 +117,16 @@ function RootPicker() {
   );
 }
 
-/** A thin colored strip on the card, the same idea as a sex-coded pin on a map marker. */
-function sexAccentClasses(sex: Sex): string {
-  if (sex === "M") return "bg-sky-400 dark:bg-sky-500";
-  if (sex === "F") return "bg-rose-400 dark:bg-rose-500";
+/** A thin colored strip on the card, the same idea as a gender-coded pin on a map marker. */
+function genderAccentClasses(gender: Gender): string {
+  if (gender === "M") return "bg-sky-400 dark:bg-sky-500";
+  if (gender === "F") return "bg-rose-400 dark:bg-rose-500";
   return "bg-slate-300 dark:bg-slate-600";
 }
 
-function sexTextClasses(sex: Sex): string {
-  if (sex === "M") return "text-sky-600 dark:text-sky-400";
-  if (sex === "F") return "text-rose-600 dark:text-rose-400";
+function genderTextClasses(gender: Gender): string {
+  if (gender === "M") return "text-sky-600 dark:text-sky-400";
+  if (gender === "F") return "text-rose-600 dark:text-rose-400";
   return "text-slate-500 dark:text-slate-400";
 }
 
@@ -148,7 +148,7 @@ function PersonNode({ data }: NodeProps<PersonFlowNode>) {
       )}
       style={{ width: NODE_WIDTH }}
     >
-      <div className={cn("absolute inset-y-0 left-0 w-1.5", sexAccentClasses(person.sex))} />
+      <div className={cn("absolute inset-y-0 left-0 w-1.5", genderAccentClasses(person.gender))} />
       {/* Parent/child edges use the top/bottom handles; spouse edges use
           left/right (see FamilyTree) so a marriage line never gets confused
           with a lineage line by the layout or by a reader. */}
@@ -178,7 +178,7 @@ function PersonNode({ data }: NodeProps<PersonFlowNode>) {
       />
       <Avatar className="size-9 shrink-0">
         {photoUrl && <AvatarImage src={photoUrl} alt="" />}
-        <AvatarFallback className={sexTextClasses(person.sex)}>
+        <AvatarFallback className={genderTextClasses(person.gender)}>
           <UserRound className="size-5" aria-hidden="true" />
         </AvatarFallback>
       </Avatar>
@@ -562,8 +562,8 @@ function AddRelativeButton({
   };
 
   const createAndLink = async () => {
-    const presetSex = kind === "father" ? "M" : kind === "mother" ? "F" : "U";
-    const created = await createPersonMutation.mutateAsync({ data: { sex: presetSex } });
+    const presetGender = kind === "father" ? "M" : kind === "mother" ? "F" : "U";
+    const created = await createPersonMutation.mutateAsync({ data: { gender: presetGender } });
     await link(created);
   };
 
@@ -645,8 +645,8 @@ function DetailPanel({
       const row = peopleById.get(edge.parentId);
       return row ? [{ ...row, parentage: edge.parentage }] : [];
     });
-  const father = parents.find((parent) => parent.parentage === "birth" && parent.sex === "M");
-  const mother = parents.find((parent) => parent.parentage === "birth" && parent.sex === "F");
+  const father = parents.find((parent) => parent.parentage === "birth" && parent.gender === "M");
+  const mother = parents.find((parent) => parent.parentage === "birth" && parent.gender === "F");
   const otherParents = parents.filter((parent) => parent !== father && parent !== mother);
 
   const children = tree.parentEdges
@@ -670,7 +670,7 @@ function DetailPanel({
         <div className="flex min-w-0 items-center gap-3">
           <Avatar className="size-10 shrink-0">
             {photoUrl && <AvatarImage src={photoUrl} alt="" />}
-            <AvatarFallback className={sexTextClasses(person.sex)}>
+            <AvatarFallback className={genderTextClasses(person.gender)}>
               <UserRound className="size-5" aria-hidden="true" />
             </AvatarFallback>
           </Avatar>

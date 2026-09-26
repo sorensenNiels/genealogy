@@ -70,7 +70,7 @@ export function AlertDialogContent({
         }}
         transition={{ type: "spring", stiffness: 500, damping: 32 }}
         className={cn(
-          "relative grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-lg border bg-background p-6 shadow-lg outline-none sm:max-w-lg",
+          "relative grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-lg border bg-popover p-6 text-popover-foreground shadow-lg outline-none sm:max-w-lg",
           className,
         )}
       >

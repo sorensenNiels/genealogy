@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@mdxeditor/editor": "catalog:",
+    "@tanstack/react-form": "catalog:",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "lucide-react": "catalog:",

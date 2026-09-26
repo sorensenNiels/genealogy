@@ -8,11 +8,11 @@ import type {
   CreatePerson,
   CreatePersonEvent,
   CreateUnion,
+  Gender,
   HistoricalDate,
   Parentage,
   PedigreeNode,
   RelationshipToRoot,
-  Sex,
   UpdateNameVariant,
   UpdatePerson,
   UpdatePersonEvent,
@@ -121,7 +121,7 @@ export interface ListPersonsInput {
   limit: number;
   offset: number;
   search: string | null;
-  sex: Sex | null;
+  gender: Gender | null;
   /** Matches either the birth or the death place. */
   place: string | null;
   bornAfter: number | null;
@@ -279,8 +279,8 @@ export class PersonService {
       const pattern = `%${input.search.trim()}%`;
       clauses.push(or(ilike(persons.surname, pattern), ilike(persons.given, pattern))!);
     }
-    if (input.sex) {
-      clauses.push(eq(persons.sex, input.sex));
+    if (input.gender) {
+      clauses.push(eq(persons.gender, input.gender));
     }
     if (input.place && input.place.trim() !== "") {
       const pattern = `%${input.place.trim()}%`;

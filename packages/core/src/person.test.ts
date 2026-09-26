@@ -101,7 +101,7 @@ describe("createPersonSchema", () => {
     expect(createPersonSchema.parse({})).toEqual({
       given: "",
       surname: "",
-      sex: "U",
+      gender: "U",
       titlePrefix: null,
       suffix: null,
       birth: null,
@@ -116,8 +116,8 @@ describe("createPersonSchema", () => {
     });
   });
 
-  it("rejects a sex outside the GEDCOM vocabulary", () => {
-    expect(createPersonSchema.safeParse({ sex: "X" }).success).toBe(false);
+  it("rejects a gender outside the GEDCOM vocabulary", () => {
+    expect(createPersonSchema.safeParse({ gender: "X" }).success).toBe(false);
   });
 });
 
