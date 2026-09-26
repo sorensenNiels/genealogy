@@ -41,6 +41,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@genealogy/ui/components/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@genealogy/ui/components/dropdown-menu";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import {
   HistoricalDateInput,
@@ -82,7 +89,7 @@ import {
 import { ThemeToggle } from "@genealogy/ui/components/theme-toggle";
 import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
 import { createFileRoute } from "@tanstack/react-router";
-import { PlusIcon } from "lucide-react";
+import { LogOutIcon, PlusIcon, UserIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 // Not linked from the main nav — a dev-only reference for checking every
@@ -387,6 +394,29 @@ function ComponentsShowcase() {
           <Button variant="outline">Open popover</Button>
           <PopoverContent>This is a popover, animated on entry and exit.</PopoverContent>
         </Popover>
+      </Section>
+
+      <Section title="Dropdown Menu">
+        <DropdownMenu>
+          <Button variant="outline">Open menu</Button>
+          <DropdownMenuContent
+            header={
+              <DropdownMenuLabel className="mb-1 border-b font-normal text-muted-foreground">
+                anne@example.com
+              </DropdownMenuLabel>
+            }
+          >
+            <DropdownMenuItem>
+              <UserIcon className="size-4" aria-hidden="true" />
+              Profile settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <LogOutIcon className="size-4" aria-hidden="true" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </Section>
 
       <Section title="Dialog">

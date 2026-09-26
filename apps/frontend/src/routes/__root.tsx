@@ -1,5 +1,13 @@
 /// <reference types="vite/client" />
+import { Avatar, AvatarFallback } from "@genealogy/ui/components/avatar";
 import { Button } from "@genealogy/ui/components/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@genealogy/ui/components/dropdown-menu";
 import { ThemeToggle } from "@genealogy/ui/components/theme-toggle";
 import { cn } from "@genealogy/ui/lib/utils";
 import type { QueryClient } from "@tanstack/react-query";
@@ -13,7 +21,7 @@ import {
   useLocation,
   useNavigate,
 } from "@tanstack/react-router";
-import { SettingsIcon, UserIcon } from "lucide-react";
+import { ChevronDownIcon, LogOutIcon, SettingsIcon, UserIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { authClient, useSession } from "../lib/auth-client";
@@ -97,16 +105,29 @@ function RootDocument({ children }: { children: ReactNode }) {
 /**
  * Most pages are forms/cards that read better at a fixed, centered width —
  * `max-w-5xl` is the default. The People list (a data table with six columns
- * plus a filters sidebar) and a person's own detail page (a header card plus
- * a Parents/Spouses/Children grid) both have real content that benefits from
- * the browser's actual width on a normal-or-wider monitor, so these two opt
- * out and stretch edge to edge. The print route under
- * `/people/$personId/print` is deliberately excluded — it's laid out for
- * paper, not a wide monitor.
+ * plus a filters sidebar), a person's own detail page (a header card plus a
+ * Parents/Spouses/Children grid), and Settings/Profile (a category sidebar
+ * plus a single section's card) all have real content that benefits from
+ * the browser's actual width on a normal-or-wider monitor, so these opt out
+ * and stretch edge to edge. The print route under `/people/$personId/print`
+ * is deliberately excluded — it's laid out for paper, not a wide monitor.
  */
 function isFullWidthPath(pathname: string): boolean {
-  return pathname === "/people" || /^\/people\/[^/]+$/.test(pathname);
+  return (
+    pathname === "/people" ||
+    pathname === "/settings" ||
+    pathname === "/profile" ||
+    /^\/people\/[^/]+$/.test(pathname)
+  );
 }
+
+// A pill highlight rather than just a color/weight change, so the current
+// section is easy to spot at a glance rather than needing a second look.
+const NAV_LINK_CLASS =
+  "rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
+const NAV_LINK_ACTIVE_PROPS = {
+  className: "rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-foreground",
+};
 
 function RootLayout() {
   const location = useLocation();
@@ -114,43 +135,34 @@ function RootLayout() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b print:hidden">
+      <header className="border-b bg-card print:hidden">
+        <div className="h-0.75 bg-primary" aria-hidden="true" />
         <nav className="flex w-full items-center gap-6 px-6 py-4">
-          <span className="font-semibold">Genealogy</span>
-          <Link
-            to="/"
-            className="text-sm text-muted-foreground hover:text-foreground"
-            activeProps={{ className: "text-sm text-foreground font-medium" }}
-            activeOptions={{ exact: true }}
-          >
-            Overview
-          </Link>
-          <Link
-            to="/people"
-            className="text-sm text-muted-foreground hover:text-foreground"
-            activeProps={{ className: "text-sm text-foreground font-medium" }}
-          >
-            People
-          </Link>
-          <Link
-            to="/tree"
-            className="text-sm text-muted-foreground hover:text-foreground"
-            activeProps={{ className: "text-sm text-foreground font-medium" }}
-          >
-            Tree
-          </Link>
-          <Link
-            to="/photos"
-            className="text-sm text-muted-foreground hover:text-foreground"
-            activeProps={{ className: "text-sm text-foreground font-medium" }}
-          >
-            Photos
-          </Link>
+          <span className="font-semibold text-primary">Genealogy</span>
+          <span className="flex items-center gap-1">
+            <Link
+              to="/"
+              className={NAV_LINK_CLASS}
+              activeProps={NAV_LINK_ACTIVE_PROPS}
+              activeOptions={{ exact: true }}
+            >
+              Overview
+            </Link>
+            <Link to="/people" className={NAV_LINK_CLASS} activeProps={NAV_LINK_ACTIVE_PROPS}>
+              People
+            </Link>
+            <Link to="/tree" className={NAV_LINK_CLASS} activeProps={NAV_LINK_ACTIVE_PROPS}>
+              Tree
+            </Link>
+            <Link to="/photos" className={NAV_LINK_CLASS} activeProps={NAV_LINK_ACTIVE_PROPS}>
+              Photos
+            </Link>
+          </span>
           <span className="ml-auto flex items-center gap-3">
-            <ProfileLink />
             <SettingsLink />
             <ThemeToggle />
-            <SessionStatus />
+            <UserMenu />
+            <SignInLink />
           </span>
         </nav>
       </header>
@@ -158,25 +170,6 @@ function RootLayout() {
         <Outlet />
       </main>
     </div>
-  );
-}
-
-function ProfileLink() {
-  const { data: session, isPending } = useSession();
-
-  if (isPending || !session) {
-    return null;
-  }
-
-  return (
-    <Link
-      to="/profile"
-      className="text-muted-foreground hover:text-foreground"
-      activeProps={{ className: "text-foreground" }}
-      aria-label="Profile"
-    >
-      <UserIcon className="size-5" aria-hidden="true" />
-    </Link>
   );
 }
 
@@ -199,37 +192,64 @@ function SettingsLink() {
   );
 }
 
-function SessionStatus() {
+function SignInLink() {
   const { data: session, isPending } = useSession();
-  const navigate = useNavigate();
 
-  if (isPending) {
+  if (isPending || session) {
     return null;
   }
 
-  if (!session) {
-    return (
-      <Link to="/login" className="text-sm text-muted-foreground hover:text-foreground">
-        Sign in
-      </Link>
-    );
+  return (
+    <Link to="/login" className="text-sm text-muted-foreground hover:text-foreground">
+      Sign in
+    </Link>
+  );
+}
+
+/** Replaces the old separate Profile icon + name + Sign out button with one trigger. */
+function UserMenu() {
+  const { data: session, isPending } = useSession();
+  const navigate = useNavigate();
+
+  if (isPending || !session) {
+    return null;
   }
 
+  const initial = session.user.name.trim().charAt(0).toUpperCase() || "?";
+
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-sm text-muted-foreground">{session.user.name}</span>
-      <Button
-        variant="outline"
-        size="sm"
-        onPress={async () => {
-          await authClient.signOut();
-          // beforeLoad only re-checks the session on navigation, so without
-          // this the page would just sit there failing every query with 401.
-          await navigate({ to: "/login" });
-        }}
-      >
-        Sign out
+    <DropdownMenu>
+      <Button variant="ghost" className="gap-2 px-2">
+        <Avatar className="size-6">
+          <AvatarFallback className="text-xs">{initial}</AvatarFallback>
+        </Avatar>
+        <span className="text-sm font-medium">{session.user.name}</span>
+        <ChevronDownIcon className="size-4 text-muted-foreground" aria-hidden="true" />
       </Button>
-    </div>
+      <DropdownMenuContent
+        header={
+          <DropdownMenuLabel className="mb-1 border-b font-normal text-muted-foreground">
+            {session.user.email}
+          </DropdownMenuLabel>
+        }
+      >
+        <DropdownMenuItem onAction={() => navigate({ to: "/profile" })}>
+          <UserIcon className="size-4" aria-hidden="true" />
+          Profile settings
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onAction={async () => {
+            await authClient.signOut();
+            // beforeLoad only re-checks the session on navigation, so without
+            // this the page would just sit there failing every query with 401.
+            await navigate({ to: "/login" });
+          }}
+        >
+          <LogOutIcon className="size-4" aria-hidden="true" />
+          Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

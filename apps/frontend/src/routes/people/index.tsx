@@ -4,7 +4,6 @@ import { Badge } from "@genealogy/ui/components/badge";
 import { Button, buttonVariants } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
 import { Card, CardContent } from "@genealogy/ui/components/card";
-import { Checkbox } from "@genealogy/ui/components/checkbox";
 import { CopyableText } from "@genealogy/ui/components/copyable-text";
 import { Input } from "@genealogy/ui/components/input";
 import { LabeledField } from "@genealogy/ui/components/labeled-field";
@@ -76,10 +75,6 @@ function People() {
   const [bornAfter, setBornAfter] = useState("");
   const [bornBefore, setBornBefore] = useState("");
   const [gender, setGender] = useState<"all" | Gender>("all");
-  const [hasCitation, setHasCitation] = useState(false);
-  const [missingBirthRecord, setMissingBirthRecord] = useState(false);
-  const [hasOpenResearchNote, setHasOpenResearchNote] = useState(false);
-  const [directAncestorsOnly, setDirectAncestorsOnly] = useState(false);
   const [sort, setSort] = useState<SortOption>("surname_asc");
   const [page, setPage] = useState(0);
   const offset = page * PAGE_SIZE;
@@ -94,10 +89,6 @@ function People() {
     setBornAfter("");
     setBornBefore("");
     setGender("all");
-    setHasCitation(false);
-    setMissingBirthRecord(false);
-    setHasOpenResearchNote(false);
-    setDirectAncestorsOnly(false);
     resetToFirstPage();
   };
 
@@ -107,12 +98,8 @@ function People() {
     search: search.trim() === "" ? null : search.trim(),
     gender: gender === "all" ? null : gender,
     place: place.trim() === "" ? null : place.trim(),
-    bornAfter: bornAfter.trim() === "" ? null : Number(bornAfter),
-    bornBefore: bornBefore.trim() === "" ? null : Number(bornBefore),
-    hasCitation,
-    missingBirthRecord,
-    hasOpenResearchNote,
-    directAncestorsOnly,
+    bornAfter: bornAfter === "" ? null : bornAfter,
+    bornBefore: bornBefore === "" ? null : bornBefore,
     sort,
   };
   const people = useQuery({
@@ -158,7 +145,7 @@ function People() {
         </Button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
+      <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         <SectionCard
           className="h-fit"
           title="Filters"
@@ -184,9 +171,8 @@ function People() {
           <LabeledField label="Born between" asDiv>
             <div className="flex items-center gap-2">
               <Input
-                type="number"
-                aria-label="Born after year"
-                placeholder="From"
+                type="date"
+                aria-label="Born after date"
                 value={bornAfter}
                 onChange={(event) => {
                   setBornAfter(event.target.value);
@@ -194,9 +180,8 @@ function People() {
                 }}
               />
               <Input
-                type="number"
-                aria-label="Born before year"
-                placeholder="To"
+                type="date"
+                aria-label="Born before date"
                 value={bornBefore}
                 onChange={(event) => {
                   setBornBefore(event.target.value);
@@ -219,49 +204,8 @@ function People() {
                 { value: "M", label: "Male" },
                 { value: "F", label: "Female" },
               ]}
-              className="flex-wrap"
             />
           </LabeledField>
-
-          <div className="space-y-2 border-t pt-4">
-            <p className="text-sm text-muted-foreground">Research status</p>
-            <Checkbox
-              isSelected={hasCitation}
-              onChange={(value) => {
-                setHasCitation(value);
-                resetToFirstPage();
-              }}
-            >
-              Has primary source
-            </Checkbox>
-            <Checkbox
-              isSelected={missingBirthRecord}
-              onChange={(value) => {
-                setMissingBirthRecord(value);
-                resetToFirstPage();
-              }}
-            >
-              Missing birth record
-            </Checkbox>
-            <Checkbox
-              isSelected={hasOpenResearchNote}
-              onChange={(value) => {
-                setHasOpenResearchNote(value);
-                resetToFirstPage();
-              }}
-            >
-              Has open research notes
-            </Checkbox>
-            <Checkbox
-              isSelected={directAncestorsOnly}
-              onChange={(value) => {
-                setDirectAncestorsOnly(value);
-                resetToFirstPage();
-              }}
-            >
-              Direct ancestors only
-            </Checkbox>
-          </div>
         </SectionCard>
 
         <Card>

@@ -124,8 +124,9 @@ export interface ListPersonsInput {
   gender: Gender | null;
   /** Matches either the birth or the death place. */
   place: string | null;
-  bornAfter: number | null;
-  bornBefore: number | null;
+  /** ISO `YYYY-MM-DD`, inclusive — compared directly against the resolved `earliest` bound. */
+  bornAfter: string | null;
+  bornBefore: string | null;
   /** "Has primary source" in the UI — any citation at all, same signal as `calculateResearchCompleteness`'s `hasCitation`. */
   hasCitation: boolean;
   missingBirthRecord: boolean;
@@ -287,10 +288,10 @@ export class PersonService {
       clauses.push(or(ilike(birthEvents.place, pattern), ilike(deathEvents.place, pattern))!);
     }
     if (input.bornAfter != null) {
-      clauses.push(sql`(${birthEvents.date}->>'earliest') >= ${`${input.bornAfter}-01-01`}`);
+      clauses.push(sql`(${birthEvents.date}->>'earliest') >= ${input.bornAfter}`);
     }
     if (input.bornBefore != null) {
-      clauses.push(sql`(${birthEvents.date}->>'earliest') <= ${`${input.bornBefore}-12-31`}`);
+      clauses.push(sql`(${birthEvents.date}->>'earliest') <= ${input.bornBefore}`);
     }
     if (input.missingBirthRecord) {
       clauses.push(isNull(birthEvents.date));

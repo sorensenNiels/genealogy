@@ -8,9 +8,10 @@ import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
+import { cn } from "@genealogy/ui/lib/utils";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 
@@ -22,7 +23,17 @@ import {
   updateOption,
 } from "../server/functions/settings.functions";
 
+// The enum always has at least one member, so this is never actually undefined.
+const DEFAULT_TOPIC = configurableTopicSchema.options[0]!;
+
 export const Route = createFileRoute("/settings")({
+  // An unrecognized/missing topic (a stale bookmark, a typo'd URL) falls
+  // back to the first topic rather than erroring — same reasoning as
+  // tree.tsx's personId search param.
+  validateSearch: (search: Record<string, unknown>): { topic?: ConfigurableTopic } => {
+    const result = configurableTopicSchema.safeParse(search.topic);
+    return result.success ? { topic: result.data } : {};
+  },
   component: SettingsRoute,
 });
 
@@ -33,6 +44,7 @@ const LIST_OPTIONS_KEY = ["settings", "listOptions"];
 
 function SettingsRoute() {
   const queryClient = useQueryClient();
+  const { topic = DEFAULT_TOPIC } = Route.useSearch();
   const options = useQuery({ queryKey: LIST_OPTIONS_KEY, queryFn: () => listOptions() });
 
   const refresh = async () => {
@@ -41,28 +53,36 @@ function SettingsRoute() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Settings</h1>
-        <p className="text-sm text-muted-foreground">
-          The options offered in dropdowns across the app — add, relabel, reorder or remove them
-          here instead of needing a code change.
-        </p>
-      </div>
-      <div className="grid gap-6 md:grid-cols-2">
-        {configurableTopicSchema.options.map((topic) => (
-          <TopicCard
-            key={topic}
-            topic={topic}
-            options={(options.data ?? []).filter((option) => option.topic === topic)}
-            onChanged={refresh}
-          />
-        ))}
+      <h1 className="text-2xl font-semibold">Settings</h1>
+      <div className="grid gap-6 md:grid-cols-[240px_1fr]">
+        <SectionCard title="Categories" titleClassName="text-base" className="h-fit">
+          <nav className="flex flex-col gap-1">
+            {configurableTopicSchema.options.map((option) => (
+              <Link
+                key={option}
+                to="/settings"
+                search={{ topic: option }}
+                className={cn(
+                  "rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                  option === topic && "border-primary bg-accent font-medium text-foreground",
+                )}
+              >
+                {TOPIC_LABELS[option]}
+              </Link>
+            ))}
+          </nav>
+        </SectionCard>
+        <TopicPanel
+          topic={topic}
+          options={(options.data ?? []).filter((option) => option.topic === topic)}
+          onChanged={refresh}
+        />
       </div>
     </div>
   );
 }
 
-function TopicCard({
+function TopicPanel({
   topic,
   options,
   onChanged,
@@ -74,7 +94,6 @@ function TopicCard({
   return (
     <SectionCard
       title={TOPIC_LABELS[topic]}
-      titleClassName="text-base"
       contentClassName="space-y-2"
       action={
         <FormDialog
