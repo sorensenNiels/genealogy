@@ -18,6 +18,7 @@ import {
   type CitationFactType,
   type Confidence,
   type EventType,
+  type HistoricalDate,
   type NameVariantType,
   type Parentage,
   type Sex,
@@ -71,6 +72,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@genealogy/ui/components/select";
+import { Switch } from "@genealogy/ui/components/switch";
 import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
 import { cn } from "@genealogy/ui/lib/utils";
 import { useForm, useStore } from "@tanstack/react-form";
@@ -116,6 +118,12 @@ import {
   updatePerson,
   updateUnion,
 } from "../../server/functions/person.functions";
+import {
+  addNote,
+  listNotes,
+  removeNote,
+  updateNote,
+} from "../../server/functions/research-note.functions";
 import { listOptions } from "../../server/functions/settings.functions";
 import {
   addCitation,
@@ -138,6 +146,7 @@ type PersonEventRow = RouterOutputs["person"]["listEvents"][number];
 type UnionRow = RouterOutputs["person"]["listUnions"][number];
 type SourceRow = RouterOutputs["source"]["listSources"][number];
 type CitationRow = RouterOutputs["source"]["listCitations"][number];
+type ResearchNoteRow = RouterOutputs["researchNote"]["listNotes"][number];
 type ConfigurableOptionRow = RouterOutputs["settings"]["listOptions"][number];
 type RelativeKind = "spouse" | "child";
 
@@ -221,6 +230,101 @@ const EVENT_DETAIL_FIELDS: Partial<Record<EventType, { key: string; label: strin
   ],
 };
 
+/** Earliest-first sort key for the Life events timeline; undated entries sort last. */
+function timelineSortValue(date: HistoricalDate | null): number {
+  const iso = date?.earliest ?? date?.latest ?? null;
+  return iso ? new Date(iso).getTime() : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * The single highest-ranked confidence option currently configured (by
+ * `sortOrder`) — "top tier" for the Life events dot below, not a specific
+ * confidence value, so the 3-state dot (top/cited/uncited) still works
+ * whatever labels or how many levels Settings has configured.
+ */
+function topConfidenceKey(options: ConfigurableOptionRow[]): string | null {
+  const confidenceOptions = optionsFor(options, "confidence");
+  if (confidenceOptions.length === 0) return null;
+  return confidenceOptions.reduce((top, option) =>
+    option.sortOrder > top.sortOrder ? option : top,
+  ).key;
+}
+
+type ConfidenceTier = "top" | "cited" | "none";
+
+function confidenceTier(
+  citations: CitationRow[],
+  factType: CitationFactType,
+  factId: string,
+  topKey: string | null,
+): ConfidenceTier {
+  const matches = citations.filter(
+    (citation) => citation.factType === factType && citation.factId === factId,
+  );
+  if (matches.length === 0) return "none";
+  if (topKey !== null && matches.some((citation) => citation.confidence === topKey)) return "top";
+  return "cited";
+}
+
+function ConfidenceDot({ tier, className }: { tier: ConfidenceTier; className?: string }) {
+  if (tier === "top") {
+    return (
+      <span className={cn("size-2.5 rounded-full bg-primary", className)} aria-hidden="true" />
+    );
+  }
+  if (tier === "cited") {
+    return (
+      <span className={cn("size-2.5 rounded-full bg-amber-500", className)} aria-hidden="true" />
+    );
+  }
+  return (
+    <span
+      className={cn(
+        "size-2.5 rounded-full border-2 border-muted-foreground/50 bg-background",
+        className,
+      )}
+      aria-hidden="true"
+    />
+  );
+}
+
+/**
+ * Age at `at` relative to `birth` — in weeks under a year old, whole years
+ * after, matching how genealogists usually write an infant's age (see the
+ * Life events mockup). Null when either date can't be resolved to a real
+ * day, or `at` is on/before `birth` (the birth event itself has no
+ * meaningful age to show).
+ */
+function formatEventAge(
+  birth: HistoricalDate | null | undefined,
+  at: HistoricalDate | null | undefined,
+): string | null {
+  const bornIso = birth?.earliest ?? birth?.latest ?? null;
+  const atIso = at?.earliest ?? at?.latest ?? null;
+  if (!bornIso || !atIso) return null;
+  const born = new Date(bornIso);
+  const eventDate = new Date(atIso);
+  const diffDays = Math.round((eventDate.getTime() - born.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays <= 0) return null;
+  if (diffDays < 365) {
+    const weeks = Math.max(1, Math.round(diffDays / 7));
+    return `age ${weeks} wk${weeks === 1 ? "" : "s"}`;
+  }
+  let age = eventDate.getUTCFullYear() - born.getUTCFullYear();
+  const hadBirthday =
+    eventDate.getUTCMonth() > born.getUTCMonth() ||
+    (eventDate.getUTCMonth() === born.getUTCMonth() && eventDate.getUTCDate() >= born.getUTCDate());
+  if (!hadBirthday) age -= 1;
+  return `age ${age}`;
+}
+
+/** "Son of X and Y" — sex-aware, and only for a birth event; derived from the existing Parents card data, not a new field. */
+function parentageLine(sex: Sex, parents: { given: string; surname: string }[]): string | null {
+  if (parents.length === 0) return null;
+  const noun = sex === "M" ? "Son" : sex === "F" ? "Daughter" : "Child";
+  return `${noun} of ${parents.map((parent) => formatPersonName(parent)).join(" and ")}`;
+}
+
 function PersonDetailRoute() {
   const { personId } = Route.useParams();
   const queryClient = useQueryClient();
@@ -254,6 +358,10 @@ function PersonDetailRoute() {
     queryKey: ["source", "listCitations", personId],
     queryFn: () => listCitations({ data: { personId } }),
   });
+  const researchNotesList = useQuery({
+    queryKey: ["researchNote", "listNotes", personId],
+    queryFn: () => listNotes({ data: { personId } }),
+  });
   const options = useQuery({ queryKey: ["settings", "listOptions"], queryFn: () => listOptions() });
 
   const refresh = async () => {
@@ -268,6 +376,7 @@ function PersonDetailRoute() {
       queryClient.invalidateQueries({ queryKey: ["person", "listUnions", personId] }),
       queryClient.invalidateQueries({ queryKey: ["source", "listSources"] }),
       queryClient.invalidateQueries({ queryKey: ["source", "listCitations", personId] }),
+      queryClient.invalidateQueries({ queryKey: ["researchNote", "listNotes", personId] }),
     ]);
   };
 
@@ -332,53 +441,67 @@ function PersonDetailRoute() {
         canDelete={canDelete}
         onDeleted={() => navigate({ to: "/people" })}
       />
-      <div className="grid gap-6 md:grid-cols-3">
-        <ParentsSection
+      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+        <div className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-3">
+            <ParentsSection
+              personId={personId}
+              parents={parents}
+              excludeIds={excludeIds}
+              options={options.data ?? []}
+              onChanged={refresh}
+            />
+            <RelativesSection
+              title="Spouses"
+              kind="spouse"
+              personId={personId}
+              relatives={spouses}
+              excludeIds={excludeIds}
+              options={options.data ?? []}
+              onChanged={refresh}
+              unions={unions.data ?? []}
+            />
+            <RelativesSection
+              title="Children"
+              kind="child"
+              personId={personId}
+              relatives={children}
+              excludeIds={excludeIds}
+              options={options.data ?? []}
+              onChanged={refresh}
+            />
+          </div>
+          <PersonPhotosCard personId={personId} />
+          <CitationsSection
+            personId={personId}
+            citations={citationsList.data ?? []}
+            sourcesList={sourcesList.data ?? []}
+            names={names.data ?? []}
+            events={events.data ?? []}
+            unions={unions.data ?? []}
+            options={options.data ?? []}
+            onChanged={refresh}
+          />
+          <ResearchNotesSection
+            personId={personId}
+            notes={researchNotesList.data ?? []}
+            options={options.data ?? []}
+            onChanged={refresh}
+          />
+        </div>
+        <LifeEventsCard
           personId={personId}
-          parents={parents}
-          excludeIds={excludeIds}
-          options={options.data ?? []}
-          onChanged={refresh}
-        />
-        <RelativesSection
-          title="Spouses"
-          kind="spouse"
-          personId={personId}
-          relatives={spouses}
-          excludeIds={excludeIds}
-          options={options.data ?? []}
-          onChanged={refresh}
+          events={events.data ?? []}
           unions={unions.data ?? []}
-        />
-        <RelativesSection
-          title="Children"
-          kind="child"
-          personId={personId}
-          relatives={children}
-          excludeIds={excludeIds}
+          spouses={spouses}
+          parents={parents}
+          person={person.data}
+          citations={citationsList.data ?? []}
+          sourcesList={sourcesList.data ?? []}
           options={options.data ?? []}
           onChanged={refresh}
         />
       </div>
-      <PersonPhotosCard personId={personId} />
-      <EventsSection
-        personId={personId}
-        events={events.data ?? []}
-        citations={citationsList.data ?? []}
-        sourcesList={sourcesList.data ?? []}
-        options={options.data ?? []}
-        onChanged={refresh}
-      />
-      <CitationsSection
-        personId={personId}
-        citations={citationsList.data ?? []}
-        sourcesList={sourcesList.data ?? []}
-        names={names.data ?? []}
-        events={events.data ?? []}
-        unions={unions.data ?? []}
-        options={options.data ?? []}
-        onChanged={refresh}
-      />
     </div>
   );
 }
@@ -2445,9 +2568,36 @@ function NameForm({
   );
 }
 
-function EventsSection({
+/**
+ * "birth"/"death" are ordinary `person_events` rows (see `PersonService`),
+ * but the person form above owns creating them (as a dedicated pair of
+ * fields) so there's only ever one canonical one of each — the generic
+ * "+ Add event" dialog excludes them from its type choices accordingly. An
+ * existing birth/death row is still fully editable from this list like any
+ * other event (date, place, and now-relevant detail like cause of death),
+ * except its type can't be changed away from what created it.
+ */
+const VITAL_EVENT_TYPES = new Set(["birth", "death"]);
+
+type TimelineEntry =
+  | { kind: "event"; date: HistoricalDate | null; event: PersonEventRow }
+  | { kind: "union"; date: HistoricalDate | null; union: UnionRow };
+
+/**
+ * A single vertical timeline merging birth/baptism/census/etc. (`personEvents`)
+ * with marriages (`unions`, which live in their own table/card — see "Spouses"
+ * above) into one date-ordered read history. Marriages show read-only here;
+ * editing one still happens from the Spouses card, which already owns that
+ * union's full lifecycle (status, dates, removal) — duplicating that here
+ * would be a second, easy-to-desync place to change the same record.
+ */
+function LifeEventsCard({
   personId,
   events,
+  unions,
+  spouses,
+  parents,
+  person,
   citations,
   sourcesList,
   options,
@@ -2455,6 +2605,10 @@ function EventsSection({
 }: {
   personId: string;
   events: PersonEventRow[];
+  unions: UnionRow[];
+  spouses: PersonRow[];
+  parents: ParentRow[];
+  person: PersonRow;
   citations: CitationRow[];
   sourcesList: SourceRow[];
   options: ConfigurableOptionRow[];
@@ -2462,11 +2616,25 @@ function EventsSection({
 }) {
   const removeEventMutation = useMutation({ mutationFn: removeEvent });
   const [addOpen, setAddOpen] = useState(false);
+  const topKey = topConfidenceKey(options);
 
-  const remove = async (id: string) => {
+  const removeEventById = async (id: string) => {
     await removeEventMutation.mutateAsync({ data: { id } });
     await onChanged();
   };
+
+  const spouseName = (union: UnionRow): string => {
+    const otherId = union.personAId === personId ? union.personBId : union.personAId;
+    const spouse = spouses.find((candidate) => candidate.id === otherId);
+    return spouse ? formatPersonName(spouse) : "Unknown";
+  };
+
+  const entries: TimelineEntry[] = [
+    ...events.map((event) => ({ kind: "event" as const, date: event.date, event })),
+    ...unions
+      .filter((union) => union.personAId === personId || union.personBId === personId)
+      .map((union) => ({ kind: "union" as const, date: union.startDate, union })),
+  ].toSorted((a, b) => timelineSortValue(a.date) - timelineSortValue(b.date));
 
   return (
     <Card>
@@ -2498,117 +2666,225 @@ function EventsSection({
           </DialogContent>
         </Dialog>
       </CardHeader>
-      <CardContent className="space-y-2">
-        {events.map((event) => (
-          <EventRow
-            key={event.id}
-            personId={personId}
-            event={event}
-            citations={citations}
-            sourcesList={sourcesList}
-            options={options}
-            onChanged={onChanged}
-            onRemove={() => void remove(event.id)}
-          />
-        ))}
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <ConfidenceDot tier="top" /> Primary source
+          </span>
+          <span className="flex items-center gap-1.5">
+            <ConfidenceDot tier="cited" /> Secondary
+          </span>
+          <span className="flex items-center gap-1.5">
+            <ConfidenceDot tier="none" /> Unsourced
+          </span>
+        </div>
+        {entries.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No life events recorded yet.</p>
+        ) : (
+          <div className="relative space-y-5">
+            <div
+              className="absolute top-1.5 bottom-1.5 left-23 w-px bg-border"
+              aria-hidden="true"
+            />
+            {entries.map((entry) =>
+              entry.kind === "event" ? (
+                <EventTimelineRow
+                  key={entry.event.id}
+                  personId={personId}
+                  event={entry.event}
+                  personBirth={person.birth}
+                  parents={parents}
+                  personSex={person.sex}
+                  citations={citations}
+                  sourcesList={sourcesList}
+                  options={options}
+                  topKey={topKey}
+                  onChanged={onChanged}
+                  onRemove={() => void removeEventById(entry.event.id)}
+                />
+              ) : (
+                <UnionTimelineRow
+                  key={entry.union.id}
+                  union={entry.union}
+                  spouseName={spouseName(entry.union)}
+                  personBirth={person.birth}
+                  citations={citations}
+                  options={options}
+                  topKey={topKey}
+                />
+              ),
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-/**
- * "birth"/"death" are ordinary `person_events` rows (see `PersonService`),
- * but the person form above owns creating them (as a dedicated pair of
- * fields) so there's only ever one canonical one of each — the generic
- * "+ Add event" dialog excludes them from its type choices accordingly. An
- * existing birth/death row is still fully editable from this list like any
- * other event (date, place, and now-relevant detail like cause of death),
- * except its type can't be changed away from what created it.
- */
-const VITAL_EVENT_TYPES = new Set(["birth", "death"]);
+/** The date/age pair on the left of a timeline row, and the dot marking its spot on the rail. */
+function TimelineLead({
+  date,
+  age,
+  tier,
+}: {
+  date: string | null;
+  age: string | null;
+  tier: ConfidenceTier;
+}) {
+  return (
+    <>
+      <div className="text-xs">
+        <p className="font-semibold text-foreground">{date ?? "—"}</p>
+        <p className="text-muted-foreground">{age ?? "—"}</p>
+      </div>
+      <div className="mt-0.5 flex justify-center">
+        <ConfidenceDot tier={tier} className="relative z-10" />
+      </div>
+    </>
+  );
+}
 
-function EventRow({
+function EventTimelineRow({
   personId,
   event,
+  personBirth,
+  parents,
+  personSex,
   citations,
   sourcesList,
   options,
+  topKey,
   onChanged,
   onRemove,
 }: {
   personId: string;
   event: PersonEventRow;
+  personBirth: HistoricalDate | null;
+  parents: ParentRow[];
+  personSex: Sex;
   citations: CitationRow[];
   sourcesList: SourceRow[];
   options: ConfigurableOptionRow[];
+  topKey: string | null;
   onChanged: () => Promise<void>;
   onRemove: () => void;
 }) {
   const [editOpen, setEditOpen] = useState(false);
-  const sourceCount = citations.filter(
+  const eventCitations = citations.filter(
     (citation) => citation.factType === "event" && citation.factId === event.id,
-  ).length;
+  );
+  const tier = confidenceTier(citations, "event", event.id, topKey);
+  const age = event.eventType === "birth" ? null : formatEventAge(personBirth, event.date);
+  const detailLine = [
+    event.eventType === "birth" ? parentageLine(personSex, parents) : null,
+    event.details && Object.keys(event.details).length > 0
+      ? Object.entries(event.details)
+          .map(([key, value]) => {
+            const label = EVENT_DETAIL_FIELDS[event.eventType]?.find(
+              (field) => field.key === key,
+            )?.label;
+            return `${label ?? key}: ${value}`;
+          })
+          .join(" · ")
+      : null,
+  ].filter((line): line is string => line !== null);
 
   return (
-    <div className="flex items-center justify-between gap-2 text-sm">
-      <div>
-        <Badge variant="outline" className="mr-2">
-          {labelFor(options, "event_type", event.eventType)}
-        </Badge>
-        {event.eventType === "other" && event.label && (
-          <span className="mr-1 font-medium">{event.label}</span>
-        )}
-        {formatDisplayDate(event.date)}
-        {event.place ? ` in ${event.place}` : ""}
-        {event.details && Object.keys(event.details).length > 0 && (
-          <p className="text-xs text-muted-foreground">
-            {Object.entries(event.details)
-              .map(([key, value]) => {
-                const label = EVENT_DETAIL_FIELDS[event.eventType]?.find(
-                  (field) => field.key === key,
-                )?.label;
-                return `${label ?? key}: ${value}`;
-              })
-              .join(" · ")}
+    <div className="group grid grid-cols-[80px_16px_1fr_auto] items-start gap-x-3 text-sm">
+      <TimelineLead date={formatDisplayDate(event.date)} age={age} tier={tier} />
+      <div className="min-w-0">
+        <p className="font-medium">
+          {event.eventType === "other" && event.label
+            ? event.label
+            : labelFor(options, "event_type", event.eventType)}
+        </p>
+        {event.place && <p className="text-muted-foreground">{event.place}</p>}
+        {detailLine.map((line) => (
+          <p key={line} className="text-xs text-muted-foreground">
+            {line}
           </p>
-        )}
+        ))}
         {event.notes && (
           <MarkdownContent className="text-xs text-muted-foreground">{event.notes}</MarkdownContent>
         )}
-        {sourceCount > 0 && (
-          <p className="text-xs text-muted-foreground">
-            {sourceCount} {sourceCount === 1 ? "source" : "sources"} cited
-          </p>
+        <div className="mt-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <Dialog isOpen={editOpen} onOpenChange={setEditOpen}>
+            <Button type="button" variant="ghost" size="sm">
+              Edit
+            </Button>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Edit event</DialogTitle>
+              </DialogHeader>
+              <EventForm
+                personId={personId}
+                event={event}
+                citations={citations}
+                sourcesList={sourcesList}
+                options={options}
+                onDone={async () => {
+                  setEditOpen(false);
+                  await onChanged();
+                }}
+                onChanged={onChanged}
+              />
+            </DialogContent>
+          </Dialog>
+          <RemoveButton
+            itemLabel={`this ${labelFor(options, "event_type", event.eventType)} event`}
+            onConfirm={onRemove}
+          />
+        </div>
+      </div>
+      <Badge variant="outline" className="shrink-0 whitespace-nowrap">
+        {eventCitations.length === 0
+          ? "Unsourced"
+          : `${eventCitations.length} ${eventCitations.length === 1 ? "source" : "sources"}`}
+      </Badge>
+    </div>
+  );
+}
+
+/** Read-only — see the comment on `LifeEventsCard` for why editing a union stays in the Spouses card rather than being duplicated here. */
+function UnionTimelineRow({
+  union,
+  spouseName,
+  personBirth,
+  citations,
+  options,
+  topKey,
+}: {
+  union: UnionRow;
+  spouseName: string;
+  personBirth: HistoricalDate | null;
+  citations: CitationRow[];
+  options: ConfigurableOptionRow[];
+  topKey: string | null;
+}) {
+  const unionCitations = citations.filter(
+    (citation) => citation.factType === "union" && citation.factId === union.id,
+  );
+  const tier = confidenceTier(citations, "union", union.id, topKey);
+  const age = formatEventAge(personBirth, union.startDate);
+  const title =
+    union.status === "married" ? "Marriage" : labelFor(options, "union_status", union.status);
+
+  return (
+    <div className="grid grid-cols-[80px_16px_1fr_auto] items-start gap-x-3 text-sm">
+      <TimelineLead date={formatDisplayDate(union.startDate)} age={age} tier={tier} />
+      <div className="min-w-0">
+        <p className="font-medium">{title}</p>
+        {union.startPlace && <p className="text-muted-foreground">{union.startPlace}</p>}
+        <p className="text-xs text-muted-foreground">to {spouseName}</p>
+        {union.notes && (
+          <MarkdownContent className="text-xs text-muted-foreground">{union.notes}</MarkdownContent>
         )}
       </div>
-      <div className="flex items-center gap-1">
-        <Dialog isOpen={editOpen} onOpenChange={setEditOpen}>
-          <Button variant="ghost" size="sm">
-            Edit
-          </Button>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Edit event</DialogTitle>
-            </DialogHeader>
-            <EventForm
-              personId={personId}
-              event={event}
-              citations={citations}
-              sourcesList={sourcesList}
-              options={options}
-              onDone={async () => {
-                setEditOpen(false);
-                await onChanged();
-              }}
-              onChanged={onChanged}
-            />
-          </DialogContent>
-        </Dialog>
-        <RemoveButton
-          itemLabel={`this ${labelFor(options, "event_type", event.eventType)} event`}
-          onConfirm={onRemove}
-        />
-      </div>
+      <Badge variant="outline" className="shrink-0 whitespace-nowrap">
+        {unionCitations.length === 0
+          ? "Unsourced"
+          : `${unionCitations.length} ${unionCitations.length === 1 ? "source" : "sources"}`}
+      </Badge>
     </div>
   );
 }
@@ -3312,6 +3588,151 @@ function CitationForm({
       }}
     >
       {fields}
+    </form>
+  );
+}
+
+/**
+ * Research to-dos: an open question to chase down later, or a plain note —
+ * see `resolved` on `researchNoteSchema` for why closing one is a status
+ * flip rather than a retype/delete. Modeled on `CitationsSection` above.
+ */
+function ResearchNotesSection({
+  personId,
+  notes,
+  options,
+  onChanged,
+}: {
+  personId: string;
+  notes: ResearchNoteRow[];
+  options: ConfigurableOptionRow[];
+  onChanged: () => Promise<void>;
+}) {
+  const updateNoteMutation = useMutation({ mutationFn: updateNote });
+  const removeNoteMutation = useMutation({ mutationFn: removeNote });
+  const [addOpen, setAddOpen] = useState(false);
+
+  const toggleResolved = async (note: ResearchNoteRow) => {
+    await updateNoteMutation.mutateAsync({ data: { id: note.id, resolved: !note.resolved } });
+    await onChanged();
+  };
+
+  const remove = async (id: string) => {
+    await removeNoteMutation.mutateAsync({ data: { id } });
+    await onChanged();
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <CardTitle className="text-base">Research notes</CardTitle>
+        <Dialog isOpen={addOpen} onOpenChange={setAddOpen}>
+          <Tooltip>
+            <Button variant="outline" size="icon" aria-label="Add research note">
+              <PlusIcon className="size-4" />
+            </Button>
+            <TooltipContent>Add research note</TooltipContent>
+          </Tooltip>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add research note</DialogTitle>
+            </DialogHeader>
+            <ResearchNoteForm
+              personId={personId}
+              options={options}
+              onDone={async () => {
+                setAddOpen(false);
+                await onChanged();
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {notes.length === 0 && (
+          <p className="text-sm text-muted-foreground">No research notes yet.</p>
+        )}
+        {notes.map((note) => (
+          <div key={note.id} className="space-y-1 border-b pb-3 last:border-b-0 last:pb-0">
+            <div className="flex items-center justify-between gap-2">
+              <Badge variant={note.resolved ? "outline" : "secondary"}>
+                {labelFor(options, "research_note_type", note.noteType)}
+              </Badge>
+              <div className="flex items-center gap-2">
+                <Switch isSelected={note.resolved} onChange={() => void toggleResolved(note)}>
+                  Resolved
+                </Switch>
+                <RemoveButton
+                  itemLabel="this research note"
+                  onConfirm={() => void remove(note.id)}
+                />
+              </div>
+            </div>
+            <MarkdownContent className="text-sm">{note.body}</MarkdownContent>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ResearchNoteForm({
+  personId,
+  options,
+  onDone,
+}: {
+  personId: string;
+  options: ConfigurableOptionRow[];
+  onDone: () => Promise<void>;
+}) {
+  const addNoteMutation = useMutation({ mutationFn: addNote });
+  const noteTypeOptions = optionsFor(options, "research_note_type");
+  const [noteType, setNoteType] = useState(noteTypeOptions[0]?.key ?? "note");
+  const [body, setBody] = useState("");
+
+  const canSubmit = body.trim() !== "";
+
+  const submit = async () => {
+    await addNoteMutation.mutateAsync({ data: { personId, noteType, body: body.trim() } });
+    await onDone();
+  };
+
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <Select
+        aria-label="Note type"
+        value={noteType}
+        onChange={(value) => {
+          if (value) setNoteType(String(value));
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {noteTypeOptions.map((option) => (
+            <SelectItem key={option.key} id={option.key}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <MarkdownEditor value={body} onChange={setBody} aria-label="Research note" />
+      <DialogFooter>
+        <SaveButton
+          isDirty={body.trim() !== ""}
+          isPending={addNoteMutation.isPending}
+          isDisabled={!canSubmit}
+        >
+          Add
+        </SaveButton>
+      </DialogFooter>
     </form>
   );
 }

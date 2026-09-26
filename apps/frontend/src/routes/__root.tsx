@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import { Button } from "@genealogy/ui/components/button";
 import { ThemeToggle } from "@genealogy/ui/components/theme-toggle";
+import { cn } from "@genealogy/ui/lib/utils";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   HeadContent,
@@ -9,6 +10,7 @@ import {
   Scripts,
   createRootRouteWithContext,
   redirect,
+  useLocation,
   useNavigate,
 } from "@tanstack/react-router";
 import { SettingsIcon, UserIcon } from "lucide-react";
@@ -92,11 +94,28 @@ function RootDocument({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Most pages are forms/cards that read better at a fixed, centered width —
+ * `max-w-5xl` is the default. The People list (a data table with six columns
+ * plus a filters sidebar) and a person's own detail page (a header card plus
+ * a Parents/Spouses/Children grid) both have real content that benefits from
+ * the browser's actual width on a normal-or-wider monitor, so these two opt
+ * out and stretch edge to edge. The print route under
+ * `/people/$personId/print` is deliberately excluded — it's laid out for
+ * paper, not a wide monitor.
+ */
+function isFullWidthPath(pathname: string): boolean {
+  return pathname === "/people" || /^\/people\/[^/]+$/.test(pathname);
+}
+
 function RootLayout() {
+  const location = useLocation();
+  const isFullWidth = isFullWidthPath(location.pathname);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b print:hidden">
-        <nav className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-4">
+        <nav className="flex w-full items-center gap-6 px-6 py-4">
           <span className="font-semibold">Genealogy</span>
           <Link
             to="/"
@@ -135,7 +154,7 @@ function RootLayout() {
           </span>
         </nav>
       </header>
-      <main className="mx-auto max-w-5xl px-6 py-8">
+      <main className={cn("mx-auto px-6 py-8", isFullWidth ? "w-full" : "max-w-5xl")}>
         <Outlet />
       </main>
     </div>

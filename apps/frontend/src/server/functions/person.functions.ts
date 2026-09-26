@@ -7,6 +7,7 @@ import {
   parentageSchema,
   personEventIdSchema,
   personIdSchema,
+  sexSchema,
   unionIdSchema,
   updateNameVariantSchema,
   updatePersonEventSchema,
@@ -21,11 +22,23 @@ import { trpcProxy } from "../trpc-proxy-client";
 // Mirrors apps/backend/src/person/person.router.ts's local `listInput` —
 // re-validating here is redundant with apps/backend's own validation, but
 // consistent with how every other server function boundary in this app
-// validates its own input before proxying.
+// validates its own input before proxying. Every filter beyond `search`
+// defaults to "off", so existing callers that only ever pass
+// `{limit, offset, search}` (the Profile page's person picker, AddRelative's
+// combobox) keep working unchanged.
 const listInput = z.object({
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
   search: z.string().nullable().default(null),
+  sex: sexSchema.nullable().default(null),
+  place: z.string().nullable().default(null),
+  bornAfter: z.number().int().nullable().default(null),
+  bornBefore: z.number().int().nullable().default(null),
+  hasCitation: z.boolean().default(false),
+  missingBirthRecord: z.boolean().default(false),
+  hasOpenResearchNote: z.boolean().default(false),
+  directAncestorsOnly: z.boolean().default(false),
+  sort: z.enum(["surname_asc", "given_asc", "birth_asc", "birth_desc"]).default("surname_asc"),
 });
 
 export const listPersons = createServerFn({ method: "GET" })

@@ -86,6 +86,39 @@ export async function parentsOf(
   return rows.map((row) => ({ personId: row.parent.properties.id, parentage: row.parentage }));
 }
 
+/**
+ * Direct parents for many people in one round trip — used by the People
+ * list's "Parents" column, which needs this for a whole page of rows rather
+ * than one person at a time (unlike `parentsOf`, `ancestorsOf` doesn't need a
+ * bulk counterpart: it's only ever called for a single root at once).
+ */
+export async function parentsOfMany(
+  pool: Pool,
+  personIds: readonly string[],
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<Map<string, ParentEdge[]>> {
+  if (personIds.length === 0) return new Map();
+  const rows = await cypher<{
+    childId: string;
+    parent: AgeVertex<PersonNodeProps>;
+    parentage: Parentage;
+  }>(
+    pool,
+    `UNWIND $ids AS childId
+     MATCH (parent:Person)-[r:PARENT_OF]->(:Person {id: childId})
+     RETURN childId, parent, r.parentage AS parentage`,
+    ["childId", "parent", "parentage"],
+    { ...options, params: { ids: personIds } },
+  );
+  const byChild = new Map<string, ParentEdge[]>();
+  for (const row of rows) {
+    const edges = byChild.get(row.childId) ?? [];
+    edges.push({ personId: row.parent.properties.id, parentage: row.parentage });
+    byChild.set(row.childId, edges);
+  }
+  return byChild;
+}
+
 export interface ChildEdge {
   personId: string;
   parentage: Parentage;

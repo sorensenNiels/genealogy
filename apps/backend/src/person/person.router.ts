@@ -7,6 +7,7 @@ import {
   parentageSchema,
   personEventIdSchema,
   personIdSchema,
+  sexSchema,
   unionIdSchema,
   updateNameVariantSchema,
   updatePersonEventSchema,
@@ -23,6 +24,15 @@ const listInput = z.object({
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
   search: z.string().nullable().default(null),
+  sex: sexSchema.nullable().default(null),
+  place: z.string().nullable().default(null),
+  bornAfter: z.number().int().nullable().default(null),
+  bornBefore: z.number().int().nullable().default(null),
+  hasCitation: z.boolean().default(false),
+  missingBirthRecord: z.boolean().default(false),
+  hasOpenResearchNote: z.boolean().default(false),
+  directAncestorsOnly: z.boolean().default(false),
+  sort: z.enum(["surname_asc", "given_asc", "birth_asc", "birth_desc"]).default("surname_asc"),
 });
 
 const pedigreeInput = z.object({
@@ -50,7 +60,11 @@ export class PersonRouter {
    */
   build() {
     return router({
-      list: protectedProcedure.input(listInput).query(({ input }) => this.persons.list(input)),
+      list: protectedProcedure
+        .input(listInput)
+        .query(({ input, ctx }) =>
+          this.persons.list({ ...input, viewerUserId: ctx.session.user.id }),
+        ),
 
       listTitlePrefixes: protectedProcedure.query(() => this.persons.listTitlePrefixes()),
 

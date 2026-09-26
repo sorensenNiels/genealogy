@@ -5,9 +5,13 @@ import { alias } from "drizzle-orm/pg-core";
 import type { Database } from "./client.js";
 import { persons, personEvents, type PersonRow } from "./schema.js";
 
-const birthEvents = alias(personEvents, "birth_events");
-const deathEvents = alias(personEvents, "death_events");
-const burialEvents = alias(personEvents, "burial_events");
+// Exported so callers that need to filter/sort on a vital's own place/date
+// (e.g. `PersonService.list`'s place and birth-year filters) can reference the
+// same joined aliases `personsWithVitals` uses, rather than re-aliasing
+// `personEvents` a second time under a different name.
+export const birthEvents = alias(personEvents, "birth_events");
+export const deathEvents = alias(personEvents, "death_events");
+export const burialEvents = alias(personEvents, "burial_events");
 
 export interface PersonWithVitals extends PersonRow {
   birth: HistoricalDate | null;

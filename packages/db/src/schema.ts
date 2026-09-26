@@ -364,6 +364,28 @@ export const personImmichLinks = pgTable(
 );
 
 /**
+ * A research to-do tied to a person: an open question to chase down later, or
+ * a plain note — distinguished by `noteType` (user-configurable, topic
+ * "research_note_type"). `resolved` is deliberately independent of
+ * `noteType`: an "Open question" note stays that type for history even after
+ * it's been answered, so closing one is a status flip, not a retype/delete.
+ */
+export const researchNotes = pgTable(
+  "research_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => persons.id, { onDelete: "cascade" }),
+    noteType: text("note_type").notNull(),
+    body: text("body").notNull(),
+    resolved: boolean("resolved").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("research_notes_person_idx").on(table.personId)],
+);
+
+/**
  * The one app-owned table that reaches into better-auth's `user` — every
  * other reference to it (`session.userId`, `account.userId`) belongs to
  * better-auth itself. Holds what's specific to a logged-in account rather
@@ -403,6 +425,7 @@ export const schema = {
   configurableOptions,
   personImmichLinks,
   userProfiles,
+  researchNotes,
   sexEnum,
   citationFactTypeEnum,
   user,
@@ -421,3 +444,4 @@ export type CitationRow = typeof citations.$inferSelect;
 export type ConfigurableOptionRow = typeof configurableOptions.$inferSelect;
 export type PersonImmichLinkRow = typeof personImmichLinks.$inferSelect;
 export type UserProfileRow = typeof userProfiles.$inferSelect;
+export type ResearchNoteRow = typeof researchNotes.$inferSelect;

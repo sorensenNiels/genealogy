@@ -62,3 +62,16 @@ export function initials(person: { given: string; surname: string }): string {
   const letters = parts.map((part) => part.trim()[0]?.toUpperCase() ?? "").join("");
   return letters === "" ? "?" : letters;
 }
+
+/**
+ * Background/text pair for the People list's avatar-initials fallback — the
+ * one place in the app that colors by sex, so a row is scannable at a
+ * glance without reading the Gender column. Plain Tailwind palette classes
+ * rather than new theme tokens, since this is a single-purpose accent, not a
+ * reusable design-system color.
+ */
+export function avatarColorClass(sex: Sex): string {
+  if (sex === "M") return "bg-blue-100 text-blue-700";
+  if (sex === "F") return "bg-pink-100 text-pink-700";
+  return "bg-muted text-muted-foreground";
+}

@@ -12,6 +12,7 @@ import type {
   Parentage,
   PedigreeNode,
   RelationshipToRoot,
+  Sex,
   UpdateNameVariant,
   UpdatePerson,
   UpdatePersonEvent,
@@ -21,12 +22,16 @@ import {
   addParentOf,
   addSpouseOf,
   ancestorsOf,
+  birthEvents,
   citations,
+  configurableOptions,
   createDatabase,
+  deathEvents,
   deletePersonNode,
   descendantsOf,
   inGraphTransaction,
   parentsOf,
+  parentsOfMany,
   personEvents,
   personNames,
   persons,
@@ -34,6 +39,7 @@ import {
   personsWithVitals,
   removeParentOf,
   removeSpouseOf,
+  researchNotes,
   spousesOf,
   treeAround,
   unions,
@@ -48,7 +54,19 @@ import {
 } from "@genealogy/db";
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { and, asc, count, eq, ilike, inArray, isNotNull, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import type { Pool } from "pg";
 
 import { DRIZZLE, PG_POOL } from "../database/database.module.js";
@@ -96,15 +114,42 @@ export interface UploadedPhoto {
   originalname: string;
 }
 
+export type ListPersonsSort = "surname_asc" | "given_asc" | "birth_asc" | "birth_desc";
+
 export interface ListPersonsInput {
   limit: number;
   offset: number;
   search: string | null;
+  sex: Sex | null;
+  /** Matches either the birth or the death place. */
+  place: string | null;
+  bornAfter: number | null;
+  bornBefore: number | null;
+  /** "Has primary source" in the UI — any citation at all, same signal as `calculateResearchCompleteness`'s `hasCitation`. */
+  hasCitation: boolean;
+  missingBirthRecord: boolean;
+  hasOpenResearchNote: boolean;
+  /**
+   * Restricts to ancestors of whichever person `viewerUserId` has identified
+   * as themselves (`userProfiles.personId`) — strictly upward, not the
+   * viewer's own record or their descendants. An account with no linked
+   * person yields an empty result rather than an error.
+   */
+  directAncestorsOnly: boolean;
+  sort: ListPersonsSort;
+  viewerUserId: string;
 }
 
 export interface ListPersonsResult {
-  /** `hasRelations` mirrors the guard in `remove` — lets the list hide the delete action per row without a `relatives()` round trip each. */
-  items: (PersonWithVitals & { hasRelations: boolean })[];
+  items: (PersonWithVitals & {
+    /** `hasRelations` mirrors the guard in `remove` — lets the list hide the delete action per row without a `relatives()` round trip each. */
+    hasRelations: boolean;
+    /** Birth parents only, for the list's "Parents" column — up to however many are recorded. */
+    parents: { given: string; surname: string }[];
+    citationCount: number;
+    /** The single highest-ranked confidence among this person's citations (by `configurableOptions.sortOrder`), null when uncited. */
+    topConfidence: string | null;
+  })[];
   total: number;
 }
 
@@ -133,18 +178,36 @@ export class PersonService {
   ) {}
 
   async list(input: ListPersonsInput): Promise<ListPersonsResult> {
-    const where = this.searchFilter(input.search);
+    const ancestorIds = input.directAncestorsOnly
+      ? await this.ancestorIdsFor(input.viewerUserId)
+      : null;
+    if (ancestorIds !== null && ancestorIds.size === 0) {
+      return { items: [], total: 0 };
+    }
+
+    const where = this.listFilter(input, ancestorIds);
 
     const items = await personsWithVitals(this.db)
       .where(where)
-      .orderBy(asc(persons.surname), asc(persons.given))
+      .orderBy(...this.sortColumns(input.sort))
       .limit(input.limit)
       .offset(input.offset);
 
-    const [totals] = await this.db.select({ value: count() }).from(persons).where(where);
+    const [totals] = await this.db
+      .select({ value: count() })
+      .from(persons)
+      .leftJoin(
+        birthEvents,
+        and(eq(birthEvents.personId, persons.id), eq(birthEvents.eventType, "birth")),
+      )
+      .leftJoin(
+        deathEvents,
+        and(eq(deathEvents.personId, persons.id), eq(deathEvents.eventType, "death")),
+      )
+      .where(where);
 
     const ids = items.map((item) => item.id);
-    const [relatedIds, unionRows] = await Promise.all([
+    const [relatedIds, unionRows, parentsByChild, citationRollup] = await Promise.all([
       personsWithRelations(this.pool, ids),
       ids.length > 0
         ? this.db
@@ -152,17 +215,163 @@ export class PersonService {
             .from(unions)
             .where(or(inArray(unions.personAId, ids), inArray(unions.personBId, ids)))
         : [],
+      parentsOfMany(this.pool, ids),
+      this.citationRollup(ids),
     ]);
     const unionPersonIds = new Set(unionRows.flatMap((row) => [row.personAId, row.personBId]));
 
+    const allParentIds = [
+      ...new Set([...parentsByChild.values()].flat().map((edge) => edge.personId)),
+    ];
+    const parentPersonRows =
+      allParentIds.length > 0
+        ? await this.db
+            .select({ id: persons.id, given: persons.given, surname: persons.surname })
+            .from(persons)
+            .where(inArray(persons.id, allParentIds))
+        : [];
+    const parentPersonById = new Map(parentPersonRows.map((row) => [row.id, row]));
+
     return {
-      items: items.map((item) =>
-        Object.assign(item, {
+      items: items.map((item) => {
+        const parentEdges = parentsByChild.get(item.id) ?? [];
+        const parents = parentEdges
+          .filter((edge) => edge.parentage === "birth")
+          .flatMap((edge) => {
+            const row = parentPersonById.get(edge.personId);
+            return row ? [{ given: row.given, surname: row.surname }] : [];
+          });
+        const rollup = citationRollup.get(item.id);
+        return Object.assign(item, {
           hasRelations: relatedIds.has(item.id) || unionPersonIds.has(item.id),
-        }),
-      ),
+          parents,
+          citationCount: rollup?.count ?? 0,
+          topConfidence: rollup?.topConfidence ?? null,
+        });
+      }),
       total: totals?.value ?? 0,
     };
+  }
+
+  /** Ids of every ancestor of whoever `viewerUserId` has identified as themselves; empty if they haven't. */
+  private async ancestorIdsFor(viewerUserId: string): Promise<Set<string>> {
+    const [profile] = await this.db
+      .select({ personId: userProfiles.personId })
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, viewerUserId))
+      .limit(1);
+    const rootId = profile?.personId;
+    if (!rootId) return new Set();
+    const ancestors = await ancestorsOf(this.pool, rootId);
+    return new Set(ancestors.map((node) => node.personId));
+  }
+
+  private listFilter(input: ListPersonsInput, ancestorIds: Set<string> | null): SQL | undefined {
+    const clauses: SQL[] = [];
+
+    if (input.search && input.search.trim() !== "") {
+      // `ilike` is already case-insensitive (confirmed against this db's
+      // en_US.UTF-8 collation, including Danish letters like ø/å/æ) — no
+      // extra lowercasing needed here.
+      const pattern = `%${input.search.trim()}%`;
+      clauses.push(or(ilike(persons.surname, pattern), ilike(persons.given, pattern))!);
+    }
+    if (input.sex) {
+      clauses.push(eq(persons.sex, input.sex));
+    }
+    if (input.place && input.place.trim() !== "") {
+      const pattern = `%${input.place.trim()}%`;
+      clauses.push(or(ilike(birthEvents.place, pattern), ilike(deathEvents.place, pattern))!);
+    }
+    if (input.bornAfter != null) {
+      clauses.push(sql`(${birthEvents.date}->>'earliest') >= ${`${input.bornAfter}-01-01`}`);
+    }
+    if (input.bornBefore != null) {
+      clauses.push(sql`(${birthEvents.date}->>'earliest') <= ${`${input.bornBefore}-12-31`}`);
+    }
+    if (input.missingBirthRecord) {
+      clauses.push(isNull(birthEvents.date));
+    }
+    if (input.hasCitation) {
+      clauses.push(
+        sql`exists (select 1 from ${citations} where ${citations.personId} = ${persons.id})`,
+      );
+    }
+    if (input.hasOpenResearchNote) {
+      clauses.push(
+        sql`exists (select 1 from ${researchNotes} where ${researchNotes.personId} = ${persons.id} and ${researchNotes.resolved} = false)`,
+      );
+    }
+    if (ancestorIds !== null) {
+      clauses.push(inArray(persons.id, [...ancestorIds]));
+    }
+
+    return clauses.length > 0 ? and(...clauses) : undefined;
+  }
+
+  private sortColumns(sort: ListPersonsSort) {
+    switch (sort) {
+      case "given_asc":
+        return [asc(persons.given), asc(persons.surname)];
+      case "birth_asc":
+        return [sql`(${birthEvents.date}->>'earliest') asc nulls last`];
+      case "birth_desc":
+        return [sql`(${birthEvents.date}->>'earliest') desc nulls last`];
+      case "surname_asc":
+      default:
+        return [asc(persons.surname), asc(persons.given)];
+    }
+  }
+
+  /**
+   * Per-person citation count and single highest-ranked confidence (by
+   * `configurableOptions.sortOrder`) — feeds the People list's "Sources"
+   * column. Only ever run over one page's worth of ids, not the whole table.
+   */
+  private async citationRollup(
+    personIds: string[],
+  ): Promise<Map<string, { count: number; topConfidence: string | null }>> {
+    if (personIds.length === 0) return new Map();
+    const rows = await this.db
+      .select({
+        personId: citations.personId,
+        confidence: citations.confidence,
+        sortOrder: configurableOptions.sortOrder,
+      })
+      .from(citations)
+      .leftJoin(
+        configurableOptions,
+        and(
+          eq(configurableOptions.topic, "confidence"),
+          eq(configurableOptions.key, citations.confidence),
+        ),
+      )
+      .where(inArray(citations.personId, personIds));
+
+    const byPerson = new Map<
+      string,
+      { count: number; topConfidence: string | null; topSortOrder: number }
+    >();
+    for (const row of rows) {
+      const existing = byPerson.get(row.personId) ?? {
+        count: 0,
+        topConfidence: null,
+        topSortOrder: -Infinity,
+      };
+      existing.count += 1;
+      const sortOrder = row.sortOrder ?? -Infinity;
+      if (existing.topConfidence === null || sortOrder > existing.topSortOrder) {
+        existing.topConfidence = row.confidence;
+        existing.topSortOrder = sortOrder;
+      }
+      byPerson.set(row.personId, existing);
+    }
+    return new Map(
+      [...byPerson].map(([id, value]) => [
+        id,
+        { count: value.count, topConfidence: value.topConfidence },
+      ]),
+    );
   }
 
   /**
@@ -764,12 +973,5 @@ export class PersonService {
     await this.db
       .delete(citations)
       .where(and(eq(citations.factType, "union"), eq(citations.factId, id)));
-  }
-
-  /** `ilike` is already case-insensitive (confirmed against this db's en_US.UTF-8 collation, including Danish letters like ø/å/æ) — no extra lowercasing needed here. */
-  private searchFilter(search: string | null): SQL | undefined {
-    if (!search || search.trim() === "") return undefined;
-    const pattern = `%${search.trim()}%`;
-    return or(ilike(persons.surname, pattern), ilike(persons.given, pattern));
   }
 }
