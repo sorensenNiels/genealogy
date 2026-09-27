@@ -1,7 +1,9 @@
 export * from "./citation.js";
 export * from "./configurable-options.js";
 export * from "./historical-date.js";
+export * from "./mail.js";
 export * from "./name-variant.js";
+export * from "./notification.js";
 export * from "./person-event.js";
 export * from "./person.js";
 export * from "./profile.js";
@@ -9,3 +11,4 @@ export * from "./relationship.js";
 export * from "./research-note.js";
 export * from "./source.js";
 export * from "./union.js";
+export * from "./user-note.js";

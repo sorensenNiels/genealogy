@@ -837,6 +837,50 @@ endpoint: it reuses `person.relatives` (already existed for the person page)
 one hop at a time and merges the result into local state, rather than
 refetching and relaying out the whole tree.
 
+### Long-running work: BullMQ + a shared Redis
+
+Anything that shouldn't run inline on a request — the first example being
+outbound mail — goes through a BullMQ queue (`@nestjs/bullmq`) rather than
+being awaited directly in a tRPC procedure. `QueueModule`
+(`apps/backend/src/queue/queue.module.ts`) is `@Global`, the same pattern as
+`DatabaseModule`/`AuthModule`: it opens one shared `ioredis` connection from
+`REDIS_URL` and hands it to `BullModule.forRootAsync`, so any feature module
+can `BullModule.registerQueue({ name: "..." })` for its own queue without
+wiring Redis itself. Checked against the "Recommending or adding a library"
+rule in CLAUDE.md on 2026-09-27: `bullmq` and `ioredis` are both under
+active development with frequent releases; `@nestjs/bullmq` (the official
+NestJS integration) tracks Nest's own major versions and was last released
+in step with this repo's Nest 12.
+
+**Redis is core infrastructure, not Immich-only.** Immich's own compose
+profile (see below) used to run its own `immich-redis`; that's gone. There
+is exactly one Redis in `docker-compose.yml` now — the always-on `redis`
+service, published on the host like `db` — and Immich's containers, when
+`profiles: [immich]` is enabled, point `REDIS_HOSTNAME` at that same
+instance instead of running a second one. This was a deliberate call,
+confirmed with the user on 2026-09-27 rather than assumed: the alternative
+(keeping Redis behind the immich profile) would have made a core feature —
+sending mail — depend on optional infrastructure, contradicting the
+"Immich must be fully optional" invariant recorded further down this file.
+`REDIS_URL` is accordingly a required env var (`config/env.ts`), unlike
+`IMMICH_URL`/`IMMICH_API_KEY`.
+
+**Mail is the first (and so far only) queue.** `apps/backend/src/mail/`:
+`MailService` owns the SMTP transport and Handlebars rendering and can be
+unit-tested without a queue at all; `MailRouter` (`mail.send`, tRPC) enqueues
+a job; `MailProcessor` (`@Processor("mail")`, extends `WorkerHost`) is the
+worker half, running in this same process — there's no separate worker
+deployment, matching this app's existing single-process shape. The template
+to render is a fixed enum (`mailTemplateSchema` in `packages/core`), not an
+arbitrary caller-supplied filename, for the same path-traversal reason a few
+other things in this app are a closed set rather than free text. `SMTP_HOST`
+is optional config, same pattern as Immich's: unset, `MailService` falls
+back to nodemailer's `jsonTransport`, which never opens a network
+connection and instead logs the fully rendered message — so the queue and
+its worker are exercisable in dev without a real mail provider configured,
+and a job still "succeeds" instead of piling up retries against a transport
+that was never going to work.
+
 ### Photos & albums: Immich, self-hosted, proxied like everything else
 
 The photo library (`/photos`, and the "Photos" card on a person's page) is
@@ -851,20 +895,21 @@ well. This app never stores photo bytes or face data of its own; it links
 to what Immich already has.
 
 **Immich runs in `docker-compose.yml`, but behind a `profiles: ["immich"]`
-gate**, not in the default `docker compose up`. It's a 4-container stack of
-its own (Postgres w/ pgvecto.rs, Redis, the app server, a machine-learning
-service for face detection) at maybe 6-8GB of RAM for the ML container
-alone — a cost nobody should pay just to run this app's own tests or work
-on an unrelated page. `docker compose --profile immich up -d` opts in.
-Versions are pinned to the exact v3.2.2 image digests from Immich's own
-release, not `:release`, for the same reason the rest of this repo pins
-versions in the catalog rather than a floating range. Because the compose
-file already runs this app's own Postgres as `db`/`redis` would collide by
-name with Immich's defaults, the containers are named `immich-db` /
-`immich-redis` with `DB_HOSTNAME`/`REDIS_HOSTNAME` overridden to match —
-Immich's own compose file assumes service names `database`/`redis`, which
-would silently point it at nothing (or at this app's own Postgres) if left
-unchanged.
+gate**, not in the default `docker compose up`. It's a 3-container stack of
+its own (Postgres w/ pgvecto.rs, the app server, a machine-learning service
+for face detection) at maybe 6-8GB of RAM for the ML container alone — a
+cost nobody should pay just to run this app's own tests or work on an
+unrelated page. `docker compose --profile immich up -d` opts in. Versions
+are pinned to the exact v3.2.2 image digests from Immich's own release, not
+`:release`, for the same reason the rest of this repo pins versions in the
+catalog rather than a floating range. Because the compose file already runs
+this app's own Postgres as `db`, the container is named `immich-db` with
+`DB_HOSTNAME` overridden to match — Immich's own compose file assumes the
+service name `database`, which would silently point it at nothing (or at
+this app's own Postgres) if left unchanged. Redis is _not_ Immich-only
+infrastructure here — see "Long-running work: BullMQ + a shared Redis"
+above: Immich's `REDIS_HOSTNAME` points at the same always-on `redis`
+service apps/backend's queues use, not a Redis of its own.
 
 **The proxy architecture (see the top-level section in this file) extends
 to Immich, unmodified in shape.** `apps/backend/src/immich/immich.service.ts`

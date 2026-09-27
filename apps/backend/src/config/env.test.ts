@@ -4,6 +4,7 @@ import { corsOrigins, validateEnv } from "./env.js";
 
 const validEnv = {
   DATABASE_URL: "postgres://user:pw@db:5432/genealogy",
+  REDIS_URL: "redis://redis:6379",
   BETTER_AUTH_SECRET: "test-secret",
   GOOGLE_CLIENT_ID: "test-client-id",
   GOOGLE_CLIENT_SECRET: "test-client-secret",
@@ -26,6 +27,11 @@ describe("validateEnv", () => {
   it("refuses to boot without a database URL", () => {
     const { DATABASE_URL: _DATABASE_URL, ...rest } = validEnv;
     expect(() => validateEnv(rest)).toThrow(/DATABASE_URL/);
+  });
+
+  it("refuses to boot without a Redis URL", () => {
+    const { REDIS_URL: _REDIS_URL, ...rest } = validEnv;
+    expect(() => validateEnv(rest)).toThrow(/REDIS_URL/);
   });
 
   it("refuses to boot without a better-auth secret", () => {

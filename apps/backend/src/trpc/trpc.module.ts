@@ -1,11 +1,15 @@
 import { Module } from "@nestjs/common";
 
+import { BackupModule } from "../backup/backup.module.js";
 import { ImmichModule } from "../immich/immich.module.js";
+import { MailModule } from "../mail/mail.module.js";
+import { NotificationModule } from "../notification/notification.module.js";
 import { PersonModule } from "../person/person.module.js";
 import { ProfileModule } from "../profile/profile.module.js";
 import { ResearchNoteModule } from "../research-note/research-note.module.js";
 import { SettingsModule } from "../settings/settings.module.js";
 import { SourceModule } from "../source/source.module.js";
+import { UserNoteModule } from "../user-note/user-note.module.js";
 import { TrpcRouter } from "./trpc.router.js";
 
 @Module({
@@ -16,6 +20,10 @@ import { TrpcRouter } from "./trpc.router.js";
     ImmichModule,
     ProfileModule,
     ResearchNoteModule,
+    UserNoteModule,
+    MailModule,
+    NotificationModule,
+    BackupModule,
   ],
   providers: [TrpcRouter],
   exports: [TrpcRouter],

@@ -162,6 +162,20 @@
       "when": 1790431200000,
       "tag": "0022_rename_sex_to_gender",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790446901117,
+      "tag": "0023_strong_stark_industries",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790500686098,
+      "tag": "0024_sour_quasimodo",
+      "breakpoints": true
     }
   ]
 }

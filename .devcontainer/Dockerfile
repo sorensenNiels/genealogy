@@ -5,11 +5,29 @@ FROM mcr.microsoft.com/devcontainers/typescript-node:24-trixie
 # truth, `packageManager` in the root package.json, so the two can never drift.
 ARG TURBO_VERSION=2.11.4
 
-# postgresql-client gives us psql/pg_isready for AGE (Cypher) spelunking and
-# for the readiness gate in post-create.sh.
+# psql/pg_isready for AGE (Cypher) spelunking and the readiness gate in
+# post-create.sh — and, since BackupService shells out to `pg_dump`
+# (apps/backend/src/backup/backup.service.ts), a client whose major version
+# is not older than the server's. Debian trixie's own repo only carries
+# postgresql-client-17 (`apt-cache policy postgresql-client-17`), but
+# docker-compose.yml's `db` service runs Postgres 18 — an older pg_dump
+# refuses outright to dump a newer server ("aborting because of server
+# version mismatch"), which is exactly how this went unnoticed until a real
+# backup was attempted: `pg_dump` failing that way exits non-zero before
+# writing anything, so BackupProcessor's job just fails with no dump file
+# and no notification, silently. The PGDG apt repo is what actually ships a
+# postgresql-client-18 package for Debian.
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-       postgresql-client \
+       ca-certificates curl gnupg lsb-release \
+  && install -d /usr/share/postgresql-common/pgdg \
+  && curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail \
+       https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt trixie-pgdg main" \
+       > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+       postgresql-client-18 \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 

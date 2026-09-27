@@ -15,7 +15,8 @@
     "PGHOST": "host.docker.internal",
     "PGUSER": "genealogy",
     "PGPASSWORD": "genealogy",
-    "PGDATABASE": "genealogy"
+    "PGDATABASE": "genealogy",
+    "REDIS_URL": "redis://host.docker.internal:6379"
   },
 
   "features": {

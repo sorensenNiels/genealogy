@@ -16,35 +16,42 @@ sync.
 2. Accept **Reopen in Container** when prompted, or run
    _Dev Containers: Reopen in Container_ from the command palette.
 3. Wait for the first build. `post-create.sh` installs dependencies.
-4. Run `make db-up` and `make db-migrate` when database-backed development is
-   needed.
+4. Run `make db-up`, `make redis-up` and `make db-migrate` when
+   database-backed development is needed.
 5. Run `pnpm dev`.
 
 The app (`apps/frontend`) is on <http://localhost:5173> — open this and nothing
 else; its server side proxies data and auth calls to the backend for you. The
-backend is on <http://localhost:3000/trpc> for API inspection, and Postgres on
-`localhost:5432`. All three are forwarded to the host, so host-side tools such
-as DBeaver can reach the database directly with user/password/database all
-set to `genealogy`.
+backend is on <http://localhost:3000/trpc> for API inspection, Postgres on
+`localhost:5432`, and Redis on `localhost:6379`. All are forwarded to the
+host, so host-side tools such as DBeaver can reach the database directly with
+user/password/database all set to `genealogy`.
 
 ## What the container gives you
 
-| Piece                | Version                                                     | Notes                                          |
-| -------------------- | ----------------------------------------------------------- | ---------------------------------------------- |
-| Base image           | `mcr.microsoft.com/devcontainers/typescript-node:24-trixie` | Node 24 LTS                                    |
-| pnpm                 | 12.5.1                                                      | installed globally, pinned by `packageManager` |
-| Turborepo            | 2.11.2                                                      | also available per-project via pnpm            |
-| PostgreSQL           | 18                                                          | Apache AGE 1.8.0 and PostGIS 3                 |
-| Apache AGE           | 1.8.0                                                       | graph extension, compiled into the image above |
-| `psql`, `pg_isready` | —                                                           | for poking at the database directly            |
+| Piece                           | Version                                                      | Notes                                                                                           |
+| ------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Base image                      | `mcr.microsoft.com/devcontainers/typescript-node:24-trixie`  | Node 24 LTS                                                                                     |
+| pnpm                            | 12.5.1                                                       | installed globally, pinned by `packageManager`                                                  |
+| Turborepo                       | 2.11.2                                                       | also available per-project via pnpm                                                             |
+| PostgreSQL                      | 18                                                           | Apache AGE 1.8.0 and PostGIS 3                                                                  |
+| Apache AGE                      | 1.8.0                                                        | graph extension, compiled into the image above                                                  |
+| `psql`, `pg_isready`, `pg_dump` | 18 (via the PGDG apt repo — Debian's own repo only ships 17) | version pinned to match the server; `pg_dump` refuses to run against a newer server than itself |
+| Redis (Valkey)                  | 9                                                            | backs apps/backend's BullMQ queues; shared with Immich when enabled                             |
 
 The dev container builds straight from `.devcontainer/Dockerfile` — that's where
 you and VS Code live, with the repository bind-mounted at `/workspaces/genealogy`.
 
-PostgreSQL is defined separately in the root `docker-compose.yml`. Start it with
-`make db-up`; it publishes port `5432`, and the workspace connects through
-`host.docker.internal`. Its data lives on the named volume `postgres-data`, so it
-survives container rebuilds.
+PostgreSQL and Redis are defined separately in the root `docker-compose.yml`.
+Start them with `make db-up` and `make redis-up`; they publish ports `5432`
+and `6379`, and the workspace connects through `host.docker.internal`.
+PostgreSQL's data lives on the named volume `postgres-data`, so it survives
+container rebuilds — Redis holds only in-flight queue jobs, so it doesn't
+need one. Redis is core infrastructure here (it backs apps/backend's BullMQ
+queues — see "Long-running work: BullMQ + a shared Redis" in TECH_STACK.md),
+not something bundled just for Immich: when Immich's own `profiles: [immich]`
+services are enabled, they connect to this same instance rather than running
+a second Redis.
 
 ### Database initialisation
 

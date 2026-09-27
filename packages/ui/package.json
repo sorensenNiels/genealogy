@@ -17,6 +17,7 @@
     "clean": "rm -rf .turbo *.tsbuildinfo"
   },
   "dependencies": {
+    "@internationalized/date": "catalog:",
     "@mdxeditor/editor": "catalog:",
     "@tanstack/react-form": "catalog:",
     "class-variance-authority": "catalog:",

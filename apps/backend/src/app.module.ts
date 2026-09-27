@@ -4,6 +4,7 @@ import { ConfigModule } from "@nestjs/config";
 import { AuthModule } from "./auth/auth.module.js";
 import { validateEnv } from "./config/env.js";
 import { DatabaseModule } from "./database/database.module.js";
+import { QueueModule } from "./queue/queue.module.js";
 import { TrpcModule } from "./trpc/trpc.module.js";
 
 @Module({
@@ -15,6 +16,7 @@ import { TrpcModule } from "./trpc/trpc.module.js";
       validate: validateEnv,
     }),
     DatabaseModule,
+    QueueModule,
     AuthModule,
     TrpcModule,
   ],

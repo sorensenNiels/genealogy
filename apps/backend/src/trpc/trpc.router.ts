@@ -3,12 +3,16 @@ import type { INestApplication } from "@nestjs/common";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 
 import { AUTH, type Auth } from "../auth/auth.module.js";
+import { BackupRouter } from "../backup/backup.router.js";
 import { ImmichRouter } from "../immich/immich.router.js";
+import { MailRouter } from "../mail/mail.router.js";
+import { NotificationRouter } from "../notification/notification.router.js";
 import { PersonRouter } from "../person/person.router.js";
 import { ProfileRouter } from "../profile/profile.router.js";
 import { ResearchNoteRouter } from "../research-note/research-note.router.js";
 import { SettingsRouter } from "../settings/settings.router.js";
 import { SourceRouter } from "../source/source.router.js";
+import { UserNoteRouter } from "../user-note/user-note.router.js";
 import { publicProcedure, router } from "./trpc.base.js";
 import { createContextFactory } from "./trpc.context.js";
 
@@ -23,6 +27,10 @@ export class TrpcRouter {
     private readonly immich: ImmichRouter,
     private readonly profile: ProfileRouter,
     private readonly researchNote: ResearchNoteRouter,
+    private readonly userNote: UserNoteRouter,
+    private readonly mail: MailRouter,
+    private readonly notification: NotificationRouter,
+    private readonly backup: BackupRouter,
     @Inject(AUTH) private readonly auth: Auth,
   ) {}
 
@@ -38,6 +46,10 @@ export class TrpcRouter {
       immich: this.immich.build(),
       profile: this.profile.build(),
       researchNote: this.researchNote.build(),
+      userNote: this.userNote.build(),
+      mail: this.mail.build(),
+      notification: this.notification.build(),
+      backup: this.backup.build(),
     });
   }
 

@@ -94,6 +94,21 @@ export async function layoutTree(
   }
   const bloodedIds = personIds.filter((id) => blooded.has(id));
 
+  // A blooded sibling whose only spouse is an in-law (not blooded here, so
+  // never fed to elk as its own node) gets that spouse placed immediately to
+  // its right in the post-pass below — elk has no idea that's coming, so
+  // left to its default width it spaces this node exactly `SIBLING_GAP` from
+  // the next sibling, with no room left for the spouse card to occupy
+  // without overlapping it. Declaring extra width up front reserves that
+  // room the same way elk already reserves room for anything else; the
+  // actual card still renders at its normal `NODE_WIDTH`, only the space
+  // elk leaves *after* it grows.
+  const unbloodedSpouseOf = new Set<string>();
+  for (const [a, b] of spouseEdges) {
+    if (blooded.has(a) && !blooded.has(b)) unbloodedSpouseOf.add(a);
+    else if (blooded.has(b) && !blooded.has(a)) unbloodedSpouseOf.add(b);
+  }
+
   const elk = new ELK();
   const layout =
     bloodedIds.length > 0
@@ -105,7 +120,11 @@ export async function layoutTree(
             "elk.spacing.nodeNode": String(SIBLING_GAP),
             "elk.layered.spacing.nodeNodeBetweenLayers": String(ROW_GAP),
           },
-          children: bloodedIds.map((id) => ({ id, width: NODE_WIDTH, height: NODE_HEIGHT })),
+          children: bloodedIds.map((id) => ({
+            id,
+            width: unbloodedSpouseOf.has(id) ? NODE_WIDTH * 2 + SPOUSE_GAP : NODE_WIDTH,
+            height: NODE_HEIGHT,
+          })),
           edges: parentEdges.map((edge, index) => ({
             id: `parent-${index}`,
             sources: [edge.parentId],

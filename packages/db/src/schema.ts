@@ -386,9 +386,66 @@ export const researchNotes = pgTable(
 );
 
 /**
- * The one app-owned table that reaches into better-auth's `user` — every
- * other reference to it (`session.userId`, `account.userId`) belongs to
- * better-auth itself. Holds what's specific to a logged-in account rather
+ * A private notebook entry for the logged-in account itself — not tied to
+ * any person record, unlike `researchNotes`. Ownership is enforced in
+ * `UserNoteService` (every query filters on `userId` from the session, never
+ * from client input), not by a unique/partial index — there's no uniqueness
+ * constraint to express here, just "don't show me someone else's notes".
+ */
+export const userNotes = pgTable(
+  "user_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    title: text("title").notNull().default(""),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("user_notes_user_idx").on(table.userId)],
+);
+
+/**
+ * A real `pgEnum`, not a `configurableOptions` topic — deliberately, per the
+ * exception noted in CLAUDE.md: the frontend branches on the exact value
+ * (which icon to show, what the action button says, where it navigates), so
+ * it's structural rather than an admin-editable list. A new notification
+ * type is a code change on both ends anyway (something has to produce it and
+ * something has to render it), so a migration to add one costs nothing extra.
+ */
+export const notificationTypeEnum = pgEnum("notification_type", ["backup_ready"]);
+
+/**
+ * System-generated, one-way notices for the logged-in account — "your
+ * backup is ready", eventually things like an import finishing. Not a
+ * messaging/inbox system: there's no sender, no thread, nothing a user
+ * composes, just events this app itself produces. `actionUrl` is optional —
+ * a purely informational notice has nothing to link to.
+ */
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    type: notificationTypeEnum("type").notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    actionUrl: text("action_url"),
+    isRead: boolean("is_read").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("notifications_user_idx").on(table.userId, table.createdAt)],
+);
+
+/**
+ * One of two app-owned tables that reach into better-auth's `user` (the
+ * other is `userNotes` above) — every other reference to it
+ * (`session.userId`, `account.userId`) belongs to better-auth itself. Holds
+ * what's specific to a logged-in account rather
  * than to a person record: which person in the tree they are (if any) and
  * their phone number. `personId` is nullable — an account with no linked
  * person just has no "this is you" badge or relationship-to-viewer
@@ -426,8 +483,11 @@ export const schema = {
   personImmichLinks,
   userProfiles,
   researchNotes,
+  userNotes,
+  notifications,
   genderEnum,
   citationFactTypeEnum,
+  notificationTypeEnum,
   user,
   session,
   account,
@@ -445,3 +505,5 @@ export type ConfigurableOptionRow = typeof configurableOptions.$inferSelect;
 export type PersonImmichLinkRow = typeof personImmichLinks.$inferSelect;
 export type UserProfileRow = typeof userProfiles.$inferSelect;
 export type ResearchNoteRow = typeof researchNotes.$inferSelect;
+export type UserNoteRow = typeof userNotes.$inferSelect;
+export type NotificationRow = typeof notifications.$inferSelect;

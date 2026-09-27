@@ -1,8 +1,9 @@
 .DEFAULT_GOAL := help
-.PHONY: help install dev build check test fmt lint typecheck db-up db-down db-status db-logs db-generate db-migrate db-studio db-reset clean
+.PHONY: help install dev build check test fmt lint typecheck db-up db-down db-status db-logs db-generate db-migrate db-studio db-reset redis-up redis-down redis-status redis-logs clean
 
 COMPOSE := docker compose -f docker-compose.yml
 DB_SERVICE := db
+REDIS_SERVICE := redis
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -63,6 +64,20 @@ db-reset: ## Destroy the local database and rebuild it from scratch
 	$(COMPOSE) up -d db
 	@until $(COMPOSE) exec -T db pg_isready -U genealogy -d genealogy >/dev/null 2>&1; do sleep 1; done
 	pnpm db:migrate
+
+redis-up: ## Start Redis (backs apps/backend's BullMQ queues) and wait until it accepts connections
+	$(COMPOSE) up -d $(REDIS_SERVICE)
+	@until $(COMPOSE) exec -T $(REDIS_SERVICE) redis-cli ping >/dev/null 2>&1; do sleep 1; done
+	@echo "Redis is ready"
+
+redis-down: ## Stop Redis
+	$(COMPOSE) stop $(REDIS_SERVICE)
+
+redis-status: ## Show Redis container status
+	$(COMPOSE) ps $(REDIS_SERVICE)
+
+redis-logs: ## Follow Redis logs
+	$(COMPOSE) logs -f $(REDIS_SERVICE)
 
 clean: ## Remove build output and node_modules
 	pnpm clean

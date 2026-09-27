@@ -3,9 +3,14 @@ packages:
   - "packages/*"
 
 # esbuild's postinstall links the platform binary; vitest and drizzle-kit are
-# unusable without it. Everything else stays blocked from running install scripts.
+# unusable without it. msgpackr-extract's postinstall compiles a native addon
+# that speeds up msgpackr (a bullmq dependency, used to (de)serialize job
+# data) — msgpackr falls back to a pure-JS implementation without it, so this
+# is a perf-only build, not a functional requirement. Everything else stays
+# blocked from running install scripts.
 allowBuilds:
   esbuild: true
+  msgpackr-extract: true
 
 # Single source of truth for third-party versions. Every package depends on
 # `catalog:` rather than a literal range, so React in apps/frontend can never
@@ -80,6 +85,7 @@ catalog:
   tailwindcss: 4.3.3
   "@tailwindcss/vite": 4.3.3
   react-aria-components: 1.21.1
+  "@internationalized/date": 3.12.4
   class-variance-authority: 0.7.1
   clsx: 2.1.1
   motion: 13.4.0
@@ -105,7 +111,18 @@ catalog:
   # --- auth ---
   better-auth: 1.7.5
 
+  # --- queues & mail (see "Long-running work: BullMQ + a shared Redis" in TECH_STACK.md) ---
+  # ioredis pinned to a major satisfying bullmq's own peer range (>=5.0.0);
+  # not bumped independently of a bullmq bump.
+  bullmq: 6.3.9
+  "@nestjs/bullmq": 12.0.0
+  ioredis: 6.0.0
+  # Both ship their own TypeScript types — no @types/* package for either.
+  nodemailer: 10.0.11
+  handlebars: 4.7.9
+
 minimumReleaseAgeExclude:
   - "@tanstack/react-start-rsc@0.1.56"
   - "@tanstack/react-start@1.168.57"
   - "@tanstack/start-plugin-core@1.171.47"
+  - "nodemailer@10.0.11"

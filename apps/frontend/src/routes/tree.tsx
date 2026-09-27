@@ -11,12 +11,12 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@genealogy/ui/components/dialog";
 import { cn } from "@genealogy/ui/lib/utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import {
   Background,
   Controls,
   Handle,
-  MiniMap,
+  NodeToolbar,
   Position,
   ReactFlow,
   type Edge,
@@ -24,7 +24,7 @@ import {
   type NodeProps,
   type NodeTypes,
 } from "@xyflow/react";
-import { Network, UserRound, X } from "lucide-react";
+import { Cross, Loader2, Network, UserRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import "@xyflow/react/dist/style.css";
@@ -39,6 +39,7 @@ import {
   linkSpouse,
   listPersons,
 } from "../server/functions/person.functions";
+import { getMyProfile } from "../server/functions/profile.functions";
 
 export const Route = createFileRoute("/tree")({
   // No zod schema here (unlike the server functions this page calls) — a
@@ -46,6 +47,19 @@ export const Route = createFileRoute("/tree")({
   // empty state below rather than needing its own error path.
   validateSearch: (search: Record<string, unknown>): { personId?: string } =>
     typeof search.personId === "string" ? { personId: search.personId } : {},
+  // No personId in the URL yet: default to the person linked to the viewer's
+  // own account (userProfiles.personId), same as the "this is me" pick on
+  // the Profile page, so the tree opens already centered on the visitor
+  // rather than blank. If they haven't linked a person, fall through with no
+  // redirect — TreePage's own empty state (RootPicker) is the person
+  // selector the user should see before any tree loads.
+  beforeLoad: async ({ search }) => {
+    if (search.personId) return;
+    const profile = await getMyProfile();
+    if (profile.personId) {
+      throw redirect({ to: "/tree", search: { personId: profile.personId } });
+    }
+  },
   component: TreePage,
 });
 
@@ -58,13 +72,12 @@ function TreePage() {
   const { personId } = Route.useSearch();
 
   return (
-    <div className="flex h-[calc(100vh-9.5rem)] flex-col gap-4">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">Tree</h1>
-        <p className="text-sm text-muted-foreground">
-          Ancestors and descendants around one person, four generations either way.
-        </p>
-      </div>
+    // No page title/subtitle here — the tree view is the whole page, and the
+    // detail panel + canvas want every pixel of vertical space they can get.
+    // `h-full` fills exactly what __root.tsx's <main> leaves available for
+    // the /tree route (h-screen + flex-1 there, see isNoScrollPath) — no
+    // guessing at the header's pixel height, and no page-level scrollbar.
+    <div className="flex h-full flex-col gap-4">
       {personId ? <FamilyTree key={personId} rootId={personId} /> : <RootPicker />}
     </div>
   );
@@ -130,14 +143,45 @@ function genderTextClasses(gender: Gender): string {
   return "text-slate-500 dark:text-slate-400";
 }
 
+/**
+ * A tiny two-parent pictogram (blue block — connector — pink block) for the
+ * "ancestors can be loaded" badge, reusing the same gender-accent colors as
+ * `genderAccentClasses` rather than introducing a new palette. No single
+ * lucide-react icon reads as "parents", so this is a small inline SVG.
+ */
+function ParentsIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 10" className={className} aria-hidden="true">
+      <rect x="0" y="1" width="6" height="8" rx="1.5" className="fill-sky-400 dark:fill-sky-500" />
+      <rect x="6" y="4" width="4" height="2" className="fill-muted-foreground" />
+      <rect
+        x="10"
+        y="1"
+        width="6"
+        height="8"
+        rx="1.5"
+        className="fill-rose-400 dark:fill-rose-500"
+      />
+    </svg>
+  );
+}
+
 interface PersonNodeData extends Record<string, unknown> {
   person: TreePersonRow;
   isRoot: boolean;
+  // Whether this person's parents haven't been fetched yet (tree.parentsKnownIds) — same
+  // condition DetailPanel's own "Load ancestors" button already gates on, just
+  // surfaced directly on the card so a viewer doesn't need to select the node
+  // first. Recomputed on every render from live data (see the `nodes` memo in
+  // FamilyTree), not baked into the async elk layout snapshot.
+  canLoadAncestors: boolean;
+  isLoadingAncestors: boolean;
+  onLoadAncestors: () => void;
 }
 type PersonFlowNode = Node<PersonNodeData, "person">;
 
 function PersonNode({ data }: NodeProps<PersonFlowNode>) {
-  const { person, isRoot } = data;
+  const { person, isRoot, canLoadAncestors, isLoadingAncestors, onLoadAncestors } = data;
   const photoUrl = person.photoPath ? `${publicBackendUrl}/uploads/${person.photoPath}` : null;
 
   return (
@@ -151,37 +195,55 @@ function PersonNode({ data }: NodeProps<PersonFlowNode>) {
       <div className={cn("absolute inset-y-0 left-0 w-1.5", genderAccentClasses(person.gender))} />
       {/* Parent/child edges use the top/bottom handles; spouse edges use
           left/right (see FamilyTree) so a marriage line never gets confused
-          with a lineage line by the layout or by a reader. */}
+          with a lineage line by the layout or by a reader. Invisible
+          (opacity-0, pointer-events-none) rather than removed: React Flow
+          still needs each one mounted at its position to anchor an edge
+          there, but with nodesConnectable={false} they're no longer a
+          draggable affordance, so a visible dot would just be a UI promise
+          the card doesn't keep. */}
       <Handle
         type="target"
         position={Position.Top}
         id="parent-in"
-        className="bg-muted-foreground!"
+        className="pointer-events-none! opacity-0!"
       />
       <Handle
         type="source"
         position={Position.Bottom}
         id="child-out"
-        className="bg-muted-foreground!"
+        className="pointer-events-none! opacity-0!"
       />
       <Handle
         type="target"
         position={Position.Left}
         id="spouse-in"
-        className="bg-muted-foreground!"
+        className="pointer-events-none! opacity-0!"
       />
       <Handle
         type="source"
         position={Position.Right}
         id="spouse-out"
-        className="bg-muted-foreground!"
+        className="pointer-events-none! opacity-0!"
       />
-      <Avatar className="size-9 shrink-0">
-        {photoUrl && <AvatarImage src={photoUrl} alt="" />}
-        <AvatarFallback className={genderTextClasses(person.gender)}>
-          <UserRound className="size-5" aria-hidden="true" />
-        </AvatarFallback>
-      </Avatar>
+      <div className="relative shrink-0">
+        <Avatar className="size-9">
+          {photoUrl && <AvatarImage src={photoUrl} alt="" />}
+          <AvatarFallback className={genderTextClasses(person.gender)}>
+            <UserRound className="size-5" aria-hidden="true" />
+          </AvatarFallback>
+        </Avatar>
+        {/* Same corner-badge pattern as an online-status dot, just deceased
+            instead of presence — the border matches the card's own so the
+            badge reads as cut out of the avatar rather than pasted on top. */}
+        {!person.isLiving && (
+          <span
+            className="absolute -right-0.5 -bottom-0.5 flex size-4 items-center justify-center rounded-full border-2 border-card bg-muted-foreground"
+            title="Deceased"
+          >
+            <Cross className="size-2.5 text-card" aria-hidden="true" />
+          </span>
+        )}
+      </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{formatPersonName(person)}</p>
         <p className="truncate text-xs text-muted-foreground">{formatLifespan(person) ?? "—"}</p>
@@ -197,6 +259,36 @@ function PersonNode({ data }: NodeProps<PersonFlowNode>) {
           <Network className="size-4" />
         </Link>
       )}
+      {/* NodeToolbar renders through a portal outside this card's own DOM —
+          unlike an absolutely-positioned child, it's never clipped by the
+          card's own `overflow-hidden` (needed for the gender-accent bar's
+          rounded corners), so a badge straddling the top-right border stays
+          fully visible instead of getting cut off at the corner. */}
+      <NodeToolbar
+        isVisible={canLoadAncestors}
+        position={Position.Top}
+        align="end"
+        offset={-8}
+        className="border-none! bg-transparent! p-0! shadow-none!"
+      >
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onLoadAncestors();
+          }}
+          disabled={isLoadingAncestors}
+          aria-label={`Load ${formatPersonName(person)}'s ancestors`}
+          title="Load ancestors"
+          className="flex size-5 items-center justify-center rounded-full border-2 border-card bg-muted text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground disabled:opacity-60"
+        >
+          {isLoadingAncestors ? (
+            <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+          ) : (
+            <ParentsIcon className="size-3" />
+          )}
+        </button>
+      </NodeToolbar>
     </div>
   );
 }
@@ -293,7 +385,15 @@ function FamilyTree({ rootId }: { rootId: string }) {
     [treeQuery.data, extra],
   );
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Defaults to the root rather than nobody, so the detail panel is already
+  // populated with the person the tree is centered on instead of an empty
+  // canvas that needs a click before showing anything. `FamilyTree` is keyed
+  // by `rootId` in TreePage, so this re-initializes whenever the centered
+  // person changes.
+  // Never null once a tree has loaded — the panel always has a person to
+  // show, so there's no close/deselect action, only ever switching who's
+  // shown (see onNodeClick below; there's no onPaneClick deselect either).
+  const [selectedId, setSelectedId] = useState<string>(rootId);
 
   // Keyed by the merged data it was computed from, so `isArranging` below can
   // be derived (data changed but the matching layout hasn't landed yet)
@@ -329,7 +429,17 @@ function FamilyTree({ rootId }: { rootId: string }) {
             id: person.id,
             type: "person" as const,
             position,
-            data: { person, isRoot: person.id === data.rootId },
+            // canLoadAncestors/isLoadingAncestors/onLoadAncestors are
+            // placeholders here — the `nodes` memo in FamilyTree overlays
+            // the live values onto every render, since those depend on
+            // expandMutation's pending state, not on this layout snapshot.
+            data: {
+              person,
+              isRoot: person.id === data.rootId,
+              canLoadAncestors: false,
+              isLoadingAncestors: false,
+              onLoadAncestors: () => {},
+            },
             draggable: false,
           },
         ];
@@ -420,6 +530,28 @@ function FamilyTree({ rootId }: { rootId: string }) {
     onSuccess: (update) => addToExtra(update),
   });
 
+  // Overlaid onto the elk-computed layout snapshot at render time, not baked
+  // into it — `layout` only recomputes when `merged` changes (a new root,
+  // expand, or add-relative), but whether a node "can load ancestors" and
+  // whether it's mid-expand needs to update live with `merged` (parentsKnownIds
+  // changing) and with expandMutation's own pending state, without forcing a
+  // full elk relayout on every mutation state change.
+  const nodes = useMemo<PersonFlowNode[]>(() => {
+    const base = layout?.nodes ?? EMPTY_NODES;
+    if (!merged) return base;
+    return base.map((node) => {
+      const data: PersonNodeData = Object.assign({}, node.data, {
+        canLoadAncestors: !merged.parentsKnownIds.has(node.id),
+        isLoadingAncestors:
+          expandMutation.isPending &&
+          expandMutation.variables?.nodeId === node.id &&
+          expandMutation.variables?.direction === "up",
+        onLoadAncestors: () => expandMutation.mutate({ nodeId: node.id, direction: "up" }),
+      });
+      return Object.assign({}, node, { data });
+    });
+  }, [layout, merged, expandMutation]);
+
   if (treeQuery.isPending) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
@@ -435,46 +567,50 @@ function FamilyTree({ rootId }: { rootId: string }) {
   }
 
   const isArranging = !layout || layout.data !== merged;
-  const nodes = layout?.nodes ?? EMPTY_NODES;
   const edges = layout?.edges ?? EMPTY_EDGES;
   const selectedPerson = merged?.people.find((person) => person.id === selectedId) ?? null;
 
   return (
-    <div className="relative flex-1 overflow-hidden rounded-lg border">
-      {isArranging ? (
-        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-          Arranging tree…
-        </div>
-      ) : (
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={NODE_TYPES}
-          nodesDraggable={false}
-          fitView
-          fitViewOptions={{ padding: 0.3 }}
-          proOptions={{ hideAttribution: true }}
-          minZoom={0.1}
-          defaultEdgeOptions={{ style: { strokeWidth: 1.5 } }}
-          onNodeClick={(_, node) => setSelectedId(node.id)}
-          onPaneClick={() => setSelectedId(null)}
-        >
-          <Background />
-          <Controls showInteractive={false} />
-          <MiniMap pannable zoomable className="bg-card!" nodeColor="var(--muted)" />
-        </ReactFlow>
-      )}
+    <div className="flex flex-1 gap-4 overflow-hidden">
       {merged && selectedPerson && (
         <DetailPanel
           person={selectedPerson}
           isRoot={selectedPerson.id === merged.rootId}
           tree={merged}
-          onClose={() => setSelectedId(null)}
           onAdded={addToExtra}
           onExpand={(direction) => expandMutation.mutate({ nodeId: selectedPerson.id, direction })}
           expandingDirection={expandMutation.isPending ? expandMutation.variables?.direction : null}
         />
       )}
+      <div className="relative flex-1 overflow-hidden rounded-lg border">
+        {isArranging ? (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            Arranging tree…
+          </div>
+        ) : (
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={NODE_TYPES}
+            nodesDraggable={false}
+            // The handles on PersonNode exist only so React Flow can route
+            // parent/spouse edges to a specific side of the card — they were
+            // never meant to be draggable by a viewer to freehand a new
+            // relationship (there's no onConnect handler, so a drag would
+            // just show the connection line and then silently do nothing).
+            nodesConnectable={false}
+            fitView
+            fitViewOptions={{ padding: 0.3 }}
+            proOptions={{ hideAttribution: true }}
+            minZoom={0.1}
+            defaultEdgeOptions={{ style: { strokeWidth: 1.5 } }}
+            onNodeClick={(_, node) => setSelectedId(node.id)}
+          >
+            <Background />
+            <Controls showInteractive={false} />
+          </ReactFlow>
+        )}
+      </div>
     </div>
   );
 }
@@ -624,7 +760,6 @@ function DetailPanel({
   person,
   isRoot,
   tree,
-  onClose,
   onAdded,
   onExpand,
   expandingDirection,
@@ -632,7 +767,6 @@ function DetailPanel({
   person: TreePersonRow;
   isRoot: boolean;
   tree: MergedTree;
-  onClose: () => void;
   onAdded: (update: Partial<ExtraTreeData>) => void;
   onExpand: (direction: "up" | "down") => void;
   expandingDirection: "up" | "down" | null | undefined;
@@ -665,23 +799,28 @@ function DetailPanel({
   const photoUrl = person.photoPath ? `${publicBackendUrl}/uploads/${person.photoPath}` : null;
 
   return (
-    <div className="absolute inset-y-0 right-0 z-10 w-80 max-w-full overflow-y-auto border-l bg-card p-4 shadow-lg">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-3">
-          <Avatar className="size-10 shrink-0">
+    <div className="w-80 max-w-full shrink-0 overflow-y-auto rounded-lg border bg-card p-4">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="relative shrink-0">
+          <Avatar className="size-10">
             {photoUrl && <AvatarImage src={photoUrl} alt="" />}
             <AvatarFallback className={genderTextClasses(person.gender)}>
               <UserRound className="size-5" aria-hidden="true" />
             </AvatarFallback>
           </Avatar>
-          <div className="min-w-0">
-            <p className="truncate font-semibold">{formatPersonName(person)}</p>
-            <p className="text-sm text-muted-foreground">{formatLifespan(person) ?? "—"}</p>
-          </div>
+          {!person.isLiving && (
+            <span
+              className="absolute -right-0.5 -bottom-0.5 flex size-4 items-center justify-center rounded-full border-2 border-card bg-muted-foreground"
+              title="Deceased"
+            >
+              <Cross className="size-2.5 text-card" aria-hidden="true" />
+            </span>
+          )}
         </div>
-        <Button variant="ghost" size="icon" onPress={onClose} aria-label="Close">
-          <X className="size-4" />
-        </Button>
+        <div className="min-w-0">
+          <p className="truncate font-semibold">{formatPersonName(person)}</p>
+          <p className="text-sm text-muted-foreground">{formatLifespan(person) ?? "—"}</p>
+        </div>
       </div>
 
       <div className="mt-4 flex flex-col gap-2">

@@ -1,10 +1,17 @@
-import { calculateAge, formatLifespan, formatPersonName, type Gender } from "@genealogy/core";
+import {
+  calculateAge,
+  formatLifespan,
+  formatPersonName,
+  resolveHistoricalDate,
+  type Gender,
+} from "@genealogy/core";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button, buttonVariants } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
 import { Card, CardContent } from "@genealogy/ui/components/card";
 import { CopyableText } from "@genealogy/ui/components/copyable-text";
+import { HistoricalDateInput } from "@genealogy/ui/components/historical-date-input";
 import { Input } from "@genealogy/ui/components/input";
 import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
@@ -41,6 +48,7 @@ import {
 } from "../../lib/person-display";
 import { createPerson, listPersons, removePerson } from "../../server/functions/person.functions";
 import { listOptions } from "../../server/functions/settings.functions";
+import { historicalDatePreview } from "./-shared";
 
 export const Route = createFileRoute("/people/")({
   component: People,
@@ -92,14 +100,21 @@ function People() {
     resetToFirstPage();
   };
 
+  // Each field is a single boundary date, not a fuzzy one — "born after
+  // 1900" resolves to the earliest possible day compatible with whatever was
+  // typed/picked, "born before 1900" to the latest, so a bare year still
+  // filters sensibly instead of requiring an exact day.
+  const bornAfterIso = bornAfter.trim() === "" ? null : resolveHistoricalDate(bornAfter).earliest;
+  const bornBeforeIso = bornBefore.trim() === "" ? null : resolveHistoricalDate(bornBefore).latest;
+
   const listInput = {
     limit: PAGE_SIZE,
     offset,
     search: search.trim() === "" ? null : search.trim(),
     gender: gender === "all" ? null : gender,
     place: place.trim() === "" ? null : place.trim(),
-    bornAfter: bornAfter === "" ? null : bornAfter,
-    bornBefore: bornBefore === "" ? null : bornBefore,
+    bornAfter: bornAfterIso,
+    bornBefore: bornBeforeIso,
     sort,
   };
   const people = useQuery({
@@ -168,27 +183,28 @@ function People() {
             />
           </LabeledField>
 
-          <LabeledField label="Born between" asDiv>
-            <div className="flex items-center gap-2">
-              <Input
-                type="date"
-                aria-label="Born after date"
-                value={bornAfter}
-                onChange={(event) => {
-                  setBornAfter(event.target.value);
-                  resetToFirstPage();
-                }}
-              />
-              <Input
-                type="date"
-                aria-label="Born before date"
-                value={bornBefore}
-                onChange={(event) => {
-                  setBornBefore(event.target.value);
-                  resetToFirstPage();
-                }}
-              />
-            </div>
+          <LabeledField label="Born after" asDiv>
+            <HistoricalDateInput
+              aria-label="Born after"
+              value={bornAfter}
+              onChange={(value) => {
+                setBornAfter(value);
+                resetToFirstPage();
+              }}
+              preview={historicalDatePreview(bornAfter)}
+            />
+          </LabeledField>
+
+          <LabeledField label="Born before" asDiv>
+            <HistoricalDateInput
+              aria-label="Born before"
+              value={bornBefore}
+              onChange={(value) => {
+                setBornBefore(value);
+                resetToFirstPage();
+              }}
+              preview={historicalDatePreview(bornBefore)}
+            />
           </LabeledField>
 
           <LabeledField label="Gender" asDiv>

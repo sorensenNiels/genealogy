@@ -18,6 +18,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/av
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
+import { Calendar } from "@genealogy/ui/components/calendar";
 import {
   Card,
   CardContent,
@@ -141,6 +142,25 @@ function HistoricalDateDemo({ label, initialValue }: { label: string; initialVal
         onEndChange={setEndValue}
         preview={preview}
       />
+    </div>
+  );
+}
+
+/** No `quality`/`onQualityChange` passed — always "Exact", no dropdown. Used by the People list's Born after/before filters. */
+function NoQualifierDateDemo({ label, initialValue }: { label: string; initialValue: string }) {
+  const [value, setValue] = useState(initialValue);
+  const resolved = value.trim() === "" ? null : resolveHistoricalDate(value);
+  const preview =
+    resolved === null
+      ? null
+      : resolved.display
+        ? { text: resolved.display, status: "parsed" as const }
+        : { text: value, status: "unparsed" as const };
+
+  return (
+    <div className="w-56 space-y-1">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <HistoricalDateInput value={value} onChange={setValue} preview={preview} />
     </div>
   );
 }
@@ -303,6 +323,11 @@ function ComponentsShowcase() {
         <HistoricalDateDemo label="Before" initialValue="bef 1920" />
         <HistoricalDateDemo label="Range" initialValue="BET 1850 AND 1860" />
         <HistoricalDateDemo label="Unreadable" initialValue="sometime in the war" />
+        <NoQualifierDateDemo label="No qualifier (filter use)" initialValue="1900" />
+      </Section>
+
+      <Section title="Calendar">
+        <Calendar aria-label="Date" />
       </Section>
 
       <Section title="Autocomplete">
