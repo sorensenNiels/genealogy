@@ -19,6 +19,7 @@ import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
 import { useMutation } from "@tanstack/react-query";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { labelFor, optionsFor } from "../../lib/person-display";
 import { addNote, removeNote, updateNote } from "../../server/functions/research-note.functions";
@@ -40,6 +41,7 @@ export function ResearchNotesSection({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const updateNoteMutation = useMutation({ mutationFn: updateNote });
   const removeNoteMutation = useMutation({ mutationFn: removeNote });
 
@@ -55,20 +57,20 @@ export function ResearchNotesSection({
 
   return (
     <SectionCard
-      title="Research notes"
+      title={t("person.researchNotes.title")}
       titleClassName="text-base"
       contentClassName="space-y-4"
       action={
         <FormDialog
           trigger={
             <Tooltip>
-              <Button variant="outline" size="icon" aria-label="Add research note">
+              <Button variant="outline" size="icon" aria-label={t("person.researchNotes.addNote")}>
                 <PlusIcon className="size-4" />
               </Button>
-              <TooltipContent>Add research note</TooltipContent>
+              <TooltipContent>{t("person.researchNotes.addNote")}</TooltipContent>
             </Tooltip>
           }
-          title="Add research note"
+          title={t("person.researchNotes.addNote")}
         >
           {(close) => (
             <ResearchNoteForm
@@ -84,7 +86,7 @@ export function ResearchNotesSection({
       }
     >
       {notes.length === 0 && (
-        <p className="text-sm text-muted-foreground">No research notes yet.</p>
+        <p className="text-sm text-muted-foreground">{t("person.researchNotes.empty")}</p>
       )}
       {notes.map((note) => (
         <div key={note.id} className="space-y-1 border-b pb-3 last:border-b-0 last:pb-0">
@@ -94,9 +96,12 @@ export function ResearchNotesSection({
             </Badge>
             <div className="flex items-center gap-2">
               <Switch isSelected={note.resolved} onChange={() => void toggleResolved(note)}>
-                Resolved
+                {t("person.researchNotes.resolved")}
               </Switch>
-              <RemoveButton itemLabel="this research note" onConfirm={() => void remove(note.id)} />
+              <RemoveButton
+                itemLabel={t("person.researchNotes.thisNote")}
+                onConfirm={() => void remove(note.id)}
+              />
             </div>
           </div>
           <MarkdownContent className="text-sm">{note.body}</MarkdownContent>
@@ -115,6 +120,7 @@ function ResearchNoteForm({
   options: ConfigurableOptionRow[];
   onDone: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const addNoteMutation = useMutation({ mutationFn: addNote });
   const noteTypeOptions = optionsFor(options, "research_note_type");
   const [noteType, setNoteType] = useState(noteTypeOptions[0]?.key ?? "note");
@@ -136,7 +142,7 @@ function ResearchNoteForm({
       }}
     >
       <Select
-        aria-label="Note type"
+        aria-label={t("person.researchNotes.noteType")}
         value={noteType}
         onChange={(value) => {
           if (value) setNoteType(String(value));
@@ -153,14 +159,18 @@ function ResearchNoteForm({
           ))}
         </SelectContent>
       </Select>
-      <MarkdownEditor value={body} onChange={setBody} aria-label="Research note" />
+      <MarkdownEditor
+        value={body}
+        onChange={setBody}
+        aria-label={t("person.researchNotes.noteAriaLabel")}
+      />
       <DialogFooter>
         <SaveButton
           isDirty={body.trim() !== ""}
           isPending={addNoteMutation.isPending}
           isDisabled={!canSubmit}
         >
-          Add
+          {t("common.add")}
         </SaveButton>
       </DialogFooter>
     </form>

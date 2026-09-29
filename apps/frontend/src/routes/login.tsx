@@ -4,6 +4,7 @@ import { SectionCard } from "@genealogy/ui/components/section-card";
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { authClient } from "../lib/auth-client";
 
@@ -12,6 +13,7 @@ export const Route = createFileRoute("/login")({
 });
 
 function Login() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +28,10 @@ function Login() {
             ? await authClient.signIn.email({ email: value.email, password: value.password })
             : await authClient.signUp.email(value);
         if (result.error) {
-          setError(result.error.message ?? "Something went wrong.");
+          // better-auth's own error text — a separate auth flow from the
+          // tRPC error-translation link, so it stays English for now; see
+          // "Internationalization" in FEATURES.md for what's in scope.
+          setError(result.error.message ?? t("login.somethingWentWrong"));
           return;
         }
         await navigate({ to: "/" });
@@ -36,7 +41,7 @@ function Login() {
         // `{ error }`, so without this the button would just go quiet with
         // nothing but a console line to explain why.
         console.error("Sign-in/sign-up request failed", caughtError);
-        setError("Request failed — check the browser console for details.");
+        setError(t("login.requestFailed"));
       }
     },
   });
@@ -44,8 +49,8 @@ function Login() {
   return (
     <div className="mx-auto max-w-sm">
       <SectionCard
-        title={mode === "sign-in" ? "Sign in" : "Create an account"}
-        description={mode === "sign-in" ? "Welcome back." : "Start recording your family tree."}
+        title={mode === "sign-in" ? t("login.signIn") : t("login.createAccount")}
+        description={mode === "sign-in" ? t("login.welcomeBack") : t("login.startRecording")}
         contentClassName="space-y-4"
       >
         <form
@@ -59,11 +64,11 @@ function Login() {
             <form.Field name="name">
               {(field) => (
                 <Input
-                  placeholder="Name"
+                  placeholder={t("login.name")}
                   value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={(event) => field.handleChange(event.target.value)}
-                  aria-label="Name"
+                  aria-label={t("login.name")}
                 />
               )}
             </form.Field>
@@ -72,11 +77,11 @@ function Login() {
             {(field) => (
               <Input
                 type="email"
-                placeholder="Email"
+                placeholder={t("login.email")}
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(event) => field.handleChange(event.target.value)}
-                aria-label="Email"
+                aria-label={t("login.email")}
               />
             )}
           </form.Field>
@@ -84,11 +89,11 @@ function Login() {
             {(field) => (
               <Input
                 type="password"
-                placeholder="Password"
+                placeholder={t("login.password")}
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(event) => field.handleChange(event.target.value)}
-                aria-label="Password"
+                aria-label={t("login.password")}
               />
             )}
           </form.Field>
@@ -96,7 +101,7 @@ function Login() {
           {error && <p className="text-sm text-destructive">{error}</p>}
 
           <Button type="submit" className="w-full">
-            {mode === "sign-in" ? "Sign in" : "Sign up"}
+            {mode === "sign-in" ? t("login.signIn") : t("login.signUp")}
           </Button>
         </form>
 
@@ -105,7 +110,7 @@ function Login() {
           className="w-full"
           onPress={() => authClient.signIn.social({ provider: "google", callbackURL: "/" })}
         >
-          Continue with Google
+          {t("login.continueWithGoogle")}
         </Button>
 
         <button
@@ -116,7 +121,7 @@ function Login() {
             setError(null);
           }}
         >
-          {mode === "sign-in" ? "Need an account? Sign up" : "Already have an account? Sign in"}
+          {mode === "sign-in" ? t("login.needAccount") : t("login.haveAccount")}
         </button>
       </SectionCard>
     </div>

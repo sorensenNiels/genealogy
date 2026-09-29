@@ -1,4 +1,5 @@
 import { SectionCard } from "@genealogy/ui/components/section-card";
+import { useTranslation } from "react-i18next";
 
 import { ParentsSection } from "./-family-parents-section";
 import { RelativesSection } from "./-family-relatives-section";
@@ -33,8 +34,9 @@ export function FamilyCard({
   unions: UnionRow[];
   onChanged: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   return (
-    <SectionCard title="Family" contentClassName="space-y-4">
+    <SectionCard title={t("person.family.title")} contentClassName="space-y-4">
       <ParentsSection
         personId={personId}
         parents={parents}
@@ -44,7 +46,7 @@ export function FamilyCard({
       />
       <div className="border-t pt-4">
         <RelativesSection
-          title="Spouses"
+          title={t("person.family.spouses")}
           kind="spouse"
           personId={personId}
           relatives={spouses}
@@ -56,7 +58,7 @@ export function FamilyCard({
       </div>
       <div className="border-t pt-4">
         <RelativesSection
-          title="Children"
+          title={t("person.family.children")}
           kind="child"
           personId={personId}
           relatives={childRelatives}

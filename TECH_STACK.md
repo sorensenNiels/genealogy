@@ -951,11 +951,48 @@ decision below, since without a profile-photo picker pointing at Immich the
 only consequence of a stale link today is a photo grid that's short a few
 thumbnails.
 
-**Picking a person's profile photo from Immich was deliberately deferred**,
-not forgotten: the local-disk upload path (`### Photo uploads` above) is
-untouched, and linking a face is step one on its own before "use one of
-these linked photos as the header portrait" is worth building — confirmed
-with the user as a fast-follow rather than part of this version.
+**Picking a person's profile photo from Immich, with a circular crop.** The
+deferral above was the plan until the user asked for it directly. Built
+with **no backend change at all**: `PersonService.setPhoto` already stores
+whatever image bytes it's handed under `UPLOADS_DIR`, keyed by
+`persons.photoPath` (a single nullable string, no "source" concept, mime-
+checked only as `image/*`) — so the crop's output is just another image
+file as far as that endpoint is concerned. The whole feature is new
+frontend work:
+
+- `packages/ui/src/components/image-crop-dialog.tsx` (`ImageCropDialog`) —
+  built on `react-easy-crop` (checked before adding: last stable release
+  2026-07-24, canary builds as recent as 2026-09-05, so actively
+  maintained; one small runtime dependency, `normalize-wheel`) rather than
+  hand-rolled drag/zoom/pinch math. `cropShape="round"` gives the circular
+  selection UI directly. On confirm, a canvas draws just the selected pixel
+  region and exports a plain **square** JPEG via `canvas.toBlob()` — not a
+  circular PNG with real alpha transparency. `Avatar`'s own CSS already
+  renders it however the call site wants (the header portrait is actually
+  `rounded-xl`, not `rounded-full` — only the small avatar variant is a
+  true circle), so baking in transparency would add complexity for no
+  visible difference, the same way every comparable product (GitHub,
+  Slack, ...) handles this. Uses the existing `ControlledDialogContent`
+  shell (the same "no adjacent trigger" pattern `TagFaceDialog` already
+  uses), not `ImageViewer`'s full-viewport black shell — a crop tool is a
+  modest utility dialog, not a full-bleed photo viewer.
+- `apps/frontend/src/routes/people/-set-photo-from-immich-dialog.tsx` — the
+  picker step, two tabs (this person's own linked photos via the existing
+  `listPersonPhotos`, or the whole library via the existing
+  `searchImmichAssets` — the same picker `AddAssetsDialog` already uses,
+  just single-select-and-advance instead of accumulate-then-confirm). The
+  user explicitly wanted _any_ photo, not just ones already face-linked to
+  this person, which is why "All photos" exists alongside the person-scoped
+  tab.
+- `-person-header-card.tsx`'s `PersonPhoto`: the single click-to-upload
+  button became a `DropdownMenu` ("Upload a photo" / "Choose from Immich"),
+  gated on `isImmichConfigured()` exactly like `PersonPhotosCard` already
+  hides itself when Immich isn't configured. The crop dialog's output
+  uploads through the _exact same_ `/api/people/$id/photo` proxy route the
+  plain file-picker upload already posts to — verified live: a synthetic
+  image blob uploaded that way correctly replaces `photoPath` and deletes
+  the previous file, the same cleanup `setPhoto` already did for a manual
+  re-upload.
 
 **One real gap found during live verification, not a code defect:**
 Immich's `GET /people` only lists a "person" once it has at least one
@@ -966,6 +1003,332 @@ against yet. That's Immich's own indexing behavior, confirmed directly
 against its API rather than assumed, and there's nothing to fix on this
 app's side — it just means "no faces found yet" is a real, expected empty
 state, not always a config problem.
+
+**Write surface, added later (2026-09-27): albums, upload, face tagging —
+create/add only, never delete.** The above was the original, deliberately
+minimal "browse and link only" version; it was later expanded, on request,
+into album creation, photo upload, adding existing photos to an album, and
+tagging a detected face to a genealogy person, all from within this app.
+What stayed unchanged: Immich remains the sole source of truth for albums/
+assets/faces (still no local schema beyond `person_immich_links`), the
+proxy architecture is untouched (every new binary/multipart route follows
+the same REST-controller-with-manual-session-check shape as the thumbnail
+routes above), and — a deliberate line, not an oversight — this app can
+create and add but never delete an album or a photo. Removing something
+stays a job for Immich's own UI, the same trust boundary the "dangling link
+fails open" design above already assumes.
+
+**`IMMICH_API_KEY` needs write scopes now, not just read**: `asset.upload`,
+`album.create`, `album.update`, `album.assetCreate`, `person.create`,
+`face.update`, `job.create` (the last one for the Tools page's "Re-scan for
+faces" action below). A read-only key 403s on every one of the new calls —
+see the next point for why that used to be a worse experience than it
+needed to be.
+
+**A real bug fixed while building this**: `ImmichService`'s private
+`request()` only ever threw `BadRequestException`, never
+`NotFoundException`, even on a 404 — only the separate `requestBinary()`
+had that mapping. That meant `getPerson()`'s `catch (NotFoundException)`
+never actually caught a real 404, so the "dangling link fails open" promise
+made two sections up didn't fully hold for `link()`/`linkedPeople()`. Fixed
+by moving the 404 mapping into `request()` itself. While there, `request()`
+now also includes the response body in its thrown message — a write
+failing is almost always actionable (403 = the API key lacks a scope, 400 =
+a bad request body), and a bare "403 Forbidden" gave no hint which.
+
+**A second, related real bug, found live while building the data-integrity
+checker's "dangling Immich link" check**: the 404-mapping fix above wasn't
+actually enough. Immich's real `GET /people/{id}` returns **400**, not 404,
+for a person id that doesn't exist at all — `{"message": "Not found or no
+person.read access"}`, conflating "doesn't exist" with "no permission" into
+one status the OpenAPI spec doesn't make obvious. `getPerson()`'s
+`catch (NotFoundException)` never caught this, so every real dangling-link
+case (an Immich person actually deleted or merged away) threw a raw 500
+instead of the "fails open" behavior every caller assumes — this includes
+`linkedPeople()`, and so a person's own Photos card, not just the new
+integrity check. Confirmed by seeding a link at a syntactically valid but
+nonexistent UUID and watching it 500 before the fix, then return `[]`
+cleanly after. Fixed by also catching `BadRequestException` in `getPerson()`
+when its message matches `/not found/i` — scoped to that one method rather
+than folded into `request()` itself, since a 400 elsewhere (bad upload,
+malformed body) is a real error that should keep throwing.
+
+**Three face states, not two — the key design finding for tagging.**
+Immich auto-creates an (often unnamed) `Person` for nearly every detected
+face; `person: null` on `GET /faces` is the rare case, not the common one.
+So a face is one of: **linked** (has an Immich person, and that person has
+a `person_immich_links` row — clicking it in the viewer navigates straight
+to that genealogy person); **untagged** (has an Immich person, no link row
+yet — the common case, and it needs no Immich write at all beyond the
+existing `link()` call, which already best-effort-renames the cluster);
+or **unknown** (no Immich person yet — rare, needs `POST /people` then
+`PUT /faces/{id}` via the new `tagFace`, then `link()`). `TagFaceDialog`
+picks between the plain `link` call and `tagFace` based on exactly this,
+not a single unified "tag" action.
+
+**`tagFace`'s write ordering, and its one unrecoverable-by-code failure
+mode.** Order: (1) a local uniqueness precheck (`assertLinkable`, shared
+with `link()`) before any remote write; (2) `POST /people` if the caller
+picked "new person" rather than an existing cluster; (3) `PUT /faces/{id}`
+— and note the endpoint name is misleading: confirmed directly against
+Immich's server source (`FaceController`/`PersonService.reassignFacesById`),
+the **path** parameter is the _person_ being assigned to and the _face_ id
+goes in the request **body**, the opposite of what the OpenAPI schema names
+alone suggest; (4) `link()` to record the mapping locally. If step 4 fails
+after step 3 already succeeded, the face is tagged in Immich but not yet
+linked here — visible and retryable from the same dialog, since the
+Immich person id from step 2/3 is still known; there's no distributed
+transaction across this app's Postgres and Immich's own database to make
+that atomic.
+
+**Re-scanning faces (Tools page), and why it can't be a single admin API
+call.** Immich already queues its own face-detection job automatically
+whenever an asset is ingested — nothing in `uploadAsset` triggers it, and
+nothing needs to. The Tools page's "Re-scan for faces" action exists for
+what that automatic pass misses: a photo added before face recognition was
+enabled, or a face the first detection pass didn't catch. Immich's
+library-wide manual job endpoint (`POST /jobs`, `ManualJobName`) is
+admin-only and doesn't even list facial recognition among its allowed
+values — the per-asset `POST /assets/jobs` (`AssetJobName: "refresh-faces"`,
+not admin-gated) is the only way this app's own API key can force a
+re-scan, so `ImmichService.rescanAllFaces` walks the whole library via the
+same cursor-paginated `searchMetadata` every asset-listing method already
+uses, then calls it in batches of 500 asset ids. It's a BullMQ job — a new
+`immich-face-scan` queue, `ImmichFaceScanProcessor`, mirroring `backup`'s
+queue+processor shape exactly — because a large library means many batched
+requests. "Done" here means every asset has been resubmitted for
+detection, not that detection itself has finished: that still runs
+asynchronously in Immich's own `machine-learning` service, invisible to
+this app, so the completion notification's wording says "requested" rather
+than implying an instant result.
+
+**Upload is disk-streamed, not buffered in memory, at both ends.**
+`BackupController`'s pattern reused: `immich-asset.controller.ts`'s upload
+route uses multer's `diskStorage`, not the `FileInterceptor` default of
+memory storage, so `IMMICH_MAX_UPLOAD_BYTES` (50MB by default — sized for
+flatbed scans of old photos, not phone snapshots) doesn't mean N concurrent
+uploads each hold a full file in this process's memory during the inbound
+parse. Forwarding it on to Immich still reads the file into memory once
+(true zero-copy streaming would need the `form-data` package, since Node's
+built-in `FormData`/`Blob` can't stream from a file path) — a bounded,
+one-copy tradeoff judged reasonable at this app's scale rather than adding
+a new dependency for it.
+
+**Unlinking a face, directly from the photo viewer.** Previously the only
+way to undo a wrong tag was a chip on the person's own Photos card
+(`-immich-photos-card.tsx`) — clicking a "linked" face box in
+`-asset-viewer.tsx` only navigated to the person. `FaceBoxOverlay`'s label
+now gets a leading X (immediate, no confirmation — matches the Photos
+card's own chip) for a linked box; needed no backend change at all, since
+`facesForAsset` already returns `linkedPerson.linkId` for every linked
+face. The box itself had to move from being the label's _parent_ `Button`
+to a _sibling_ of it, inside a small positioned wrapper `<div>` — React
+Aria doesn't allow nesting one interactive control inside another, and the
+label now needs its own independently-clickable icon next to the box's own
+click target.
+
+**A real bug `unlink` had from day one, only exposed once unlinking became
+reachable from the photo viewer**: `link()` best-effort renames the Immich
+person cluster to the tree person's name (so Immich's own UI shows the
+same name) — `unlink()` never had a mirror-image step to clear that name
+back out. Confirmed live: unlink a face, and its box kept showing the
+_previous_ person's name indefinitely, not a stale-cache appearance —
+`facesForAsset`'s own response still had the old name in it. Fixed by
+having `unlink()` look up the link's `immichPersonId` before deleting the
+row, then best-effort `renamePerson(immichPersonId, "")` — same "never
+blocks the operation itself" philosophy as `link()`'s own rename. An empty
+Immich name means `FaceBoxOverlay` simply shows no label at all for that
+box (`box.label && (...)`, and `""` is falsy) rather than a wrong one,
+until it's relinked to someone.
+
+**The "Link a face" picker not showing everyone — two causes, one fixable,
+one not.** `ImmichService.listPeople` hardcoded `withHidden=false`,
+silently excluding any Immich person marked hidden — changed to
+`withHidden=true`. Separately, and confirmed live against the real
+instance (`total: 7` in Immich's own response, only 5 people actually
+returned, `hidden: 0`): Immich only lists a person via `/people` once it
+has at least one detected face promoted to a distinct cluster — a real,
+already-documented Immich limitation, not something excluding hidden
+people touches, and not fixable from this app's side. Since Immich's
+`/people` has no server-side name-search parameter at all (checked its
+OpenAPI spec), `ImmichPersonPicker` was rebuilt around fetching everyone
+in one call (`size: 1000`, Immich's own documented max) plus a client-side
+name filter, replacing the old 24-per-page Prev/Next UX that made a real
+person easy to miss even when technically reachable.
+
+**Downloading a whole album, via Immich's own two-step archive API, not a
+zip library in this app.** `POST /download/info` (`{ albumId }`) returns
+one or more `{ assetIds, size }` groups — Immich splits into more than one
+only if the total exceeds its own configured limit; `POST
+/download/archive` (`{ assetIds, archiveName }`) streams back the actual
+zip bytes. `ImmichService.downloadArchive` is a dedicated `fetch`, not
+`request()` (always parses JSON) or `requestBinary()` (buffers the whole
+response into a `Buffer`, fine for a thumbnail, not an album-sized zip) —
+it hands back the raw body stream, and
+`ImmichAssetController.downloadAlbum` pipes it straight to the response
+via `Readable.fromWeb`. v1 scope, confirmed with the user up front: a
+single zip only — if Immich ever reports more than one archive group for
+an album (unusual at this app's scale), the route returns a clear error
+rather than silently truncating or building multi-part download support.
+The frontend proxy route for this one is the one place in the Immich proxy
+set that has to forward the incoming query string (`?filename=`) onto the
+target — every sibling thumbnail/preview/original proxy route drops it,
+a known gotcha this one deliberately doesn't repeat.
+
+**A second, headless dialog primitive, added to `packages/ui` rather than
+duplicated in `apps/frontend`.** `TagFaceDialog` needed a controlled
+dialog with no adjacent trigger button (it opens from clicking a face box
+that lives on the photo itself, the same shape `ImageViewer` already
+solved for the lightbox). Building that by hand a second time would have
+meant `apps/frontend` importing `react-aria-components`/`motion` directly
+for the first time, breaking the "the app only ever goes through
+`@genealogy/ui`" convention — instead, `dialog.tsx`'s `DialogContent` was
+split into a shared `DialogSurface` (the Motion/Modal/Dialog shell) plus a
+new exported `ControlledDialogContent`, which `DialogContent` itself now
+also delegates to.
+
+**Album date, place, and tags (added 2026-09-28): a local table keyed by
+Immich's album id, not pushed into Immich itself.** Immich's own album
+object has no date/place/tag concept, and the user's actual problem — a
+large pile of albums pulled in from different sources — is a local
+organizing need, not something Immich's API could hold even if this app
+wanted it to. `packages/db/src/schema.ts`'s `album_metadata` table follows
+the same "plain `text` id, not a foreign key" convention
+`immich_album_asset_order`/`person_immich_links` already established for
+referencing Immich's own ids. `date`/`place` mirror `person_events`'
+columns exactly (`jsonb` `HistoricalDate`, plain nullable `text`), so an
+album gets the same "circa 1970s" wording a person's birth date does, for
+free, via the existing `HistoricalDateInput`/`splitHistoricalDateText`/
+`joinHistoricalDateText` machinery — moved from `people/-shared.tsx` into
+`apps/frontend/src/lib/format-date.ts` once a route outside `people/`
+needed it too, and re-exported from the old spot so every existing import
+kept working unchanged.
+
+**Tags are a plain `text[]` column, not a normalized tags/join-table
+pair — a deliberate skip of the "more correct" relational design.** This
+is a single-user app with at most a few thousand albums; `ImmichService
+.listAlbums` fetches every Immich album and every `album_metadata` row in
+two unfiltered calls and does all search/tag/place/date-range/"missing
+info" filtering and sorting in plain TypeScript over the merged list,
+rather than pushing any of it into SQL. A join table would only pay off at
+a scale this app doesn't operate at, and would have meant two new tables
+instead of one array column. `listAlbumTags` (`SELECT DISTINCT
+unnest(tags)`, aggregated in TS since even that stayed simple enough not
+to need a raw SQL `unnest`) feeds the tag autocomplete — see
+`packages/ui/src/components/tag-input.tsx` (`TagInput`) below.
+
+**`TagInput`: a new multi-value autocomplete built from two existing
+pieces, not a new primitive from scratch.** No tag/chip picker existed
+anywhere in `packages/ui` before this. Rather than hand-rolling one,
+`TagInput` combines the existing `Autocomplete` component (already does
+free-text-plus-suggestions) as the "add a tag" input with React Aria's own
+`TagGroup`/`Tag` (available via `react-aria-components`, unused elsewhere
+in this package until now) for the removable-chip row. `Autocomplete` only
+ever reports every keystroke — it has no notion of "commit" — so `TagInput`
+holds its own draft string and commits a chip on Enter or ",". One
+component serves two different roles unchanged: assigning tags to an
+album (`EditAlbumDialog`) and filtering the album grid by tag
+(`AlbumGrid`'s Filters panel), just with different `value`/`onChange`
+wiring. One non-obvious test-writing gotcha hit while covering it: React
+Aria marks the rest of the page `aria-hidden` while a `ComboBox`'s
+suggestion popover is open (so background content doesn't clutter the
+accessibility tree) — a `getByRole` query for the tag chips fails while
+that popover is still open even though the chips are still in the DOM and
+in `value`; the test has to close the popover (`{Escape}`) first.
+
+**Album zip downloads are queued (BullMQ) and delivered via notification,
+not a synchronous request/response — the same shape `BackupService` already
+uses, and for the same reason.** The old version streamed Immich's own
+generated zip straight through one HTTP request and refused outright once
+an album exceeded Immich's single-archive size limit ("too large to
+download as a single file yet"). `AlbumZipService`
+(`apps/backend/src/immich/album-zip.service.ts`) enqueues instead, and
+**embraces** a large job producing multiple archives rather than refusing:
+one `notifications.create` call per zip file Immich's own
+`/download/info` splits a request into (confirmed live it accepts a plain
+`assetIds` array, not just `albumId`), each with its own `actionUrl`. "One
+album" and "every album in the library" (the Tools page's new "Download
+all albums", next to "Backup database") turned out to be the same job with
+a different asset-id set — `resolveJobScope(albumId?)` either fetches one
+album's assets or unions every album's assets (deduped, since a photo can
+be in more than one album), so there's exactly one code path for both. The
+empty-album/empty-library check runs synchronously in the tRPC procedure,
+before enqueueing anything — a job that fails after being queued has no
+notification and thus fails silently (an existing, accepted gap in the
+backup job too), so the one case that's cheap to check up front is checked
+up front rather than left to that same silent failure.
+
+**Internationalization: `i18next`/`react-i18next`, a per-request instance, and
+a central error-translation tRPC link — not a shared singleton, and not
+per-server-function try/catch.** Checked before adding: both packages had
+releases within the last month at the time (actively maintained); no
+`i18next-browser-languagedetector`, since the current language is
+account-preference-driven, not `Accept-Language`-driven. Per the user's own
+architectural call: the NestJS backend stays English-only forever, and every
+message it sends is translated _in the frontend layer_.
+
+- **A fresh `i18next` instance is created per SSR request**
+  (`apps/frontend/src/i18n/create-i18n-instance.ts`'s `createI18nInstance`),
+  not a shared module-level singleton — this codebase already hit the exact
+  failure mode a shared instance would reintroduce: `trpc-proxy-client.ts`'s
+  own comment documents a prior live bug where a module-level singleton
+  reading per-request state (the auth cookie) leaked one request's value into
+  a concurrent request's response, because one Node process serves many
+  users at once. The client bundle still only ever needs one instance per
+  page load (`RootComponent`'s `useState(() => createI18nInstance(language))`
+  lazy initializer, created once and mutated in place by `i18n.changeLanguage()`
+  from the profile page's language switcher).
+- **The language preference lives on the account**
+  (`userProfiles.language`, nullable `text`, no default — absence resolves to
+  `"en"` at the read layer, mirroring the existing `phoneNumber` column's
+  convention), not just a cookie, per the user's explicit choice. A `lang`
+  cookie (`LANGUAGE_COOKIE` in `profile.functions.ts`) mirrors it, refreshed
+  on every `getMyLanguage()`/`updateProfile()` call — this exists purely so
+  the error-translation link (a standalone module with no route context) can
+  read the current language without a recursive DB round-trip on every failed
+  request.
+- **`apps/frontend/src/routes/__root.tsx`'s `beforeLoad` resolves the language
+  before the first render**, merging it into `RouterContext`, so the very
+  first server-rendered HTML byte is already in the right language — no
+  client-side flash-then-correct pass the way the dark-mode `use-theme.ts`
+  placeholder pattern would produce for translated text (fine for a CSS
+  class, not fine for re-labeling the whole page).
+- **Backend error messages are translated by one custom tRPC link**
+  (`apps/frontend/src/server/trpc-error-translation-link.ts`), added ahead of
+  `httpLink` in `trpc-proxy-client.ts`'s `links` array, rather than by
+  touching any of the ~40 individual server function files. It rewrites
+  `error.message` using `apps/frontend/src/i18n/backend-errors.ts`: an
+  exact-match table for the majority of static `BadRequestException`/etc.
+  strings across `apps/backend/src`, plus a small list of `{pattern, translate}`
+  regex templates for the parameterized ones (file-size limits, "No X with id
+  Y", ...). A message matching neither table falls through untranslated
+  (English) rather than breaking — a missed translation degrades gracefully.
+  This required moving `@trpc/server` from `apps/frontend`'s `devDependencies`
+  to `dependencies`, since `@trpc/server/observable` (used to build the link)
+  is now a real runtime import, not just a type.
+- **Danish free-text date parsing is real parser logic, not translated
+  labels.** `packages/core/src/historical-date.ts`'s quality-word regexes
+  (`approximate`/`before`/`after`/`between`/`fromTo`) and month-name tables
+  are now keyed by a `language: Language = "en"` parameter threaded through
+  every exported function, with parallel `EN`/`DA` `DateLanguage` tables
+  (`LANGUAGES: Record<Language, DateLanguage>`). GEDCOM (`packages/core/src/
+gedcom.ts`) deliberately stays English-only regardless of UI language — its
+  own date grammar is fixed by the GEDCOM 5.5.1 spec, not this app's locale,
+  and it has its own separate `GEDCOM_MONTHS` table untouched by this change.
+- **Format-date helpers stay plain functions with a `language` parameter, not
+  hooks** (`apps/frontend/src/lib/format-date.ts`) — a deliberate deviation
+  from calling them "thin hooks," since they're also called from non-component
+  call sites like a `@tanstack/react-table` cell renderer in `people/index.tsx`,
+  which can't call a hook.
+- **Deliberately out of scope for this pass** (not yet re-litigated, just not
+  attempted): `packages/ui`'s own components keep their internal default
+  copy in English (only strings passed in from call sites are translated);
+  configurable-options values (event types, confidence levels, etc.) are
+  never translated, since they're user-authored data via the Settings page,
+  not app strings — the same reasoning as "Configurable dropdown options, not
+  hardcoded enums" above; better-auth's own auth-flow error messages stay
+  English, since that's a separate flow from the tRPC error-translation link;
+  and the dev-only `/dev/components` showcase page is untranslated.
 
 ## Verified, not assumed
 
@@ -992,23 +1355,145 @@ These are open, and nothing in the code presumes an answer:
   relative to each other (same host/reverse proxy vs. genuinely separate
   services) and revisit `trustedOrigins`/cookie attributes accordingly if
   they end up on different domains.
-- **GEDCOM import and export.** The domain model is shaped for it —
-  `HistoricalDate` keeps the source's own wording, and `gender` uses the GEDCOM
-  vocabulary — but no importer/exporter exists. Date parsing/display
-  (`packages/core/src/historical-date.ts`) is a first pass at the wordings
-  this app's own fields produce — exact day/month/year, month/year, bare
-  year, ISO `YYYY-MM-DD`/`YYYY-MM`, abt/bef/aft qualifiers, and `BET ... AND
-...`/`FROM ... TO ...` ranges — not the full GEDCOM date grammar (no
-  double-dating, no calendar escapes). `resolveDate` in `PersonService`
-  unconditionally recomputes `earliest`/`latest` from `original` on every
-  write (person birth/death, event dates, union start/end dates) as an
-  idempotent backstop, since the frontend now sends its own freshly-computed
-  bounds on every save too — both sides call the same parser, so they can't
-  disagree. `packages/db/scripts/backfill-historical-dates.ts` is a one-off,
-  not-wired-into-`db:migrate` script for re-resolving already-stored rows
-  after a parser change; not something a future GEDCOM importer needs to
-  care about, since it would supply its own bounds from the fuller grammar
-  it reads.
+- **GEDCOM export exists (Tools page); import doesn't yet.** The domain
+  model was already shaped for this — `HistoricalDate` keeps the source's
+  own wording, and `gender` uses the GEDCOM vocabulary — and export
+  (`apps/backend/src/gedcom/gedcom.service.ts`) builds on both directly.
+  `GedcomService.exportAll()` pulls every `persons`/`personNames`/
+  `personEvents`/`unions`/`sources`/`citations` row plus every `PARENT_OF`
+  edge (`allParentOfEdges` in `packages/db/src/graph.ts`, added alongside
+  `allPersonNodeIds` for the two-store consistency checker — nothing before
+  either listed the _whole_ graph unfiltered) in a handful of queries, no
+  BullMQ job: a GEDCOM file is plain text, small enough at this app's scale
+  to build and return within one request, unlike `pg_dump`'s streamed
+  binary.
+  - Date parsing/display (`packages/core/src/historical-date.ts`) is a
+    first pass at the wordings this app's own fields produce — exact
+    day/month/year, month/year, bare year, ISO `YYYY-MM-DD`/`YYYY-MM`,
+    abt/bef/aft qualifiers, and `BET ... AND ...`/`FROM ... TO ...` ranges —
+    not the full GEDCOM date grammar (no double-dating, no calendar
+    escapes). `packages/core/src/gedcom.ts`'s `toGedcomDate` re-runs the
+    same `parseHistoricalDateDetailed` this app already uses for
+    display/sorting (not a second parser) and maps the result onto GEDCOM's
+    `ABT`/`BEF`/`AFT`/`BET ... AND ...` grammar; an unparsed date falls back
+    to the original wording verbatim rather than dropping it.
+  - **A real bug caught by live-testing against the real environment, not
+    just typechecking**: a GEDCOM pointer used as a line's _value_ (`1 HUSB
+@I7@`) needs `@...@` wrapping distinct from `GedcomWriter.line`'s own
+    `xref` parameter, which is only for a record's _own_ declaration line
+    (`0 @I1@ INDI`) — conflating the two produced a bare `1 HUSB I7`
+    (invalid GEDCOM) instead of a real pointer. Fixed with a dedicated
+    `gedcomPointer(xref)` helper, used everywhere a `HUSB`/`WIFE`/`CHIL`/
+    citation-`SOUR` line references another record.
+  - **GEDCOM 5.5.1's `FAM` record has only `HUSB`/`WIFE` slots**, no third
+    "parent" tag — assigned by `gender` (M/F, this app's own vocabulary)
+    when known, by a stable id order when not; two `U`/same-gender parents
+    can't be represented more precisely in 5.5.1, noted directly in
+    `writeFamily`'s comment rather than silently guessed at.
+  - **Two parents who divorced and remarried each other collapse to one
+    `FAM` record.** Children are linked to a parent _pair_ via `PARENT_OF`
+    edges, not to a specific `unions` row, so there is no correct way to
+    attribute a child to one marriage instance over another — the first
+    `unions` row found for the pair (preferring a non-terminal `status`)
+    supplies the `MARR` detail.
+  - **A family (or `HUSB`/`WIFE`/`CHIL` reference) that resolves to a person
+    id with no matching `persons` row is dropped, not emitted as a
+    malformed pointer.** This surfaced real graph/Postgres drift in the
+    live environment during testing (a `PARENT_OF` edge pointing at a child
+    id no `persons` row matched) — exactly the class of problem the
+    two-store consistency checker (below) exists to report on its own,
+    rather than only being noticed as a side effect of exporting.
+  - Deliberately out of scope: no `OBJE` (photo) records (Immich-hosted
+    photos aren't portable outside this app, and `persons.photoPath` local
+    uploads have no externally resolvable URL); no `researchNotes`/
+    `userNotes` (app-specific, not part of GEDCOM's model); no import (a
+    materially bigger, riskier problem — validating an arbitrary external
+    file and deciding whether an incoming person matches someone already in
+    the tree — deferred to a future pass).
+  - `resolveDate` in `PersonService` unconditionally recomputes
+    `earliest`/`latest` from `original` on every write (person birth/death,
+    event dates, union start/end dates) as an idempotent backstop, since the
+    frontend now sends its own freshly-computed bounds on every save too —
+    both sides call the same parser, so they can't disagree.
+    `packages/db/scripts/backfill-historical-dates.ts` is a one-off,
+    not-wired-into-`db:migrate` script for re-resolving already-stored rows
+    after a parser change; not something the GEDCOM exporter needs to care
+    about, since it reads whatever `original` currently holds.
+- **Data integrity checks and the two-store consistency check (Tools
+  page).** Both live in `apps/backend/src/integrity/` (`IntegrityService`),
+  report-only for this first pass — no auto-fix, an admin judges each
+  finding, same reasoning as GEDCOM export shipping without import first.
+  - `checkData()`: dangling citations (a `citations.factId` pointing at a
+    since-deleted `personNames`/`personEvents`/`unions` row — the schema's
+    own comment says the app, not the database, is responsible for
+    clearing these, since Postgres can't cascade a polymorphic foreign
+    key), possible duplicate people (same normalized given+surname, grouped
+    in JS rather than SQL — simpler at this app's scale than a `GROUP BY`
+    plus a second lookup), and dangling Immich links (via a new
+    `ImmichService.listDanglingLinks()`, reusing `getPerson`'s own
+    fails-open check but surfacing it instead of swallowing it — this is
+    exactly what caught the second Immich bug documented above).
+  - `checkGraphConsistency()`: diffs every `persons.id` in Postgres against
+    every `Person` node id in the Apache AGE graph
+    (`allPersonNodeIds`/`allParentOfEdges` in `packages/db/src/graph.ts` —
+    added alongside the GEDCOM exporter's own bulk graph read, since nothing
+    before either listed the _whole_ graph unfiltered). **Caught a real,
+    if transient, false positive during testing**: `GedcomService.exportAll`
+    and this checker each run their Postgres/graph reads as separate
+    unsynchronized queries, not one consistent snapshot, so a person created
+    concurrently between two of those reads can appear in one but not the
+    other — not persistent drift, just a point-in-time skew, resolved by
+    the time either was re-run. Judged not worth wrapping in a transaction
+    for a single-family, low-write-concurrency app; both call sites note it.
+- **Restore from backup (Tools page), and the Apache AGE limitation that
+  shaped it.** The plan going in was simple: add `--clean --if-exists` to
+  the existing `pg_dump` call so the dump is self-contained, then restore is
+  just `gunzip | psql`. **Live-testing against the local sandbox database
+  (never the real environment) found this doesn't work**: Apache AGE
+  installs an event trigger that refuses _any_ plain DDL against its own
+  internal label tables (`family_tree._ag_label_vertex`/`_ag_label_edge`) —
+  even `DROP TABLE IF EXISTS` — with `ERROR: table "_ag_label_vertex" is
+for label "_ag_label_vertex"`. A `--clean` dump of the whole database
+  replays fine for every ordinary table, then fails outright the moment it
+  reaches the graph's own tables, partway through a restore.
+  - The fix: `BackupService.dumpTo` now runs **two** `pg_dump` invocations,
+    concatenated into one gzip stream (`{ end: false }` on the first's
+    stdout pipe keeps the gzip stream open for the second) — `--schema=public
+--clean --if-exists` for ordinary relational tables (safe to drop and
+    recreate), and `--schema=family_tree --data-only` for the graph's own
+    tables (data only, **no DDL at all**, since none is replayable).
+    `ag_catalog` (AGE's own extension schema — which graphs/labels exist,
+    not data this app owns) and `drizzle` (migration-tracking, meaningful
+    only to the live instance being restored into) are excluded from both:
+    restoring assumes the same already-provisioned Postgres/AGE setup the
+    backup came from, not bootstrapping a fresh one.
+  - `RestoreService.restore` mirrors the split: the relational half applies
+    straight from the dump (its own `--clean` handles it); the graph half
+    needs a manual `TRUNCATE family_tree._ag_label_vertex,
+_ag_label_edge` first (confirmed live — unlike `DROP`/`CREATE`,
+    `TRUNCATE` is one of the few operations AGE actually permits directly
+    against its label tables), then the data-only dump's `COPY` statements
+    repopulate them. Verified round-trip against the sandbox: insert a
+    person + graph node, back up, delete both, restore, confirm both come
+    back — including the graph node's own internal AGE id, unchanged.
+  - `DbOperationLockService`: a small dedicated Redis mutex (`SET ... NX
+PX`, not reusing BullMQ's own connection) so a backup and a restore (or
+    two of either) can't run at once against the same live database —
+    there's no other such mechanism in this app, and `pg_dump`/`psql` both
+    bypass the shared connection pool entirely (`spawn`, not `PG_POOL`), so
+    nothing else would stop them colliding.
+  - Deliberately does **not** add a maintenance-mode banner or pause
+    ordinary request traffic during a restore — judged more machinery than
+    a self-hosted, single-family tool needs. The Tools page's own warning
+    copy says so explicitly, along with the fact that a restore signs
+    everyone out afterward (the restored `session` table holds whatever
+    sessions existed when the backup was taken, not whoever's currently
+    logged in).
+  - Restore input is a re-upload of a previously-downloaded backup file
+    (disk-streamed via `multer`'s `diskStorage`, same pattern as
+    `ImmichAssetController.uploadAsset`, just a much larger
+    `RESTORE_MAX_UPLOAD_BYTES` cap) — backups still self-delete after one
+    download, unchanged.
 - **Media and document storage.** No object store is wired up.
 - **Deployment target and CI.** `pnpm check && pnpm test` is the intended gate;
   no pipeline is defined.

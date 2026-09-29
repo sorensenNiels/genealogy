@@ -9,18 +9,27 @@ import { Badge } from "@genealogy/ui/components/badge";
 import { Button, buttonVariants } from "@genealogy/ui/components/button";
 import { Card, CardContent } from "@genealogy/ui/components/card";
 import { CopyableText } from "@genealogy/ui/components/copyable-text";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@genealogy/ui/components/dropdown-menu";
 import { ProgressBar } from "@genealogy/ui/components/progress-bar";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { cn } from "@genealogy/ui/lib/utils";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CameraIcon, Network, Trash2Icon } from "lucide-react";
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
+import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { publicBackendUrl } from "../../lib/env";
 import { formatDisplayDate } from "../../lib/format-date";
-import { GENDER_LABELS, initials, RELATIONSHIP_TO_ROOT_LABELS } from "../../lib/person-display";
+import { genderLabel, initials, relationshipToRootLabel } from "../../lib/person-display";
+import { isImmichConfigured } from "../../server/functions/immich.functions";
 import { removePerson } from "../../server/functions/person.functions";
+import { SetPhotoFromImmichDialog } from "./-set-photo-from-immich-dialog";
 import type { CitationRow, NameVariantRow, PersonRow, SourceRow } from "./-types";
 
 /**
@@ -50,13 +59,15 @@ export function PersonHeaderCard({
   canDelete: boolean;
   onDeleted: () => void;
 }) {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
   const removePersonMutation = useMutation({ mutationFn: removePerson, onSuccess: onDeleted });
 
   const nicknames = names.filter((name) => name.nameType === "nickname").map((name) => name.given);
 
   const age = calculateAge(person);
-  const birthDisplay = formatDisplayDate(person.birth);
-  const deathDisplay = formatDisplayDate(person.death);
+  const birthDisplay = formatDisplayDate(person.birth, language);
+  const deathDisplay = formatDisplayDate(person.death, language);
 
   // The page header's birth/death line — date *and* place together
   // ("b. 14 March 1838 · Give Sogn, Vejle Amt").
@@ -95,10 +106,10 @@ export function PersonHeaderCard({
               <Badge variant="outline">
                 <CopyableText value={person.publicId} className="font-mono text-foreground" />
               </Badge>
-              <Badge variant="outline">{GENDER_LABELS[person.gender]}</Badge>
+              <Badge variant="outline">{genderLabel(person.gender, t)}</Badge>
               {person.relationshipToRoot && (
                 <Badge className="border-transparent bg-primary/10 text-primary">
-                  {RELATIONSHIP_TO_ROOT_LABELS[person.relationshipToRoot]}
+                  {relationshipToRootLabel(person.relationshipToRoot, t)}
                 </Badge>
               )}
             </div>
@@ -108,20 +119,23 @@ export function PersonHeaderCard({
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
               {birthSummary && (
                 <span>
-                  <span className="font-medium text-foreground">b.</span> {birthSummary}
-                  {person.isLiving && age !== null ? ` · Age ${age}` : ""}
+                  <span className="font-medium text-foreground">{t("person.header.bornAbbr")}</span>{" "}
+                  {birthSummary}
+                  {person.isLiving && age !== null ? ` · ${t("person.header.age", { age })}` : ""}
                 </span>
               )}
               {!person.isLiving && (
                 <span>
-                  <span className="font-medium text-foreground">d.</span> {deathSummary ?? "—"}
-                  {age !== null ? ` · Age ${age}` : ""}
+                  <span className="font-medium text-foreground">{t("person.header.diedAbbr")}</span>{" "}
+                  {deathSummary ?? "—"}
+                  {age !== null ? ` · ${t("person.header.age", { age })}` : ""}
                 </span>
               )}
             </div>
             {akaName && (
               <p className="text-sm text-muted-foreground">
-                Also known as: <span className="text-foreground">{formatPersonName(akaName)}</span>
+                {t("person.header.alsoKnownAs")}{" "}
+                <span className="text-foreground">{formatPersonName(akaName)}</span>
                 {akaSource ? ` (${akaSource.title})` : ""}
               </p>
             )}
@@ -134,24 +148,24 @@ export function PersonHeaderCard({
               search={{ personId: person.id }}
               className={buttonVariants({ variant: "outline", size: "sm" })}
             >
-              <Network className="size-4" /> View in tree
+              <Network className="size-4" /> {t("person.header.viewInTree")}
             </Link>
             {canDelete && (
               <RemoveButton
                 itemLabel={formatFullPersonName(person)}
-                title={`Delete ${formatFullPersonName(person)}?`}
-                description="This permanently removes them and everything recorded about them — alternate names, life events, sources and citations. This cannot be undone."
-                actionLabel="Delete"
+                title={t("people.deleteTitle", { name: formatFullPersonName(person) })}
+                description={t("people.deleteDescription")}
+                actionLabel={t("common.delete")}
                 onConfirm={() => removePersonMutation.mutate({ data: { id: person.id } })}
                 trigger={
                   <Button type="button" variant="outline" size="sm" className="text-destructive">
-                    <Trash2Icon /> Delete
+                    <Trash2Icon /> {t("common.delete")}
                   </Button>
                 }
               />
             )}
           </div>
-          <ProgressBar label="Research completeness" value={completeness} />
+          <ProgressBar label={t("person.header.researchCompleteness")} value={completeness} />
           {removePersonMutation.isError && (
             <p className="text-sm text-destructive">{removePersonMutation.error.message}</p>
           )}
@@ -179,8 +193,17 @@ function PersonPhoto({
   /** "lg" is the large, rounded-square avatar on the view-mode header. */
   size?: "sm" | "lg";
 }) {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [immichPickerOpen, setImmichPickerOpen] = useState(false);
+  // Immich is opt-in infrastructure — same "hidden entirely, not just empty"
+  // treatment as `PersonPhotosCard`: no "Choose from Immich" menu item when
+  // there's nothing to choose from.
+  const immichConfigured = useQuery({
+    queryKey: ["immich", "isConfigured"],
+    queryFn: () => isImmichConfigured(),
+  });
   const photoUrl = person.photoPath ? `${publicBackendUrl}/uploads/${person.photoPath}` : null;
   const dimensionClass = size === "lg" ? "size-24" : "size-16";
   const roundingClass = size === "lg" ? "rounded-xl" : "rounded-full";
@@ -221,33 +244,100 @@ function PersonPhoto({
           event.target.value = "";
         }}
       />
-      <Button
-        variant="ghost"
-        className={cn("group relative p-0", dimensionClass, roundingClass)}
-        isDisabled={uploading}
-        onPress={() => fileInputRef.current?.click()}
-        aria-label={photoUrl ? "Change photo" : "Upload photo"}
-      >
-        <Avatar className={cn(dimensionClass, roundingClass)}>
-          {photoUrl && <AvatarImage src={photoUrl} alt={formatPersonName(person)} />}
-          <AvatarFallback className={size === "lg" ? "text-2xl" : "text-base"}>
-            {initials(person)}
-          </AvatarFallback>
-        </Avatar>
-        <span
-          className={cn(
-            "absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 transition-opacity group-data-hovered:opacity-100",
-            roundingClass,
-          )}
+      {immichConfigured.data ? (
+        <DropdownMenu>
+          <Button
+            variant="ghost"
+            className={cn("group relative p-0", dimensionClass, roundingClass)}
+            isDisabled={uploading}
+            aria-label={photoUrl ? t("person.photo.change") : t("person.photo.upload")}
+          >
+            <PersonPhotoAvatar
+              person={person}
+              photoUrl={photoUrl}
+              size={size}
+              roundingClass={roundingClass}
+              dimensionClass={dimensionClass}
+              uploading={uploading}
+            />
+          </Button>
+          <DropdownMenuContent>
+            <DropdownMenuItem onAction={() => fileInputRef.current?.click()}>
+              {t("person.photo.uploadAPhoto")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onAction={() => setImmichPickerOpen(true)}>
+              {t("person.photo.chooseFromImmich")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <Button
+          variant="ghost"
+          className={cn("group relative p-0", dimensionClass, roundingClass)}
+          isDisabled={uploading}
+          onPress={() => fileInputRef.current?.click()}
+          aria-label={photoUrl ? t("person.photo.change") : t("person.photo.upload")}
         >
-          {uploading ? (
-            <span className="text-xs">…</span>
-          ) : (
-            <CameraIcon className="size-5" aria-hidden="true" />
-          )}
-        </span>
-      </Button>
-      {photoUrl && <RemoveButton itemLabel="this photo" onConfirm={() => void remove()} />}
+          <PersonPhotoAvatar
+            person={person}
+            photoUrl={photoUrl}
+            size={size}
+            roundingClass={roundingClass}
+            dimensionClass={dimensionClass}
+            uploading={uploading}
+          />
+        </Button>
+      )}
+      {photoUrl && (
+        <RemoveButton itemLabel={t("person.photo.thisPhoto")} onConfirm={() => void remove()} />
+      )}
+      {immichConfigured.data && (
+        <SetPhotoFromImmichDialog
+          personId={person.id}
+          isOpen={immichPickerOpen}
+          onOpenChange={setImmichPickerOpen}
+          onSaved={onChanged}
+        />
+      )}
     </div>
+  );
+}
+
+function PersonPhotoAvatar({
+  person,
+  photoUrl,
+  size,
+  roundingClass,
+  dimensionClass,
+  uploading,
+}: {
+  person: PersonRow;
+  photoUrl: string | null;
+  size: "sm" | "lg";
+  roundingClass: string;
+  dimensionClass: string;
+  uploading: boolean;
+}) {
+  return (
+    <>
+      <Avatar className={cn(dimensionClass, roundingClass)}>
+        {photoUrl && <AvatarImage src={photoUrl} alt={formatPersonName(person)} />}
+        <AvatarFallback className={size === "lg" ? "text-2xl" : "text-base"}>
+          {initials(person)}
+        </AvatarFallback>
+      </Avatar>
+      <span
+        className={cn(
+          "absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 transition-opacity group-data-hovered:opacity-100",
+          roundingClass,
+        )}
+      >
+        {uploading ? (
+          <span className="text-xs">…</span>
+        ) : (
+          <CameraIcon className="size-5" aria-hidden="true" />
+        )}
+      </span>
+    </>
   );
 }

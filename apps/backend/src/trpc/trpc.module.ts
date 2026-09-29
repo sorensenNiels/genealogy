@@ -1,7 +1,9 @@
 import { Module } from "@nestjs/common";
 
 import { BackupModule } from "../backup/backup.module.js";
+import { GedcomModule } from "../gedcom/gedcom.module.js";
 import { ImmichModule } from "../immich/immich.module.js";
+import { IntegrityModule } from "../integrity/integrity.module.js";
 import { MailModule } from "../mail/mail.module.js";
 import { NotificationModule } from "../notification/notification.module.js";
 import { PersonModule } from "../person/person.module.js";
@@ -24,6 +26,8 @@ import { TrpcRouter } from "./trpc.router.js";
     MailModule,
     NotificationModule,
     BackupModule,
+    GedcomModule,
+    IntegrityModule,
   ],
   providers: [TrpcRouter],
   exports: [TrpcRouter],

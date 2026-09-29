@@ -4,6 +4,7 @@ import { createTRPCClient, httpLink } from "@trpc/client";
 import superjson from "superjson";
 
 import { backendUrl } from "./env";
+import { errorTranslationLink } from "./trpc-error-translation-link";
 
 /**
  * Server-side only: every server function calls apps/backend's tRPC router
@@ -33,6 +34,10 @@ import { backendUrl } from "./env";
  */
 export const trpcProxy = createTRPCClient<AppRouter>({
   links: [
+    // Ahead of httpLink so it sees every error on the way back up before a
+    // server function's own `.query()/.mutate()` call does — see that
+    // file's own doc comment.
+    errorTranslationLink(),
     httpLink({
       url: `${backendUrl}/trpc`,
       transformer: superjson,

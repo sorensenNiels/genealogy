@@ -27,13 +27,19 @@ export class ProfileService {
    * or picked themselves in the tree) just reads back as "nothing set" rather
    * than needing a row created at signup for every account.
    */
-  async getMyProfile(userId: string): Promise<Pick<UserProfileRow, "phoneNumber" | "personId">> {
+  async getMyProfile(
+    userId: string,
+  ): Promise<Pick<UserProfileRow, "phoneNumber" | "personId" | "language">> {
     const [row] = await this.db
-      .select({ phoneNumber: userProfiles.phoneNumber, personId: userProfiles.personId })
+      .select({
+        phoneNumber: userProfiles.phoneNumber,
+        personId: userProfiles.personId,
+        language: userProfiles.language,
+      })
       .from(userProfiles)
       .where(eq(userProfiles.userId, userId))
       .limit(1);
-    return row ?? { phoneNumber: null, personId: null };
+    return row ?? { phoneNumber: null, personId: null, language: null };
   }
 
   /**
@@ -47,7 +53,7 @@ export class ProfileService {
   async updateProfile(
     userId: string,
     input: UpdateProfile,
-  ): Promise<Pick<UserProfileRow, "phoneNumber" | "personId">> {
+  ): Promise<Pick<UserProfileRow, "phoneNumber" | "personId" | "language">> {
     try {
       const [row] = await this.db
         .insert(userProfiles)
@@ -55,16 +61,22 @@ export class ProfileService {
           userId,
           phoneNumber: input.phoneNumber ?? null,
           personId: input.personId ?? null,
+          language: input.language ?? null,
         })
         .onConflictDoUpdate({
           target: userProfiles.userId,
           set: {
             ...(input.phoneNumber !== undefined ? { phoneNumber: input.phoneNumber } : {}),
             ...(input.personId !== undefined ? { personId: input.personId } : {}),
+            ...(input.language !== undefined ? { language: input.language } : {}),
             updatedAt: new Date(),
           },
         })
-        .returning({ phoneNumber: userProfiles.phoneNumber, personId: userProfiles.personId });
+        .returning({
+          phoneNumber: userProfiles.phoneNumber,
+          personId: userProfiles.personId,
+          language: userProfiles.language,
+        });
       if (!row) {
         throw new Error("Upsert returned no row");
       }

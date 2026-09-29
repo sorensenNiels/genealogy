@@ -25,6 +25,7 @@
     "lucide-react": "catalog:",
     "motion": "catalog:",
     "react-aria-components": "catalog:",
+    "react-easy-crop": "catalog:",
     "react-markdown": "catalog:",
     "tailwind-merge": "catalog:"
   },

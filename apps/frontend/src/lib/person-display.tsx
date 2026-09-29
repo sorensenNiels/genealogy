@@ -1,25 +1,27 @@
 import type { Gender, RelationshipToRoot } from "@genealogy/core";
+import type { TFunction } from "i18next";
 import { CircleHelp, Mars, Venus } from "lucide-react";
 
-// Stored values stay the M/F/U GEDCOM schema; only the displayed labels
-// change here. Revisit once i18n lands — this should become a translation
-// lookup, not a hardcoded English map.
-export const GENDER_LABELS: Record<Gender, string> = {
-  M: "Male",
-  F: "Female",
-  U: "Unknown",
-};
+// Stored values stay the M/F/U GEDCOM schema; only the displayed labels are
+// translated, via `common.gender.*` — a plain function rather than a hook
+// (`t` passed in) so this also works from non-component call sites like
+// `@tanstack/react-table` cell renderers, the same reasoning
+// `format-date.ts`'s helpers give for staying functions.
+export function genderLabel(gender: Gender, t: TFunction): string {
+  return t(`common.gender.${gender}`);
+}
 
 /**
  * Labels for the badge shown on a person's page relative to whoever is
  * currently viewing — each account has its own "this is me" link (set from
  * the Profile page), not one tree-wide root, so this is per-viewer.
  */
-export const RELATIONSHIP_TO_ROOT_LABELS: Record<Exclude<RelationshipToRoot, null>, string> = {
-  root: "This is you",
-  ancestor: "Direct ancestor",
-  descendant: "Direct descendant",
-};
+export function relationshipToRootLabel(
+  relationship: Exclude<RelationshipToRoot, null>,
+  t: TFunction,
+): string {
+  return t(`common.relationshipToRoot.${relationship}`);
+}
 
 interface ConfigurableOptionLike {
   topic: string;

@@ -5,17 +5,18 @@ import { SectionCard } from "@genealogy/ui/components/section-card";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { XIcon } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
   isImmichConfigured,
   linkImmichPerson,
-  listImmichPeople,
   listLinkedImmichPeople,
   listPersonPhotos,
   unlinkImmichPerson,
 } from "../../server/functions/immich.functions";
-
-const PEOPLE_PAGE_SIZE = 24;
+import { AssetViewer } from "../photos/-asset-viewer";
+import { UploadDialog } from "../photos/-upload-dialog";
+import { ImmichPersonPicker } from "./-immich-person-picker";
 
 /**
  * A person's linked-face photo grid — see "Photos & albums via Immich" in
@@ -36,7 +37,9 @@ export function PersonPhotosCard({ personId }: { personId: string }) {
 }
 
 function PersonPhotosCardContent({ personId }: { personId: string }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
   const linked = useQuery({
     queryKey: ["immich", "linkedPeople", personId],
     queryFn: () => listLinkedImmichPeople({ data: { personId } }),
@@ -61,10 +64,22 @@ function PersonPhotosCardContent({ personId }: { personId: string }) {
 
   return (
     <SectionCard
-      title="Photos"
+      title={t("person.photos.title")}
       titleClassName="text-base"
       contentClassName="space-y-4"
-      action={<LinkFaceDialog personId={personId} onLinked={refresh} />}
+      action={
+        <div className="flex gap-2">
+          <UploadDialog
+            trigger={
+              <Button type="button" variant="outline" size="sm">
+                {t("person.photos.upload")}
+              </Button>
+            }
+            onUploaded={refresh}
+          />
+          <LinkFaceDialog personId={personId} onLinked={refresh} />
+        </div>
+      }
     >
       {linked.data && linked.data.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -77,13 +92,15 @@ function PersonPhotosCardContent({ personId }: { personId: string }) {
                 <AvatarImage src={`/api/immich/people/${person.id}/thumbnail`} alt="" />
                 <AvatarFallback className="text-[10px]">?</AvatarFallback>
               </Avatar>
-              {person.name.trim() || "Unnamed"}
+              {person.name.trim() || t("common.unnamedPerson")}
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
                 className="size-4"
-                aria-label={`Unlink ${person.name.trim() || "this face"}`}
+                aria-label={t("person.photos.unlinkAria", {
+                  name: person.name.trim() || t("person.photos.unlinkThisFace"),
+                })}
                 onPress={() => void unlink(person.linkId)}
               >
                 <XIcon className="size-3" />
@@ -93,24 +110,37 @@ function PersonPhotosCardContent({ personId }: { personId: string }) {
         </div>
       )}
       {photos.isPending ? (
-        <p className="text-xs text-muted-foreground">Loading photos…</p>
+        <p className="text-xs text-muted-foreground">{t("person.photos.loadingPhotos")}</p>
       ) : photos.data && photos.data.length > 0 ? (
-        <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-          {photos.data.map((asset) => (
-            <div key={asset.id} className="aspect-square overflow-hidden rounded bg-muted">
-              <img
-                src={`/api/immich/assets/${asset.id}/thumbnail`}
-                alt={asset.originalFileName}
-                loading="lazy"
-                className="size-full object-cover"
-              />
-            </div>
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+            {photos.data.map((asset, index) => (
+              <Button
+                key={asset.id}
+                variant="ghost"
+                onPress={() => setOpenIndex(index)}
+                className="aspect-square h-auto w-full overflow-hidden rounded bg-muted p-0"
+              >
+                <img
+                  src={`/api/immich/assets/${asset.id}/thumbnail`}
+                  alt={asset.originalFileName}
+                  loading="lazy"
+                  className="size-full object-cover"
+                />
+              </Button>
+            ))}
+          </div>
+          <AssetViewer
+            assets={photos.data}
+            index={openIndex}
+            onIndexChange={setOpenIndex}
+            onClose={() => setOpenIndex(null)}
+            onFaceTagged={refresh}
+            onAssetRemoved={refresh}
+          />
+        </>
       ) : (
-        <p className="text-xs text-muted-foreground">
-          No linked photos yet — link a face to find them.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("person.photos.noLinkedPhotos")}</p>
       )}
     </SectionCard>
   );
@@ -123,14 +153,8 @@ function LinkFaceDialog({
   personId: string;
   onLinked: () => Promise<void>;
 }) {
-  const [open, setOpen] = useState(false);
-  const [page, setPage] = useState(1);
+  const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
-  const people = useQuery({
-    queryKey: ["immich", "listPeople", page],
-    queryFn: () => listImmichPeople({ data: { page, size: PEOPLE_PAGE_SIZE } }),
-    enabled: open,
-  });
   const linkMutation = useMutation({ mutationFn: linkImmichPerson });
 
   const link = async (immichPersonId: string, close: () => void) => {
@@ -140,7 +164,9 @@ function LinkFaceDialog({
       close();
       await onLinked();
     } catch (mutationError) {
-      setError(mutationError instanceof Error ? mutationError.message : "Could not link");
+      setError(
+        mutationError instanceof Error ? mutationError.message : t("person.photos.couldNotLink"),
+      );
     }
   };
 
@@ -148,67 +174,21 @@ function LinkFaceDialog({
     <FormDialog
       trigger={
         <Button type="button" variant="outline" size="sm">
-          + Link a face
+          {t("person.photos.linkFace")}
         </Button>
       }
-      title="Link a face"
+      title={t("person.photos.linkFaceTitle")}
       onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) {
-          setPage(1);
-          setError(null);
-        }
+        if (!next) setError(null);
       }}
     >
       {(close) => (
         <>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          {people.isPending ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : people.data && people.data.people.length > 0 ? (
-            <div className="grid grid-cols-4 gap-2">
-              {people.data.people.map((person) => (
-                <Button
-                  key={person.id}
-                  type="button"
-                  variant="ghost"
-                  className="h-auto flex-col gap-1 py-2"
-                  isDisabled={linkMutation.isPending}
-                  onPress={() => void link(person.id, close)}
-                >
-                  <Avatar className="size-14">
-                    <AvatarImage src={`/api/immich/people/${person.id}/thumbnail`} alt="" />
-                    <AvatarFallback>?</AvatarFallback>
-                  </Avatar>
-                  <span className="w-full truncate text-xs font-normal">
-                    {person.name.trim() || "Unnamed"}
-                  </span>
-                </Button>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">No people found in Immich yet.</p>
-          )}
-          <div className="flex justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              isDisabled={page === 1}
-              onPress={() => setPage((current) => current - 1)}
-            >
-              Previous
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              isDisabled={!people.data?.hasNextPage}
-              onPress={() => setPage((current) => current + 1)}
-            >
-              Next
-            </Button>
-          </div>
+          <ImmichPersonPicker
+            isDisabled={linkMutation.isPending}
+            onPick={(immichPersonId) => void link(immichPersonId, close)}
+          />
         </>
       )}
     </FormDialog>

@@ -23,8 +23,11 @@ import {
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation } from "@tanstack/react-query";
+import type { TFunction } from "i18next";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
+import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { labelFor, optionsFor } from "../../lib/person-display";
 import { addEvent, updateEvent } from "../../server/functions/person.functions";
 import { removeCitation } from "../../server/functions/source.functions";
@@ -40,38 +43,42 @@ import type { CitationRow, ConfigurableOptionRow, PersonEventRow, SourceRow } fr
  * Exported for `-life-events-card.tsx`'s read-only display to look labels
  * up from the same dictionary this form edits with.
  */
-export const EVENT_DETAIL_FIELDS: Partial<Record<EventType, { key: string; label: string }[]>> = {
-  christening: [
-    { key: "officiant", label: "Officiant" },
-    { key: "church", label: "Church" },
-  ],
-  burial: [
-    { key: "cemetery", label: "Cemetery" },
-    { key: "plot", label: "Plot" },
-  ],
-  cremation: [{ key: "crematorium", label: "Crematorium" }],
-  immigration: [
-    { key: "ship", label: "Ship name" },
-    { key: "port", label: "Port" },
-  ],
-  emigration: [
-    { key: "ship", label: "Ship name" },
-    { key: "port", label: "Port" },
-  ],
-  naturalization: [
-    { key: "country", label: "Country" },
-    { key: "court", label: "Court" },
-  ],
-  residence: [{ key: "address", label: "Address" }],
-  occupation: [
-    { key: "employer", label: "Employer" },
-    { key: "jobTitle", label: "Job title" },
-  ],
-  death: [
-    { key: "causeOfDeath", label: "Cause of death" },
-    { key: "informant", label: "Informant" },
-  ],
-};
+export function eventDetailFields(
+  t: TFunction,
+): Partial<Record<EventType, { key: string; label: string }[]>> {
+  return {
+    christening: [
+      { key: "officiant", label: t("person.events.detail.officiant") },
+      { key: "church", label: t("person.events.detail.church") },
+    ],
+    burial: [
+      { key: "cemetery", label: t("person.events.detail.cemetery") },
+      { key: "plot", label: t("person.events.detail.plot") },
+    ],
+    cremation: [{ key: "crematorium", label: t("person.events.detail.crematorium") }],
+    immigration: [
+      { key: "ship", label: t("person.events.detail.shipName") },
+      { key: "port", label: t("person.events.detail.port") },
+    ],
+    emigration: [
+      { key: "ship", label: t("person.events.detail.shipName") },
+      { key: "port", label: t("person.events.detail.port") },
+    ],
+    naturalization: [
+      { key: "country", label: t("person.events.detail.country") },
+      { key: "court", label: t("person.events.detail.court") },
+    ],
+    residence: [{ key: "address", label: t("person.events.detail.address") }],
+    occupation: [
+      { key: "employer", label: t("person.events.detail.employer") },
+      { key: "jobTitle", label: t("person.events.detail.jobTitle") },
+    ],
+    death: [
+      { key: "causeOfDeath", label: t("person.events.detail.causeOfDeath") },
+      { key: "informant", label: t("person.events.detail.informant") },
+    ],
+  };
+}
 
 /**
  * "birth"/"death" are ordinary `person_events` rows (see `PersonService`),
@@ -108,6 +115,9 @@ export function EventForm({
    */
   onChanged: () => Promise<void>;
 }) {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
+  const detailFieldsByType = eventDetailFields(t);
   const addEventMutation = useMutation({ mutationFn: addEvent });
   const updateEventMutation = useMutation({ mutationFn: updateEvent });
   const initialEventType: EventType = event?.eventType ?? "residence";
@@ -115,7 +125,7 @@ export function EventForm({
   const [eventType, setEventType] = useState(initialEventType);
   const [details, setDetails] = useState<Record<string, string>>(initialDetails);
 
-  const dateSplit = splitHistoricalDateText(event?.date?.original ?? "");
+  const dateSplit = splitHistoricalDateText(event?.date?.original ?? "", language);
 
   const form = useForm({
     defaultValues: {
@@ -127,22 +137,25 @@ export function EventForm({
       notes: event?.notes ?? "",
     },
     onSubmit: async ({ value }) => {
-      const detailFields = EVENT_DETAIL_FIELDS[eventType] ?? [];
+      const detailFields = detailFieldsByType[eventType] ?? [];
       const detailEntries = detailFields
         .map(({ key }) => [key, (details[key] ?? "").trim()] as const)
         .filter(([, fieldValue]) => fieldValue !== "");
-      const dateOriginal = joinHistoricalDateText({
-        quality: value.dateQuality,
-        value: value.dateValue,
-        endValue: value.dateEndValue,
-      });
+      const dateOriginal = joinHistoricalDateText(
+        {
+          quality: value.dateQuality,
+          value: value.dateValue,
+          endValue: value.dateEndValue,
+        },
+        language,
+      );
       const payload = {
         eventType,
         label: value.label.trim() === "" ? null : value.label.trim(),
         date:
           dateOriginal === null
             ? null
-            : { original: dateOriginal, ...parseHistoricalDate(dateOriginal) },
+            : { original: dateOriginal, ...parseHistoricalDate(dateOriginal, language) },
         place: value.place.trim() === "" ? null : value.place,
         details: detailEntries.length > 0 ? Object.fromEntries(detailEntries) : null,
         notes: value.notes.trim() === "" ? null : value.notes,
@@ -179,7 +192,7 @@ export function EventForm({
       }}
     >
       <Select
-        aria-label="Event type"
+        aria-label={t("person.events.eventType")}
         value={eventType}
         // Locked once it's already "birth"/"death": those are created only
         // from the person form's own Date of Birth/Death fields (so there's
@@ -212,7 +225,7 @@ export function EventForm({
         <form.Field name="label">
           {(field) => (
             <Input
-              placeholder='Label — required for "other" events, e.g. "Emigrated to Canada"'
+              placeholder={t("person.events.otherLabelPlaceholder")}
               value={field.state.value}
               onChange={(inputEvent) => field.handleChange(inputEvent.target.value)}
             />
@@ -220,25 +233,25 @@ export function EventForm({
         </form.Field>
       )}
       <HistoricalDateInput
-        placeholder="Date, e.g. 1902"
+        placeholder={t("person.events.datePlaceholder")}
         quality={dateQuality}
         onQualityChange={(quality) => form.setFieldValue("dateQuality", quality)}
         value={dateValue}
         onChange={(value) => form.setFieldValue("dateValue", value)}
         endValue={dateEndValue}
         onEndChange={(value) => form.setFieldValue("dateEndValue", value)}
-        preview={historicalDateFieldPreview(dateQuality, dateValue, dateEndValue)}
+        preview={historicalDateFieldPreview(dateQuality, dateValue, dateEndValue, language)}
       />
       <form.Field name="place">
         {(field) => (
           <Input
-            placeholder="Place"
+            placeholder={t("common.place")}
             value={field.state.value}
             onChange={(inputEvent) => field.handleChange(inputEvent.target.value)}
           />
         )}
       </form.Field>
-      {(EVENT_DETAIL_FIELDS[eventType] ?? []).map((detailField) => (
+      {(detailFieldsByType[eventType] ?? []).map((detailField) => (
         <Input
           key={detailField.key}
           placeholder={detailField.label}
@@ -251,8 +264,8 @@ export function EventForm({
       <form.Field name="notes">
         {(field) => (
           <MarkdownEditor
-            aria-label="Notes"
-            placeholder="Notes"
+            aria-label={t("common.notes")}
+            placeholder={t("common.notes")}
             value={field.state.value}
             onChange={field.handleChange}
           />
@@ -270,7 +283,7 @@ export function EventForm({
       )}
       <DialogFooter>
         <SaveButton isDirty={isDirty} isPending={isSubmitting} isDisabled={needsLabel}>
-          {event ? "Save" : "Add"}
+          {event ? t("common.save") : t("common.add")}
         </SaveButton>
       </DialogFooter>
     </form>
@@ -300,6 +313,7 @@ function EventCitations({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const removeCitationMutation = useMutation({ mutationFn: removeCitation });
   // Not a nested `Dialog` — see the `embedded` prop comment on `CitationForm`
   // for why stacking this component's own dialog inside the event's would
@@ -320,9 +334,11 @@ function EventCitations({
     return (
       <div className="space-y-2 rounded-md border p-3">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase">Add citation</p>
+          <p className="text-xs font-medium text-muted-foreground uppercase">
+            {t("person.events.addCitation")}
+          </p>
           <Button type="button" variant="ghost" size="sm" onPress={() => setMode("list")}>
-            ← Back
+            {t("person.events.back")}
           </Button>
         </div>
         <CitationForm
@@ -334,7 +350,7 @@ function EventCitations({
             key: `event|${event.id}`,
             factType: "event",
             factId: event.id,
-            label: `Event: ${labelFor(options, "event_type", event.eventType)}${event.label ? ` (${event.label})` : ""}`,
+            label: `${t("person.events.eventFixedFactLabel", { type: labelFor(options, "event_type", event.eventType) })}${event.label ? ` (${event.label})` : ""}`,
           }}
           onDone={async () => {
             setMode("list");
@@ -348,13 +364,15 @@ function EventCitations({
   return (
     <div className="space-y-2 rounded-md border p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-muted-foreground uppercase">Sources</p>
+        <p className="text-xs font-medium text-muted-foreground uppercase">
+          {t("person.events.sources")}
+        </p>
         <Button type="button" variant="ghost" size="sm" onPress={() => setMode("add")}>
-          + Add citation
+          + {t("person.events.addCitation")}
         </Button>
       </div>
       {eventCitations.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No sources cited yet.</p>
+        <p className="text-xs text-muted-foreground">{t("person.events.noSourcesYet")}</p>
       ) : (
         eventCitations.map((citation) => {
           const source = sourceById.get(citation.sourceId);
@@ -364,13 +382,20 @@ function EventCitations({
                 <Badge variant="outline" className="mr-2">
                   {labelFor(options, "confidence", citation.confidence)}
                 </Badge>
-                <span className="font-medium">{source?.title ?? "Unknown source"}</span>
+                <span className="font-medium">
+                  {source?.title ?? t("person.events.unknownSource")}
+                </span>
                 {citation.page && (
-                  <span className="text-muted-foreground"> · p. {citation.page}</span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · {t("person.events.page", { page: citation.page })}
+                  </span>
                 )}
               </div>
               <RemoveButton
-                itemLabel={`this citation of "${source?.title ?? "this source"}"`}
+                itemLabel={t("person.events.thisCitationOf", {
+                  title: source?.title ?? t("person.events.unknownSource"),
+                })}
                 onConfirm={() => void remove(citation.id)}
               />
             </div>

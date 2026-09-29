@@ -13,12 +13,15 @@ import { SectionCard } from "@genealogy/ui/components/section-card";
 import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
 import { cn } from "@genealogy/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
+import type { TFunction } from "i18next";
 import { PlusIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
+import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { formatDisplayDate } from "../../lib/format-date";
 import { labelFor, optionsFor } from "../../lib/person-display";
 import { removeEvent } from "../../server/functions/person.functions";
-import { EVENT_DETAIL_FIELDS, EventForm } from "./-event-form";
+import { eventDetailFields, EventForm } from "./-event-form";
 import type {
   CitationRow,
   ConfigurableOptionRow,
@@ -97,6 +100,7 @@ function ConfidenceDot({ tier, className }: { tier: ConfidenceTier; className?: 
 function formatEventAge(
   birth: HistoricalDate | null | undefined,
   at: HistoricalDate | null | undefined,
+  t: TFunction,
 ): string | null {
   const bornIso = birth?.earliest ?? birth?.latest ?? null;
   const atIso = at?.earliest ?? at?.latest ?? null;
@@ -107,24 +111,33 @@ function formatEventAge(
   if (diffDays <= 0) return null;
   if (diffDays < 365) {
     const weeks = Math.max(1, Math.round(diffDays / 7));
-    return `age ${weeks} wk${weeks === 1 ? "" : "s"}`;
+    return t("person.events.ageWeeks", { count: weeks });
   }
   let age = eventDate.getUTCFullYear() - born.getUTCFullYear();
   const hadBirthday =
     eventDate.getUTCMonth() > born.getUTCMonth() ||
     (eventDate.getUTCMonth() === born.getUTCMonth() && eventDate.getUTCDate() >= born.getUTCDate());
   if (!hadBirthday) age -= 1;
-  return `age ${age}`;
+  return t("person.events.age", { age });
 }
 
 /** "Son of X and Y" — gender-aware, and only for a birth event; derived from the existing Parents card data, not a new field. */
 function parentageLine(
   gender: Gender,
   parents: { given: string; surname: string }[],
+  t: TFunction,
 ): string | null {
   if (parents.length === 0) return null;
-  const noun = gender === "M" ? "Son" : gender === "F" ? "Daughter" : "Child";
-  return `${noun} of ${parents.map((parent) => formatPersonName(parent)).join(" and ")}`;
+  const names = parents
+    .map((parent) => formatPersonName(parent))
+    .join(` ${t("person.events.and")} `);
+  const key =
+    gender === "M"
+      ? "person.events.sonOf"
+      : gender === "F"
+        ? "person.events.daughterOf"
+        : "person.events.childOf";
+  return t(key, { parents: names });
 }
 
 type TimelineEntry =
@@ -163,6 +176,7 @@ export function LifeEventsCard({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const removeEventMutation = useMutation({ mutationFn: removeEvent });
   const topKey = topConfidenceKey(options);
 
@@ -174,7 +188,7 @@ export function LifeEventsCard({
   const spouseName = (union: UnionRow): string => {
     const otherId = union.personAId === personId ? union.personBId : union.personAId;
     const spouse = spouses.find((candidate) => candidate.id === otherId);
-    return spouse ? formatPersonName(spouse) : "Unknown";
+    return spouse ? formatPersonName(spouse) : t("person.events.unknownSpouse");
   };
 
   const entries: TimelineEntry[] = [
@@ -186,20 +200,20 @@ export function LifeEventsCard({
 
   return (
     <SectionCard
-      title="Life events"
+      title={t("person.events.title")}
       titleClassName="text-base"
       contentClassName="space-y-4"
       action={
         <FormDialog
           trigger={
             <Tooltip>
-              <Button variant="outline" size="icon" aria-label="Add event">
+              <Button variant="outline" size="icon" aria-label={t("person.events.addEvent")}>
                 <PlusIcon className="size-4" />
               </Button>
-              <TooltipContent>Add event</TooltipContent>
+              <TooltipContent>{t("person.events.addEvent")}</TooltipContent>
             </Tooltip>
           }
-          title="Add event"
+          title={t("person.events.addEvent")}
         >
           {(close) => (
             <EventForm
@@ -220,17 +234,17 @@ export function LifeEventsCard({
     >
       <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <ConfidenceDot tier="top" /> Primary source
+          <ConfidenceDot tier="top" /> {t("person.events.primarySource")}
         </span>
         <span className="flex items-center gap-1.5">
-          <ConfidenceDot tier="cited" /> Secondary
+          <ConfidenceDot tier="cited" /> {t("person.events.secondary")}
         </span>
         <span className="flex items-center gap-1.5">
-          <ConfidenceDot tier="none" /> Unsourced
+          <ConfidenceDot tier="none" /> {t("person.events.unsourced")}
         </span>
       </div>
       {entries.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No life events recorded yet.</p>
+        <p className="text-sm text-muted-foreground">{t("person.events.noEventsYet")}</p>
       ) : (
         <div className="relative space-y-5">
           <div className="absolute top-1.5 bottom-1.5 left-23 w-px bg-border" aria-hidden="true" />
@@ -316,17 +330,20 @@ function EventTimelineRow({
   onChanged: () => Promise<void>;
   onRemove: () => void;
 }) {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
   const eventCitations = citations.filter(
     (citation) => citation.factType === "event" && citation.factId === event.id,
   );
   const tier = confidenceTier(citations, "event", event.id, topKey);
-  const age = event.eventType === "birth" ? null : formatEventAge(personBirth, event.date);
+  const age = event.eventType === "birth" ? null : formatEventAge(personBirth, event.date, t);
+  const detailFieldsByType = eventDetailFields(t);
   const detailLine = [
-    event.eventType === "birth" ? parentageLine(personGender, parents) : null,
+    event.eventType === "birth" ? parentageLine(personGender, parents, t) : null,
     event.details && Object.keys(event.details).length > 0
       ? Object.entries(event.details)
           .map(([key, value]) => {
-            const label = EVENT_DETAIL_FIELDS[event.eventType]?.find(
+            const label = detailFieldsByType[event.eventType]?.find(
               (field) => field.key === key,
             )?.label;
             return `${label ?? key}: ${value}`;
@@ -337,7 +354,7 @@ function EventTimelineRow({
 
   return (
     <div className="group grid grid-cols-[80px_16px_1fr_auto] items-start gap-x-3 text-sm">
-      <TimelineLead date={formatDisplayDate(event.date)} age={age} tier={tier} />
+      <TimelineLead date={formatDisplayDate(event.date, language)} age={age} tier={tier} />
       <div className="min-w-0">
         <p className="font-medium">
           {event.eventType === "other" && event.label
@@ -357,10 +374,10 @@ function EventTimelineRow({
           <FormDialog
             trigger={
               <Button type="button" variant="ghost" size="sm">
-                Edit
+                {t("common.edit")}
               </Button>
             }
-            title="Edit event"
+            title={t("person.events.editEvent")}
           >
             {(close) => (
               <EventForm
@@ -378,15 +395,17 @@ function EventTimelineRow({
             )}
           </FormDialog>
           <RemoveButton
-            itemLabel={`this ${labelFor(options, "event_type", event.eventType)} event`}
+            itemLabel={t("person.events.thisEventLabel", {
+              type: labelFor(options, "event_type", event.eventType),
+            })}
             onConfirm={onRemove}
           />
         </div>
       </div>
       <Badge variant="outline" className="shrink-0 whitespace-nowrap">
         {eventCitations.length === 0
-          ? "Unsourced"
-          : `${eventCitations.length} ${eventCitations.length === 1 ? "source" : "sources"}`}
+          ? t("person.events.unsourced")
+          : t("person.events.sourceCount", { count: eventCitations.length })}
       </Badge>
     </div>
   );
@@ -408,29 +427,35 @@ function UnionTimelineRow({
   options: ConfigurableOptionRow[];
   topKey: string | null;
 }) {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
   const unionCitations = citations.filter(
     (citation) => citation.factType === "union" && citation.factId === union.id,
   );
   const tier = confidenceTier(citations, "union", union.id, topKey);
-  const age = formatEventAge(personBirth, union.startDate);
+  const age = formatEventAge(personBirth, union.startDate, t);
   const title =
-    union.status === "married" ? "Marriage" : labelFor(options, "union_status", union.status);
+    union.status === "married"
+      ? t("person.events.marriage")
+      : labelFor(options, "union_status", union.status);
 
   return (
     <div className="grid grid-cols-[80px_16px_1fr_auto] items-start gap-x-3 text-sm">
-      <TimelineLead date={formatDisplayDate(union.startDate)} age={age} tier={tier} />
+      <TimelineLead date={formatDisplayDate(union.startDate, language)} age={age} tier={tier} />
       <div className="min-w-0">
         <p className="font-medium">{title}</p>
         {union.startPlace && <p className="text-muted-foreground">{union.startPlace}</p>}
-        <p className="text-xs text-muted-foreground">to {spouseName}</p>
+        <p className="text-xs text-muted-foreground">
+          {t("person.events.toSpouse", { name: spouseName })}
+        </p>
         {union.notes && (
           <MarkdownContent className="text-xs text-muted-foreground">{union.notes}</MarkdownContent>
         )}
       </div>
       <Badge variant="outline" className="shrink-0 whitespace-nowrap">
         {unionCitations.length === 0
-          ? "Unsourced"
-          : `${unionCitations.length} ${unionCitations.length === 1 ? "source" : "sources"}`}
+          ? t("person.events.unsourced")
+          : t("person.events.sourceCount", { count: unionCitations.length })}
       </Badge>
     </div>
   );

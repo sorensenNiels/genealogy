@@ -58,4 +58,15 @@ export class NotificationService {
       .set({ isRead: true })
       .where(eq(notifications.userId, userId));
   }
+
+  /** Scoped by `userId` — same reasoning as `markRead`. */
+  async delete(userId: string, id: string): Promise<void> {
+    await this.db
+      .delete(notifications)
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
+  }
+
+  async deleteAll(userId: string): Promise<void> {
+    await this.db.delete(notifications).where(eq(notifications.userId, userId));
+  }
 }

@@ -5,7 +5,10 @@ import { MarkdownContent } from "@genealogy/ui/components/markdown-content";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 
+import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { formatDisplayDate } from "../../lib/format-date";
 import { labelFor } from "../../lib/person-display";
 import {
@@ -28,6 +31,8 @@ type UnionRow = RouterOutputs["person"]["listUnions"][number];
 type ConfigurableOptionRow = RouterOutputs["settings"]["listOptions"][number];
 
 function PrintRoute() {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
   const { personId } = Route.useParams();
 
   const person = useQuery({
@@ -61,10 +66,14 @@ function PrintRoute() {
   const options = useQuery({ queryKey: ["settings", "listOptions"], queryFn: () => listOptions() });
 
   if (person.isPending) {
-    return <p className="text-muted-foreground">Loading…</p>;
+    return <p className="text-muted-foreground">{t("person.detail.loading")}</p>;
   }
   if (person.isError) {
-    return <p className="text-destructive">Could not load person: {person.error.message}</p>;
+    return (
+      <p className="text-destructive">
+        {t("person.detail.loadError", { message: person.error.message })}
+      </p>
+    );
   }
 
   const record = person.data;
@@ -89,9 +98,9 @@ function PrintRoute() {
           params={{ personId }}
           className="text-sm text-muted-foreground hover:text-foreground"
         >
-          ← Back to record
+          {t("person.print.backToRecord")}
         </Link>
-        <Button onPress={() => window.print()}>Print</Button>
+        <Button onPress={() => window.print()}>{t("person.print.print")}</Button>
       </div>
 
       <div className="space-y-6">
@@ -105,23 +114,29 @@ function PrintRoute() {
         </header>
 
         <section>
-          <h2 className="mb-2 font-semibold">Vitals</h2>
+          <h2 className="mb-2 font-semibold">{t("person.print.vitals")}</h2>
           <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm">
-            <dt className="text-muted-foreground">Gender</dt>
+            <dt className="text-muted-foreground">{t("person.print.gender")}</dt>
             <dd>{record.gender}</dd>
-            <dt className="text-muted-foreground">Born</dt>
+            <dt className="text-muted-foreground">{t("person.print.born")}</dt>
             <dd>
-              {formatDisplayDate(record.birth) ?? "—"}
-              {record.birthPlace ? ` in ${record.birthPlace}` : ""}
+              {formatDisplayDate(record.birth, language) ?? "—"}
+              {record.birthPlace
+                ? ` ${t("person.print.inPlace", { place: record.birthPlace })}`
+                : ""}
             </dd>
-            <dt className="text-muted-foreground">Died</dt>
+            <dt className="text-muted-foreground">{t("person.print.died")}</dt>
             <dd>
-              {record.isLiving ? "Living" : (formatDisplayDate(record.death) ?? "—")}
-              {record.deathPlace ? ` in ${record.deathPlace}` : ""}
+              {record.isLiving
+                ? t("person.livingStatusDeath.living")
+                : (formatDisplayDate(record.death, language) ?? "—")}
+              {record.deathPlace
+                ? ` ${t("person.print.inPlace", { place: record.deathPlace })}`
+                : ""}
             </dd>
             {record.notes && (
               <>
-                <dt className="text-muted-foreground">Notes</dt>
+                <dt className="text-muted-foreground">{t("person.print.notes")}</dt>
                 <dd>
                   <MarkdownContent>{record.notes}</MarkdownContent>
                 </dd>
@@ -132,7 +147,7 @@ function PrintRoute() {
 
         {names.data && names.data.length > 0 && (
           <section>
-            <h2 className="mb-2 font-semibold">Alternate names</h2>
+            <h2 className="mb-2 font-semibold">{t("person.print.alternateNames")}</h2>
             <ul className="space-y-1 text-sm">
               {names.data.map((name) => (
                 <li key={name.id}>
@@ -140,7 +155,9 @@ function PrintRoute() {
                     {labelFor(options.data ?? [], "name_variant_type", name.nameType)}:
                   </span>{" "}
                   {[name.given, name.surname].filter(Boolean).join(" ")}
-                  {name.since ? ` (since ${formatDisplayDate(name.since)})` : ""}
+                  {name.since
+                    ? ` ${t("person.print.since", { date: formatDisplayDate(name.since, language) })}`
+                    : ""}
                   {name.notes && <MarkdownContent className="mt-0.5">{name.notes}</MarkdownContent>}
                 </li>
               ))}
@@ -149,22 +166,33 @@ function PrintRoute() {
         )}
 
         <section>
-          <h2 className="mb-2 font-semibold">Immediate family</h2>
+          <h2 className="mb-2 font-semibold">{t("person.print.immediateFamily")}</h2>
           <div className="grid gap-4 text-sm sm:grid-cols-3">
-            <FamilyList title="Parents" people={parents} options={options.data ?? []} />
             <FamilyList
-              title="Spouses"
+              title={t("person.print.parents")}
+              people={parents}
+              options={options.data ?? []}
+              t={t}
+            />
+            <FamilyList
+              title={t("person.print.spouses")}
               people={spouses}
               unionFor={unionFor}
               options={options.data ?? []}
+              t={t}
             />
-            <FamilyList title="Children" people={children} options={options.data ?? []} />
+            <FamilyList
+              title={t("person.print.children")}
+              people={children}
+              options={options.data ?? []}
+              t={t}
+            />
           </div>
         </section>
 
         {events.data && events.data.length > 0 && (
           <section>
-            <h2 className="mb-2 font-semibold">Life events</h2>
+            <h2 className="mb-2 font-semibold">{t("person.print.lifeEvents")}</h2>
             <ul className="space-y-1 text-sm">
               {events.data.map((event) => (
                 <li key={event.id}>
@@ -172,8 +200,8 @@ function PrintRoute() {
                     {labelFor(options.data ?? [], "event_type", event.eventType)}
                     {event.label ? ` (${event.label})` : ""}:
                   </span>{" "}
-                  {formatDisplayDate(event.date)}
-                  {event.place ? ` in ${event.place}` : ""}
+                  {formatDisplayDate(event.date, language)}
+                  {event.place ? ` ${t("person.print.inPlace", { place: event.place })}` : ""}
                   {event.notes && (
                     <MarkdownContent className="mt-0.5">{event.notes}</MarkdownContent>
                   )}
@@ -185,14 +213,16 @@ function PrintRoute() {
 
         {citationsList.data && citationsList.data.length > 0 && (
           <section>
-            <h2 className="mb-2 font-semibold">Sources</h2>
+            <h2 className="mb-2 font-semibold">{t("person.print.sources")}</h2>
             <ul className="space-y-1 text-sm">
               {citationsList.data.map((citation) => {
                 const source = sourceById.get(citation.sourceId);
                 return (
                   <li key={citation.id}>
-                    {source?.title ?? "Unknown source"}
-                    {citation.page ? `, p. ${citation.page}` : ""}{" "}
+                    {source?.title ?? t("person.events.unknownSource")}
+                    {citation.page
+                      ? `, ${t("person.events.page", { page: citation.page })}`
+                      : ""}{" "}
                     <span className="text-muted-foreground">
                       ({labelFor(options.data ?? [], "confidence", citation.confidence)})
                     </span>
@@ -212,17 +242,19 @@ function FamilyList({
   people,
   unionFor,
   options,
+  t,
 }: {
   title: string;
   people: PersonRow[];
   unionFor?: (id: string) => UnionRow | undefined;
   options: ConfigurableOptionRow[];
+  t: TFunction;
 }) {
   return (
     <div>
       <h3 className="font-medium">{title}</h3>
       {people.length === 0 ? (
-        <p className="text-muted-foreground">None recorded.</p>
+        <p className="text-muted-foreground">{t("person.print.noneRecorded")}</p>
       ) : (
         <ul className="space-y-0.5">
           {people.map((person) => {

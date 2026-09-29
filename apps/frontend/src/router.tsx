@@ -17,7 +17,9 @@ export function getRouter() {
 
   const router = createRouter({
     routeTree,
-    context: { queryClient },
+    // "en" is only the placeholder until the root route's own `beforeLoad`
+    // resolves the real value per request — see __root.tsx.
+    context: { queryClient, language: "en" },
     defaultPreload: "intent",
   });
 

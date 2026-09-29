@@ -1,3 +1,5 @@
+import type { Language } from "./profile.js";
+
 /**
  * A precision-tagged calendar date used inside a `ParsedHistoricalDate` — a
  * single day ("12 MAR 1901"), a month ("MAR 1901"), or a year ("1901"). Each
@@ -34,6 +36,124 @@ export type ParsedHistoricalDate =
   | { kind: "unparsed" };
 
 /**
+ * Everything about reading/writing dates that differs by language — quality
+ * words, "and"/"to" connectors, and month names/abbreviations. Every parsing
+ * and formatting function below takes a `language` (default `"en"`, so every
+ * pre-i18n caller keeps working unchanged) and looks its config up here,
+ * rather than branching on language inline throughout the file.
+ */
+interface DateLanguage {
+  approximate: RegExp;
+  before: RegExp;
+  after: RegExp;
+  between: RegExp;
+  fromTo: RegExp;
+  /** Lowercased 3-letter abbreviation → month number (1-12). */
+  months: Record<string, number>;
+  monthNames: string[];
+  aboutWord: string;
+  beforeWord: string;
+  afterWord: string;
+  betweenWord: string;
+  andWord: string;
+  fromWord: string;
+  toWord: string;
+}
+
+const EN: DateLanguage = {
+  approximate: /^(?:abt|about|circa|c|cal|est|estimated)\.?\s+/i,
+  before: /^(?:bef|before)\.?\s+(.+)$/i,
+  after: /^(?:aft|after)\.?\s+(.+)$/i,
+  between: /^(?:bet|between)\.?\s+(.+?)\s+and\s+(.+)$/i,
+  fromTo: /^from\s+(.+?)\s+to\s+(.+)$/i,
+  months: {
+    jan: 1,
+    feb: 2,
+    mar: 3,
+    apr: 4,
+    may: 5,
+    jun: 6,
+    jul: 7,
+    aug: 8,
+    sep: 9,
+    oct: 10,
+    nov: 11,
+    dec: 12,
+  },
+  monthNames: [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ],
+  aboutWord: "About",
+  beforeWord: "Before",
+  afterWord: "After",
+  betweenWord: "Between",
+  andWord: "and",
+  fromWord: "From",
+  toWord: "to",
+};
+
+/**
+ * Danish month names/abbreviations are all plain ASCII, but the quality
+ * words are not ("før") — safe as literal regex text in a UTF-8 source
+ * file, no charset gymnastics needed.
+ */
+const DA: DateLanguage = {
+  approximate: /^(?:ca|cirka|omkring)\.?\s+/i,
+  before: /^før\.?\s+(.+)$/i,
+  after: /^efter\.?\s+(.+)$/i,
+  between: /^mellem\.?\s+(.+?)\s+og\s+(.+)$/i,
+  fromTo: /^fra\s+(.+?)\s+til\s+(.+)$/i,
+  months: {
+    jan: 1,
+    feb: 2,
+    mar: 3,
+    apr: 4,
+    maj: 5,
+    jun: 6,
+    jul: 7,
+    aug: 8,
+    sep: 9,
+    okt: 10,
+    nov: 11,
+    dec: 12,
+  },
+  monthNames: [
+    "januar",
+    "februar",
+    "marts",
+    "april",
+    "maj",
+    "juni",
+    "juli",
+    "august",
+    "september",
+    "oktober",
+    "november",
+    "december",
+  ],
+  aboutWord: "Cirka",
+  beforeWord: "Før",
+  afterWord: "Efter",
+  betweenWord: "Mellem",
+  andWord: "og",
+  fromWord: "Fra",
+  toWord: "til",
+};
+
+const LANGUAGES: Record<Language, DateLanguage> = { en: EN, da: DA };
+
+/**
  * Reads the free-text wording a source uses for a date ("abt 1854",
  * "12 MAR 1901", "MAR 1901", "1970-11-18", "bef 1920", "BET 1850 AND 1860",
  * "FROM 1900 TO 1905") into a structured, precision-tagged result. This is a
@@ -45,38 +165,42 @@ export type ParsedHistoricalDate =
  * "03/04/1901" (DD/MM vs MM/DD disagree by locale) — those come back
  * `{ kind: "unparsed" }` rather than picking a side.
  */
-export function parseHistoricalDateDetailed(text: string): ParsedHistoricalDate {
+export function parseHistoricalDateDetailed(
+  text: string,
+  language: Language = "en",
+): ParsedHistoricalDate {
+  const lang = LANGUAGES[language];
   const trimmed = text.trim();
   if (trimmed === "") return { kind: "unparsed" };
 
-  const between = BETWEEN.exec(trimmed);
+  const between = lang.between.exec(trimmed);
   if (between) {
-    const start = parseDatePart((between[1] ?? "").trim());
-    const end = parseDatePart((between[2] ?? "").trim());
+    const start = parseDatePart((between[1] ?? "").trim(), lang);
+    const end = parseDatePart((between[2] ?? "").trim(), lang);
     return start && end ? { kind: "between", start, end } : { kind: "unparsed" };
   }
 
-  const fromTo = FROM_TO.exec(trimmed);
+  const fromTo = lang.fromTo.exec(trimmed);
   if (fromTo) {
-    const start = parseDatePart((fromTo[1] ?? "").trim());
-    const end = parseDatePart((fromTo[2] ?? "").trim());
+    const start = parseDatePart((fromTo[1] ?? "").trim(), lang);
+    const end = parseDatePart((fromTo[2] ?? "").trim(), lang);
     return start && end ? { kind: "from-to", start, end } : { kind: "unparsed" };
   }
 
-  const before = BEFORE.exec(trimmed);
+  const before = lang.before.exec(trimmed);
   if (before) {
-    const date = parseDatePart((before[1] ?? "").trim());
+    const date = parseDatePart((before[1] ?? "").trim(), lang);
     return date ? { kind: "before", date } : { kind: "unparsed" };
   }
 
-  const after = AFTER.exec(trimmed);
+  const after = lang.after.exec(trimmed);
   if (after) {
-    const date = parseDatePart((after[1] ?? "").trim());
+    const date = parseDatePart((after[1] ?? "").trim(), lang);
     return date ? { kind: "after", date } : { kind: "unparsed" };
   }
 
-  const isApproximate = APPROXIMATE.test(trimmed);
-  const date = parseDatePart(trimmed.replace(APPROXIMATE, ""));
+  const isApproximate = lang.approximate.test(trimmed);
+  const date = parseDatePart(trimmed.replace(lang.approximate, ""), lang);
   if (!date) return { kind: "unparsed" };
   return { kind: isApproximate ? "about" : "exact", date };
 }
@@ -89,11 +213,14 @@ export function parseHistoricalDateDetailed(text: string): ParsedHistoricalDate 
  * backend, the historical-date backfill script) shouldn't have to unpack a
  * `ParsedHistoricalDate` themselves.
  */
-export function parseHistoricalDate(text: string): {
+export function parseHistoricalDate(
+  text: string,
+  language: Language = "en",
+): {
   earliest: string | null;
   latest: string | null;
 } {
-  return boundsOf(parseHistoricalDateDetailed(text));
+  return boundsOf(parseHistoricalDateDetailed(text, language));
 }
 
 /**
@@ -102,20 +229,24 @@ export function parseHistoricalDate(text: string): {
  * "12 March 1901". Returns null only for `{ kind: "unparsed" }`; callers fall
  * back to the original typed text in that case, never hiding it.
  */
-export function formatHistoricalDate(parsed: ParsedHistoricalDate): string | null {
+export function formatHistoricalDate(
+  parsed: ParsedHistoricalDate,
+  language: Language = "en",
+): string | null {
+  const lang = LANGUAGES[language];
   switch (parsed.kind) {
     case "exact":
-      return formatDatePart(parsed.date);
+      return formatDatePart(parsed.date, lang);
     case "about":
-      return `About ${formatDatePart(parsed.date)}`;
+      return `${lang.aboutWord} ${formatDatePart(parsed.date, lang)}`;
     case "before":
-      return `Before ${formatDatePart(parsed.date)}`;
+      return `${lang.beforeWord} ${formatDatePart(parsed.date, lang)}`;
     case "after":
-      return `After ${formatDatePart(parsed.date)}`;
+      return `${lang.afterWord} ${formatDatePart(parsed.date, lang)}`;
     case "between":
-      return `Between ${formatDatePart(parsed.start)} and ${formatDatePart(parsed.end)}`;
+      return `${lang.betweenWord} ${formatDatePart(parsed.start, lang)} ${lang.andWord} ${formatDatePart(parsed.end, lang)}`;
     case "from-to":
-      return `From ${formatDatePart(parsed.start)} to ${formatDatePart(parsed.end)}`;
+      return `${lang.fromWord} ${formatDatePart(parsed.start, lang)} ${lang.toWord} ${formatDatePart(parsed.end, lang)}`;
     case "unparsed":
       return null;
   }
@@ -127,13 +258,16 @@ export function formatHistoricalDate(parsed: ParsedHistoricalDate): string | nul
  * saves computing the same parse twice for a single field (once for the
  * live preview, once for the submit payload).
  */
-export function resolveHistoricalDate(text: string): {
+export function resolveHistoricalDate(
+  text: string,
+  language: Language = "en",
+): {
   earliest: string | null;
   latest: string | null;
   display: string | null;
 } {
-  const parsed = parseHistoricalDateDetailed(text);
-  return { ...boundsOf(parsed), display: formatHistoricalDate(parsed) };
+  const parsed = parseHistoricalDateDetailed(text, language);
+  return { ...boundsOf(parsed), display: formatHistoricalDate(parsed, language) };
 }
 
 function boundsOf(parsed: ParsedHistoricalDate): {
@@ -156,12 +290,6 @@ function boundsOf(parsed: ParsedHistoricalDate): {
   }
 }
 
-const APPROXIMATE = /^(?:abt|about|circa|c|cal|est|estimated)\.?\s+/i;
-const BEFORE = /^(?:bef|before)\.?\s+(.+)$/i;
-const AFTER = /^(?:aft|after)\.?\s+(.+)$/i;
-const BETWEEN = /^(?:bet|between)\.?\s+(.+?)\s+and\s+(.+)$/i;
-const FROM_TO = /^from\s+(.+?)\s+to\s+(.+)$/i;
-
 /**
  * The five qualities the date-entry UI offers as a dropdown, front of the
  * date field. A deliberate subset of `ParsedHistoricalDate`'s `kind`: there is
@@ -182,15 +310,19 @@ export type DateQuality = "exact" | "about" | "before" | "after" | "between";
  * value: <the whole trimmed text> }` — nothing is lost, it just sits in the
  * plain value box until the user edits it through the new controls.
  */
-export function splitHistoricalDateText(text: string): {
+export function splitHistoricalDateText(
+  text: string,
+  language: Language = "en",
+): {
   quality: DateQuality;
   value: string;
   endValue: string;
 } {
+  const lang = LANGUAGES[language];
   const trimmed = text.trim();
   if (trimmed === "") return { quality: "exact", value: "", endValue: "" };
 
-  const between = BETWEEN.exec(trimmed);
+  const between = lang.between.exec(trimmed);
   if (between) {
     return {
       quality: "between",
@@ -199,14 +331,14 @@ export function splitHistoricalDateText(text: string): {
     };
   }
 
-  const before = BEFORE.exec(trimmed);
+  const before = lang.before.exec(trimmed);
   if (before) return { quality: "before", value: (before[1] ?? "").trim(), endValue: "" };
 
-  const after = AFTER.exec(trimmed);
+  const after = lang.after.exec(trimmed);
   if (after) return { quality: "after", value: (after[1] ?? "").trim(), endValue: "" };
 
-  if (APPROXIMATE.test(trimmed)) {
-    return { quality: "about", value: trimmed.replace(APPROXIMATE, "").trim(), endValue: "" };
+  if (lang.approximate.test(trimmed)) {
+    return { quality: "about", value: trimmed.replace(lang.approximate, "").trim(), endValue: "" };
   }
 
   return { quality: "exact", value: trimmed, endValue: "" };
@@ -222,11 +354,15 @@ export function splitHistoricalDateText(text: string): {
  * make a real date yet (an empty value, or — for `between` — either side
  * empty); callers use that directly as their "is this date empty" check.
  */
-export function joinHistoricalDateText(parts: {
-  quality: DateQuality;
-  value: string;
-  endValue: string;
-}): string | null {
+export function joinHistoricalDateText(
+  parts: {
+    quality: DateQuality;
+    value: string;
+    endValue: string;
+  },
+  language: Language = "en",
+): string | null {
+  const lang = LANGUAGES[language];
   const value = parts.value.trim();
   if (value === "") return null;
 
@@ -234,47 +370,17 @@ export function joinHistoricalDateText(parts: {
     case "exact":
       return value;
     case "about":
-      return `About ${value}`;
+      return `${lang.aboutWord} ${value}`;
     case "before":
-      return `Before ${value}`;
+      return `${lang.beforeWord} ${value}`;
     case "after":
-      return `After ${value}`;
+      return `${lang.afterWord} ${value}`;
     case "between": {
       const endValue = parts.endValue.trim();
-      return endValue === "" ? null : `Between ${value} and ${endValue}`;
+      return endValue === "" ? null : `${lang.betweenWord} ${value} ${lang.andWord} ${endValue}`;
     }
   }
 }
-
-const MONTHS: Record<string, number> = {
-  jan: 1,
-  feb: 2,
-  mar: 3,
-  apr: 4,
-  may: 5,
-  jun: 6,
-  jul: 7,
-  aug: 8,
-  sep: 9,
-  oct: 10,
-  nov: 11,
-  dec: 12,
-};
-
-const MONTH_NAMES = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
 
 const ISO_YEAR_MONTH_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 const ISO_YEAR_MONTH = /^(\d{4})-(\d{2})$/;
@@ -282,7 +388,7 @@ const DAY_MONTH_YEAR = /^(\d{1,2})\s+([A-Za-z]{3,9})\.?\s+(\d{3,4})$/;
 const MONTH_YEAR = /^([A-Za-z]{3,9})\.?\s+(\d{3,4})$/;
 const YEAR_ONLY = /^(\d{3,4})$/;
 
-function parseDatePart(text: string): ParsedDatePart | null {
+function parseDatePart(text: string, lang: DateLanguage): ParsedDatePart | null {
   const isoYearMonthDay = ISO_YEAR_MONTH_DAY.exec(text);
   if (isoYearMonthDay) {
     const year = Number(isoYearMonthDay[1]);
@@ -303,7 +409,7 @@ function parseDatePart(text: string): ParsedDatePart | null {
   const dayMonthYear = DAY_MONTH_YEAR.exec(text);
   if (dayMonthYear) {
     const day = Number(dayMonthYear[1]);
-    const month = monthNumber(dayMonthYear[2] ?? "");
+    const month = monthNumber(dayMonthYear[2] ?? "", lang);
     const year = Number(dayMonthYear[3]);
     if (month === null || day < 1 || day > lastDayOfMonth(year, month)) return null;
     return dayPart(year, month, day);
@@ -311,7 +417,7 @@ function parseDatePart(text: string): ParsedDatePart | null {
 
   const monthYear = MONTH_YEAR.exec(text);
   if (monthYear) {
-    const month = monthNumber(monthYear[1] ?? "");
+    const month = monthNumber(monthYear[1] ?? "", lang);
     const year = Number(monthYear[2]);
     if (month === null) return null;
     return monthPart(year, month);
@@ -353,18 +459,18 @@ function yearPart(year: number): ParsedDatePart {
   };
 }
 
-function formatDatePart(part: ParsedDatePart): string {
+function formatDatePart(part: ParsedDatePart, lang: DateLanguage): string {
   if (part.precision === "day" && part.month !== null && part.day !== null) {
-    return `${part.day} ${MONTH_NAMES[part.month - 1]} ${part.year}`;
+    return `${part.day} ${lang.monthNames[part.month - 1]} ${part.year}`;
   }
   if (part.precision === "month" && part.month !== null) {
-    return `${MONTH_NAMES[part.month - 1]} ${part.year}`;
+    return `${lang.monthNames[part.month - 1]} ${part.year}`;
   }
   return `${part.year}`;
 }
 
-function monthNumber(name: string): number | null {
-  return MONTHS[name.slice(0, 3).toLowerCase()] ?? null;
+function monthNumber(name: string, lang: DateLanguage): number | null {
+  return lang.months[name.slice(0, 3).toLowerCase()] ?? null;
 }
 
 function lastDayOfMonth(year: number, month: number): number {

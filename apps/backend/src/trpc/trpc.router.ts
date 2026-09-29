@@ -4,7 +4,9 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 
 import { AUTH, type Auth } from "../auth/auth.module.js";
 import { BackupRouter } from "../backup/backup.router.js";
+import { GedcomRouter } from "../gedcom/gedcom.router.js";
 import { ImmichRouter } from "../immich/immich.router.js";
+import { IntegrityRouter } from "../integrity/integrity.router.js";
 import { MailRouter } from "../mail/mail.router.js";
 import { NotificationRouter } from "../notification/notification.router.js";
 import { PersonRouter } from "../person/person.router.js";
@@ -31,6 +33,8 @@ export class TrpcRouter {
     private readonly mail: MailRouter,
     private readonly notification: NotificationRouter,
     private readonly backup: BackupRouter,
+    private readonly gedcom: GedcomRouter,
+    private readonly integrity: IntegrityRouter,
     @Inject(AUTH) private readonly auth: Auth,
   ) {}
 
@@ -50,6 +54,8 @@ export class TrpcRouter {
       mail: this.mail.build(),
       notification: this.notification.build(),
       backup: this.backup.build(),
+      gedcom: this.gedcom.build(),
+      integrity: this.integrity.build(),
     });
   }
 

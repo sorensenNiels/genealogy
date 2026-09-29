@@ -34,9 +34,12 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
+import type { TFunction } from "i18next";
 import { Network, Trash2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
+import { toSupportedLanguage, type SupportedLanguage } from "../../i18n/create-i18n-instance";
 import { publicBackendUrl } from "../../lib/env";
 import { formatDisplayDate } from "../../lib/format-date";
 import {
@@ -44,7 +47,7 @@ import {
   GenderIcon,
   initials,
   labelFor,
-  GENDER_LABELS,
+  genderLabel,
 } from "../../lib/person-display";
 import { createPerson, listPersons, removePerson } from "../../server/functions/person.functions";
 import { listOptions } from "../../server/functions/settings.functions";
@@ -59,12 +62,14 @@ type ConfigurableOptionRow = Awaited<ReturnType<typeof listOptions>>[number];
 // Mirrors apps/backend/src/person/person.router.ts's local `listInput`.
 type SortOption = "surname_asc" | "given_asc" | "birth_asc" | "birth_desc";
 
-const SORT_LABELS: Record<SortOption, string> = {
-  surname_asc: "Surname A-Z",
-  given_asc: "Given name A-Z",
-  birth_asc: "Birth date (oldest first)",
-  birth_desc: "Birth date (newest first)",
-};
+function sortLabels(t: TFunction): Record<SortOption, string> {
+  return {
+    surname_asc: t("people.sort.surnameAsc"),
+    given_asc: t("people.sort.givenAsc"),
+    birth_asc: t("people.sort.birthAsc"),
+    birth_desc: t("people.sort.birthDesc"),
+  };
+}
 
 // `features`/`helper` have no dependency on fetched data and stay module
 // scope; `columns` itself is built inside the component (see its `useMemo`)
@@ -75,6 +80,7 @@ const helper = createColumnHelper<typeof features, PersonListItem>();
 const PAGE_SIZE = 50;
 
 function People() {
+  const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -104,8 +110,11 @@ function People() {
   // 1900" resolves to the earliest possible day compatible with whatever was
   // typed/picked, "born before 1900" to the latest, so a bare year still
   // filters sensibly instead of requiring an exact day.
-  const bornAfterIso = bornAfter.trim() === "" ? null : resolveHistoricalDate(bornAfter).earliest;
-  const bornBeforeIso = bornBefore.trim() === "" ? null : resolveHistoricalDate(bornBefore).latest;
+  const language = toSupportedLanguage(i18n.language);
+  const bornAfterIso =
+    bornAfter.trim() === "" ? null : resolveHistoricalDate(bornAfter, language).earliest;
+  const bornBeforeIso =
+    bornBefore.trim() === "" ? null : resolveHistoricalDate(bornBefore, language).latest;
 
   const listInput = {
     limit: PAGE_SIZE,
@@ -135,7 +144,10 @@ function People() {
     },
   });
 
-  const columns = useMemo(() => buildColumns(options.data ?? EMPTY_OPTIONS), [options.data]);
+  const columns = useMemo(
+    () => buildColumns(options.data ?? EMPTY_OPTIONS, t, language),
+    [options.data, t, language],
+  );
 
   // The table needs a stable array; an inline `?? []` would be a new one each render.
   const rows = people.data?.items ?? EMPTY_ROWS;
@@ -147,78 +159,80 @@ function People() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold">People</h1>
+          <h1 className="text-2xl font-semibold">{t("people.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            {people.data ? `${people.data.total} people in this tree` : "Loading…"}
+            {people.data
+              ? t("people.countInTree", { count: people.data.total })
+              : t("common.loading")}
           </p>
         </div>
         <Button
           isDisabled={createPersonMutation.isPending}
           onPress={() => createPersonMutation.mutate({ data: {} })}
         >
-          {createPersonMutation.isPending ? "Adding…" : "Add person"}
+          {createPersonMutation.isPending ? t("people.adding") : t("people.addPerson")}
         </Button>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         <SectionCard
           className="h-fit"
-          title="Filters"
+          title={t("common.filters")}
           titleClassName="text-base"
           contentClassName="space-y-4"
           action={
             <Button type="button" variant="ghost" size="sm" onPress={resetFilters}>
-              Reset
+              {t("common.reset")}
             </Button>
           }
         >
-          <LabeledField label="Birth or death place" asDiv>
+          <LabeledField label={t("people.filterPlace")} asDiv>
             <Input
               value={place}
               onChange={(event) => {
                 setPlace(event.target.value);
                 resetToFirstPage();
               }}
-              aria-label="Filter by birth or death place"
+              aria-label={t("people.filterPlace")}
             />
           </LabeledField>
 
-          <LabeledField label="Born after" asDiv>
+          <LabeledField label={t("people.bornAfter")} asDiv>
             <HistoricalDateInput
-              aria-label="Born after"
+              aria-label={t("people.bornAfter")}
               value={bornAfter}
               onChange={(value) => {
                 setBornAfter(value);
                 resetToFirstPage();
               }}
-              preview={historicalDatePreview(bornAfter)}
+              preview={historicalDatePreview(bornAfter, language)}
             />
           </LabeledField>
 
-          <LabeledField label="Born before" asDiv>
+          <LabeledField label={t("people.bornBefore")} asDiv>
             <HistoricalDateInput
-              aria-label="Born before"
+              aria-label={t("people.bornBefore")}
               value={bornBefore}
               onChange={(value) => {
                 setBornBefore(value);
                 resetToFirstPage();
               }}
-              preview={historicalDatePreview(bornBefore)}
+              preview={historicalDatePreview(bornBefore, language)}
             />
           </LabeledField>
 
-          <LabeledField label="Gender" asDiv>
+          <LabeledField label={t("common.gender.label")} asDiv>
             <ButtonRadioGroup
-              aria-label="Filter by gender"
+              aria-label={t("people.filterGender")}
               value={gender}
               onChange={(value) => {
                 setGender(value);
                 resetToFirstPage();
               }}
               options={[
-                { value: "all", label: "All" },
-                { value: "M", label: "Male" },
-                { value: "F", label: "Female" },
+                { value: "all", label: t("people.genderAll") },
+                { value: "M", label: t("common.gender.M") },
+                { value: "F", label: t("common.gender.F") },
               ]}
             />
           </LabeledField>
@@ -229,16 +243,16 @@ function People() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <Input
                 className="max-w-xs"
-                placeholder="Search by name"
+                placeholder={t("people.searchByName")}
                 value={search}
                 onChange={(event) => {
                   setSearch(event.target.value);
                   resetToFirstPage();
                 }}
-                aria-label="Search people by name"
+                aria-label={t("people.searchByName")}
               />
               <Select
-                aria-label="Sort"
+                aria-label={t("people.sortLabel")}
                 value={sort}
                 onChange={(value) => {
                   if (value) {
@@ -251,7 +265,7 @@ function People() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(SORT_LABELS).map(([value, label]) => (
+                  {Object.entries(sortLabels(t)).map(([value, label]) => (
                     <SelectItem key={value} id={value}>
                       {label}
                     </SelectItem>
@@ -262,12 +276,12 @@ function People() {
 
             {people.isError && (
               <p className="text-sm text-destructive">
-                Could not load people: {people.error.message}
+                {t("people.loadError", { message: people.error.message })}
               </p>
             )}
 
             <p className="text-sm text-muted-foreground">
-              Showing {rows.length} of {total} people
+              {t("people.showingCount", { shown: rows.length, total })}
             </p>
 
             <Table>
@@ -305,7 +319,7 @@ function People() {
                       colSpan={columns.length}
                       className="py-8 text-center text-muted-foreground"
                     >
-                      No one matches these filters.
+                      {t("people.noMatches")}
                     </TableCell>
                   </TableRow>
                 )}
@@ -313,9 +327,7 @@ function People() {
             </Table>
 
             <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <p>
-                Page {page + 1} of {totalPages}
-              </p>
+              <p>{t("people.pageOf", { page: page + 1, totalPages })}</p>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
@@ -323,7 +335,7 @@ function People() {
                   isDisabled={page === 0}
                   onPress={() => setPage((current) => current - 1)}
                 >
-                  Previous
+                  {t("people.previous")}
                 </Button>
                 <Button
                   variant="outline"
@@ -331,7 +343,7 @@ function People() {
                   isDisabled={offset + PAGE_SIZE >= total}
                   onPress={() => setPage((current) => current + 1)}
                 >
-                  Next
+                  {t("people.next")}
                 </Button>
               </div>
             </div>
@@ -342,11 +354,12 @@ function People() {
   );
 }
 
-function buildColumns(options: ConfigurableOptionRow[]) {
+function buildColumns(options: ConfigurableOptionRow[], t: TFunction, language: SupportedLanguage) {
+  const dash = "—";
   return helper.columns([
     helper.accessor((row) => formatPersonName(row), {
       id: "name",
-      header: "Person",
+      header: t("people.columnPerson"),
       cell: (context) => {
         const person = context.row.original;
         const photoUrl = person.photoPath
@@ -371,60 +384,66 @@ function buildColumns(options: ConfigurableOptionRow[]) {
     }),
     helper.accessor("gender", {
       id: "gender",
-      header: "Gender",
+      header: t("common.gender.label"),
       cell: (context) => (
         <span className="flex items-center gap-1.5">
           <GenderIcon gender={context.getValue()} className="size-4" />
-          {GENDER_LABELS[context.getValue()]}
+          {genderLabel(context.getValue(), t)}
         </span>
       ),
     }),
     helper.accessor("isLiving", {
       id: "status",
-      header: "Status",
+      header: t("people.columnStatus"),
       cell: (context) => (
         <Badge variant={context.getValue() ? "secondary" : "outline"}>
-          {context.getValue() ? "Living" : "Deceased"}
+          {context.getValue() ? t("people.living") : t("people.deceased")}
         </Badge>
       ),
     }),
     helper.accessor((row) => calculateAge(row), {
       id: "age",
-      header: "Age",
-      cell: (context) => context.getValue() ?? "—",
+      header: t("people.columnAge"),
+      cell: (context) => context.getValue() ?? dash,
     }),
-    helper.accessor((row) => formatLifespan(row) ?? "—", { id: "lifespan", header: "Lifespan" }),
-    helper.accessor((row) => formatDisplayDate(row.birth) ?? "—", {
+    helper.accessor((row) => formatLifespan(row) ?? dash, {
+      id: "lifespan",
+      header: t("people.columnLifespan"),
+    }),
+    helper.accessor((row) => formatDisplayDate(row.birth, language) ?? dash, {
       id: "born",
-      header: "Born",
+      header: t("people.columnBorn"),
     }),
-    helper.accessor((row) => (row.isLiving ? "—" : (formatDisplayDate(row.death) ?? "—")), {
-      id: "died",
-      header: "Died",
-    }),
-    helper.accessor((row) => row.birthPlace ?? row.deathPlace ?? "—", {
+    helper.accessor(
+      (row) => (row.isLiving ? dash : (formatDisplayDate(row.death, language) ?? dash)),
+      {
+        id: "died",
+        header: t("people.columnDied"),
+      },
+    ),
+    helper.accessor((row) => row.birthPlace ?? row.deathPlace ?? dash, {
       id: "place",
-      header: "Place",
+      header: t("common.place"),
     }),
     helper.display({
       id: "parents",
-      header: "Parents",
+      header: t("people.columnParents"),
       cell: (context) => {
         const parents = context.row.original.parents;
-        if (parents.length === 0) return "—";
+        if (parents.length === 0) return dash;
         return parents.map((parent) => `${parent.given} ${parent.surname}`.trim()).join(", ");
       },
     }),
     helper.display({
       id: "sources",
-      header: "Sources",
+      header: t("people.columnSources"),
       cell: (context) => {
         const { citationCount, topConfidence } = context.row.original;
         if (citationCount === 0) {
           return (
             <span className="flex items-center gap-1.5 text-muted-foreground">
               <span className="size-2 rounded-full bg-muted-foreground/40" aria-hidden="true" />
-              Unsourced
+              {t("people.unsourced")}
             </span>
           );
         }
@@ -438,7 +457,7 @@ function buildColumns(options: ConfigurableOptionRow[]) {
     }),
     helper.accessor("publicId", {
       id: "publicId",
-      header: "ID",
+      header: t("people.columnId"),
       cell: (context) => <CopyableText value={context.getValue()} />,
     }),
     helper.display({
@@ -455,12 +474,13 @@ function buildColumns(options: ConfigurableOptionRow[]) {
 }
 
 function ViewInTreeAction({ person }: { person: PersonListItem }) {
+  const { t } = useTranslation();
   return (
     <Link
       to="/tree"
       search={{ personId: person.id }}
       className={buttonVariants({ variant: "ghost", size: "icon" })}
-      aria-label={`View ${formatPersonName(person)} in tree`}
+      aria-label={t("people.viewInTree", { name: formatPersonName(person) })}
     >
       <Network className="size-4 text-muted-foreground" />
     </Link>
@@ -469,6 +489,7 @@ function ViewInTreeAction({ person }: { person: PersonListItem }) {
 
 /** Hidden outright when `hasRelations` is set — the backend enforces the same rule in `remove`. */
 function DeletePersonAction({ person }: { person: PersonListItem }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const removePersonMutation = useMutation({
     mutationFn: removePerson,
@@ -485,15 +506,15 @@ function DeletePersonAction({ person }: { person: PersonListItem }) {
     <div className="flex flex-col items-end gap-1">
       <RemoveButton
         itemLabel={formatPersonName(person)}
-        title={`Delete ${formatPersonName(person)}?`}
-        description="This permanently removes them and everything recorded about them — alternate names, life events, sources and citations. This cannot be undone."
-        actionLabel="Delete"
+        title={t("people.deleteTitle", { name: formatPersonName(person) })}
+        description={t("people.deleteDescription")}
+        actionLabel={t("common.delete")}
         onConfirm={() => removePersonMutation.mutate({ data: { id: person.id } })}
         trigger={
           <Button
             variant="ghost"
             size="icon"
-            aria-label={`Delete ${formatPersonName(person)}`}
+            aria-label={t("people.deleteAriaLabel", { name: formatPersonName(person) })}
             isDisabled={removePersonMutation.isPending}
           >
             <Trash2Icon className="size-4 text-destructive" />

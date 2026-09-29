@@ -49,15 +49,20 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@genealogy/ui/components/dropdown-menu";
+import { FaceBoxOverlay, type FaceBox } from "@genealogy/ui/components/face-box-overlay";
+import { FileDropZone } from "@genealogy/ui/components/file-drop-zone";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import {
   HistoricalDateInput,
   type HistoricalDateQuality,
 } from "@genealogy/ui/components/historical-date-input";
+import { ImageCropDialog } from "@genealogy/ui/components/image-crop-dialog";
+import { ImageViewer } from "@genealogy/ui/components/image-viewer";
 import { Input } from "@genealogy/ui/components/input";
 import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { MarkdownContent } from "@genealogy/ui/components/markdown-content";
 import { MarkdownEditor } from "@genealogy/ui/components/markdown-editor";
+import { PhotoGrid, type Selection } from "@genealogy/ui/components/photo-grid";
 import { Popover, PopoverContent } from "@genealogy/ui/components/popover";
 import { ProgressBar } from "@genealogy/ui/components/progress-bar";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
@@ -87,6 +92,7 @@ import {
   TabsPanels,
   TabsTrigger,
 } from "@genealogy/ui/components/tabs";
+import { TagInput } from "@genealogy/ui/components/tag-input";
 import { ThemeToggle } from "@genealogy/ui/components/theme-toggle";
 import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
 import { createFileRoute } from "@tanstack/react-router";
@@ -104,6 +110,24 @@ const SAMPLE_PEOPLE = [
   { id: "1", name: "Anne Marie Sørensen" },
   { id: "2", name: "Niels Sørensen" },
   { id: "3", name: "Karen Sørensen" },
+];
+
+/** A flat placeholder rectangle — avoids depending on a real photo (or network access) just to demo FaceBoxOverlay/ImageViewer. */
+const PLACEHOLDER_IMAGE =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300'%3E%3Crect width='100%25' height='100%25' fill='%23cbd5e1'/%3E%3C/svg%3E";
+
+const SAMPLE_FACE_BOXES: FaceBox[] = [
+  {
+    id: "1",
+    left: 0.12,
+    top: 0.18,
+    width: 0.18,
+    height: 0.24,
+    label: "Karen Sørensen",
+    state: "linked",
+  },
+  { id: "2", left: 0.55, top: 0.2, width: 0.18, height: 0.24, state: "untagged" },
+  { id: "3", left: 0.35, top: 0.55, width: 0.16, height: 0.22, state: "unknown" },
 ];
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -181,12 +205,80 @@ function ButtonRadioGroupDemo() {
   );
 }
 
+function ImageViewerDemo() {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <>
+      <Button variant="outline" onPress={() => setIsOpen(true)}>
+        Open image viewer
+      </Button>
+      <ImageViewer
+        isOpen={isOpen}
+        onOpenChange={setIsOpen}
+        title="Family photo, 1962"
+        onPrevious={() => {}}
+        onNext={() => {}}
+      >
+        <img src={PLACEHOLDER_IMAGE} alt="Family, 1962" />
+      </ImageViewer>
+    </>
+  );
+}
+
+function ImageCropDialogDemo() {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <>
+      <Button variant="outline" onPress={() => setIsOpen(true)}>
+        Open cropper
+      </Button>
+      <ImageCropDialog
+        isOpen={isOpen}
+        onOpenChange={setIsOpen}
+        imageSrc={PLACEHOLDER_IMAGE}
+        onCropped={() => setIsOpen(false)}
+      />
+    </>
+  );
+}
+
+const PHOTO_GRID_COLORS = ["#f87171", "#fb923c", "#facc15", "#4ade80", "#38bdf8", "#a78bfa"];
+
+function PhotoGridDemo() {
+  const [items, setItems] = useState(
+    PHOTO_GRID_COLORS.map((color, index) => ({ id: `swatch-${index}`, color })),
+  );
+  const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set());
+
+  return (
+    <div className="max-w-md space-y-2">
+      <PhotoGrid
+        aria-label="Sample photos"
+        items={items}
+        selectedKeys={selectedKeys}
+        onSelectionChange={setSelectedKeys}
+        onItemAction={(id) => alert(`Opening ${id}`)}
+        onReorder={(orderedIds) => {
+          const byId = new Map(items.map((item) => [item.id, item]));
+          setItems(orderedIds.map((id) => byId.get(id)!));
+        }}
+      >
+        {(item) => <div className="size-full" style={{ backgroundColor: item.color }} />}
+      </PhotoGrid>
+      <p className="text-xs text-muted-foreground">
+        Drag the handle to reorder, or use the checkbox to multi-select.
+      </p>
+    </div>
+  );
+}
+
 function ComponentsShowcase() {
   const [query, setQuery] = useState("");
   const [switchOn, setSwitchOn] = useState(true);
   const [checked, setChecked] = useState(true);
   const [titlePrefix, setTitlePrefix] = useState("");
   const [suffix, setSuffix] = useState("Jr.");
+  const [demoTags, setDemoTags] = useState<string[]>(["Scanned", "1970s"]);
   const [notes, setNotes] = useState("Known as **Grandpa Joe** — served in the *merchant navy*.");
 
   const options = SAMPLE_PEOPLE.filter((person) =>
@@ -237,6 +329,10 @@ function ComponentsShowcase() {
         <ProgressBar label="Research completeness" value={20} className="max-w-56" />
         <ProgressBar label="Research completeness" value={78} className="max-w-56" />
         <ProgressBar label="Research completeness" value={100} className="max-w-56" />
+      </Section>
+
+      <Section title="File Drop Zone">
+        <FileDropZone onFilesSelected={() => {}} acceptedFileTypes={["image/*"]} className="w-80" />
       </Section>
 
       <Section title="Badge">
@@ -354,6 +450,17 @@ function ComponentsShowcase() {
         </div>
       </Section>
 
+      <Section title="Tag input">
+        <div className="w-72 space-y-1">
+          <p className="text-xs text-muted-foreground">Album tags</p>
+          <TagInput
+            value={demoTags}
+            onChange={setDemoTags}
+            suggestions={["Scanned", "1970s", "iPhone import", "Family reunion", "Wedding"]}
+          />
+        </div>
+      </Section>
+
       <Section title="Switch">
         <Switch isSelected={switchOn} onChange={setSwitchOn}>
           Living
@@ -379,6 +486,28 @@ function ComponentsShowcase() {
           <AvatarImage src="/does-not-exist.png" alt="" />
           <AvatarFallback>AS</AvatarFallback>
         </Avatar>
+      </Section>
+
+      <Section title="Face Box Overlay">
+        <FaceBoxOverlay
+          src={PLACEHOLDER_IMAGE}
+          alt="Family, 1962"
+          boxes={SAMPLE_FACE_BOXES}
+          onUnlinkPress={(id) => alert(`Unlink ${id}`)}
+          className="max-w-md"
+        />
+      </Section>
+
+      <Section title="Image Viewer">
+        <ImageViewerDemo />
+      </Section>
+
+      <Section title="Image Crop Dialog">
+        <ImageCropDialogDemo />
+      </Section>
+
+      <Section title="Photo Grid">
+        <PhotoGridDemo />
       </Section>
 
       <Section title="Tooltip">

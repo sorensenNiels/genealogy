@@ -32,6 +32,10 @@ const envSchema = z.object({
    * there's nothing to mount as a persistent volume in production.
    */
   BACKUPS_DIR: z.string().default("./data/backups"),
+  /** Where a queued album/library zip download waits for its notification to be acted on — same lifecycle as `BACKUPS_DIR`. */
+  ALBUM_ZIPS_DIR: z.string().default("./data/album-zips"),
+  /** Disk-streamed cap for a re-uploaded backup file on the Tools page's restore flow — same reasoning as `IMMICH_MAX_UPLOAD_BYTES`, just a much larger default since a whole-database dump is bigger than a photo. */
+  RESTORE_MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(524_288_000), // 500MB
 
   // Both optional and unset by default: Immich (see "Photos & albums via
   // Immich" in FEATURES.md) is opt-in infrastructure (docker-compose's
@@ -41,8 +45,16 @@ const envSchema = z.object({
   // over a missing key the way it would for, say, DATABASE_URL.
   /** This app's own server-side base URL for Immich's REST API — never sent to the browser. */
   IMMICH_URL: z.string().trim().min(1).optional(),
-  /** Generated once by hand in Immich's own web UI (Settings > API keys); this app never creates one. */
+  /**
+   * Generated once by hand in Immich's own web UI (Settings > API keys);
+   * this app never creates one. Must carry write scopes
+   * (`asset.upload`, `album.create`, `album.update`, `album.assetCreate`,
+   * `person.create`, `face.update`) as of the album/upload/face-tagging
+   * feature — a read-only key 403s on every one of those calls.
+   */
   IMMICH_API_KEY: z.string().trim().min(1).optional(),
+  /** Disk-streamed cap for photos uploaded through this app into Immich — same disk-not-memory reasoning as `BackupService`'s own `pg_dump` streaming. */
+  IMMICH_MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(52_428_800), // 50MB
 
   // Optional, same reasoning as the Immich pair above: `MailService` checks
   // `isConfigured()` and falls back to logging instead of sending when

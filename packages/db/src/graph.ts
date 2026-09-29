@@ -266,6 +266,35 @@ export async function deletePersonNode(
   );
 }
 
+/** Every `Person` node's id — the graph half of the two-store consistency check (`IntegrityService.checkGraphConsistency`), diffed in JS against every `persons.id` in Postgres. No existing function lists the whole graph unfiltered; every other one here takes a specific id or bounded id list. */
+export async function allPersonNodeIds(
+  pool: Pool,
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<string[]> {
+  const rows = await cypher<{ id: string }>(
+    pool,
+    `MATCH (p:Person) RETURN p.id AS id`,
+    ["id"],
+    options,
+  );
+  return rows.map((row) => row.id);
+}
+
+/** Every `PARENT_OF` edge in the graph — the GEDCOM exporter's source of FAM/CHIL groupings, which needs the whole tree's edges at once rather than one person's parents/children at a time. */
+export async function allParentOfEdges(
+  pool: Pool,
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<{ parentId: string; childId: string; parentage: Parentage }[]> {
+  const rows = await cypher<{ parentId: string; childId: string; parentage: Parentage }>(
+    pool,
+    `MATCH (parent:Person)-[r:PARENT_OF]->(child:Person)
+     RETURN parent.id AS parentId, child.id AS childId, r.parentage AS parentage`,
+    ["parentId", "childId", "parentage"],
+    options,
+  );
+  return rows;
+}
+
 /**
  * Walks up the tree. `maxGenerations` is capped rather than optional because a
  * badly-sourced tree can contain a cycle (a person recorded as their own

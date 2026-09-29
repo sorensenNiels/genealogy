@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PencilIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
   addUserNote,
@@ -28,6 +29,7 @@ type UserNoteRow = Awaited<ReturnType<typeof listUserNotes>>[number];
 const LIST_NOTES_KEY = ["userNote", "list"];
 
 function NotesRoute() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const notes = useQuery({ queryKey: LIST_NOTES_KEY, queryFn: () => listUserNotes() });
 
@@ -38,14 +40,14 @@ function NotesRoute() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">My Notes</h1>
+        <h1 className="text-2xl font-semibold">{t("notes.title")}</h1>
         <FormDialog
           trigger={
             <Button>
-              <PlusIcon className="size-4" /> Add note
+              <PlusIcon className="size-4" /> {t("notes.addNote")}
             </Button>
           }
-          title="Add note"
+          title={t("notes.addNote")}
         >
           {(close) => (
             <NoteForm
@@ -59,14 +61,14 @@ function NotesRoute() {
         </FormDialog>
       </div>
 
-      {notes.isPending && <p className="text-sm text-muted-foreground">Loading…</p>}
+      {notes.isPending && <p className="text-sm text-muted-foreground">{t("common.loading")}</p>}
       {notes.isError && (
-        <p className="text-sm text-destructive">Could not load notes: {notes.error.message}</p>
+        <p className="text-sm text-destructive">
+          {t("notes.loadError", { message: notes.error.message })}
+        </p>
       )}
       {notes.data && notes.data.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No notes yet — add one to keep track of anything that doesn't belong on a person record.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("notes.empty")}</p>
       )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -79,6 +81,7 @@ function NotesRoute() {
 }
 
 function NoteCard({ note, onChanged }: { note: UserNoteRow; onChanged: () => Promise<void> }) {
+  const { t } = useTranslation();
   const removeNoteMutation = useMutation({ mutationFn: removeUserNote });
 
   const remove = async () => {
@@ -88,18 +91,18 @@ function NoteCard({ note, onChanged }: { note: UserNoteRow; onChanged: () => Pro
 
   return (
     <SectionCard
-      title={note.title.trim() === "" ? "Untitled" : note.title}
+      title={note.title.trim() === "" ? t("notes.untitled") : note.title}
       titleClassName="text-base"
       contentClassName="max-h-64 overflow-y-auto"
       footerClassName="justify-end"
       action={
         <FormDialog
           trigger={
-            <Button type="button" variant="ghost" size="icon" aria-label="Edit note">
+            <Button type="button" variant="ghost" size="icon" aria-label={t("notes.editNote")}>
               <PencilIcon className="size-4" />
             </Button>
           }
-          title="Edit note"
+          title={t("notes.editNote")}
         >
           {(close) => (
             <NoteForm
@@ -114,7 +117,7 @@ function NoteCard({ note, onChanged }: { note: UserNoteRow; onChanged: () => Pro
       }
       footer={
         <RemoveButton
-          itemLabel={note.title.trim() === "" ? "this note" : `"${note.title}"`}
+          itemLabel={note.title.trim() === "" ? t("notes.thisNote") : `"${note.title}"`}
           onConfirm={() => void remove()}
         />
       }
@@ -128,6 +131,7 @@ function NoteCard({ note, onChanged }: { note: UserNoteRow; onChanged: () => Pro
 }
 
 function NoteForm({ note, onDone }: { note: UserNoteRow | null; onDone: () => Promise<void> }) {
+  const { t } = useTranslation();
   const addNoteMutation = useMutation({ mutationFn: addUserNote });
   const updateNoteMutation = useMutation({ mutationFn: updateUserNote });
   const [title, setTitle] = useState(note?.title ?? "");
@@ -157,15 +161,15 @@ function NoteForm({ note, onDone }: { note: UserNoteRow | null; onDone: () => Pr
       }}
     >
       <Input
-        placeholder="Title (optional)"
+        placeholder={t("notes.titleOptional")}
         value={title}
         onChange={(event) => setTitle(event.target.value)}
       />
-      <MarkdownEditor value={body} onChange={setBody} aria-label="Note" />
+      <MarkdownEditor value={body} onChange={setBody} aria-label={t("notes.note")} />
       {submitError && <p className="text-sm text-destructive">{submitError.message}</p>}
       <DialogFooter>
         <SaveButton isDirty={canSubmit} isPending={isPending} isDisabled={!canSubmit}>
-          {note ? "Save" : "Add"}
+          {note ? t("common.save") : t("common.add")}
         </SaveButton>
       </DialogFooter>
     </form>

@@ -1,6 +1,7 @@
 import { formatFullPersonName } from "@genealogy/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 
 import {
   getPersonById,
@@ -36,6 +37,7 @@ export const Route = createFileRoute("/people/$personId")({
  * and wiring one `refresh` callback everything below can call after a write.
  */
 function PersonDetailRoute() {
+  const { t } = useTranslation();
   const { personId } = Route.useParams();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -91,10 +93,14 @@ function PersonDetailRoute() {
   };
 
   if (person.isPending) {
-    return <p className="text-muted-foreground">Loading…</p>;
+    return <p className="text-muted-foreground">{t("person.detail.loading")}</p>;
   }
   if (person.isError) {
-    return <p className="text-destructive">Could not load person: {person.error.message}</p>;
+    return (
+      <p className="text-destructive">
+        {t("person.detail.loadError", { message: person.error.message })}
+      </p>
+    );
   }
 
   const parents = relatives.data?.parents ?? [];
@@ -123,10 +129,10 @@ function PersonDetailRoute() {
       <div className="flex items-center justify-between gap-4">
         <nav
           className="flex items-center gap-1.5 text-sm text-muted-foreground"
-          aria-label="Breadcrumb"
+          aria-label={t("person.detail.breadcrumb")}
         >
           <Link to="/people" className="hover:text-foreground">
-            People
+            {t("people.title")}
           </Link>
           <span aria-hidden="true">/</span>
           <span className="text-foreground">
@@ -138,7 +144,7 @@ function PersonDetailRoute() {
           params={{ personId }}
           className="text-sm text-muted-foreground hover:text-foreground"
         >
-          Print summary →
+          {t("person.detail.printSummary")}
         </Link>
       </div>
       <PersonHeaderCard

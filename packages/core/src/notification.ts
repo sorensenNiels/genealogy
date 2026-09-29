@@ -7,7 +7,12 @@ import { z } from "zod";
  * admin-editable list. Grows by a code change on both ends anyway, since
  * something has to produce a new type and something has to render it.
  */
-export const notificationTypeSchema = z.enum(["backup_ready"]);
+export const notificationTypeSchema = z.enum([
+  "backup_ready",
+  "immich_faces_rescanned",
+  "restore_complete",
+  "album_zip_ready",
+]);
 export type NotificationType = z.infer<typeof notificationTypeSchema>;
 
 export const notificationIdSchema = z.uuid();

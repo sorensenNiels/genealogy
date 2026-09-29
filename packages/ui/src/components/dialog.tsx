@@ -16,39 +16,38 @@ import {
   OverlayTransitionProvider,
   useOverlayTransition,
   useOverlayTransitionState,
+  type OverlayAnimationState,
 } from "../hooks/use-overlay-transition";
 import { cn } from "../lib/utils";
 
 const MotionModalOverlay = motion.create(ModalOverlay);
 const MotionModal = motion.create(Modal);
 
-export function Dialog({ isOpen, onOpenChange, children, ...props }: DialogTriggerProps) {
-  const { contextValue, handleOpenChange } = useOverlayTransition(isOpen, onOpenChange);
-  return (
-    <DialogTrigger
-      {...props}
-      {...(isOpen !== undefined ? { isOpen } : {})}
-      onOpenChange={handleOpenChange}
-    >
-      <OverlayTransitionProvider value={contextValue}>{children}</OverlayTransitionProvider>
-    </DialogTrigger>
-  );
-}
-
-export function DialogContent({
+/** The Motion/Modal/Dialog shell `DialogContent` and `ControlledDialogContent` both render — split out so the two only differ in how they get their `animation` state (context vs. direct props), not in what they render. */
+function DialogSurface({
+  animation,
+  onAnimationComplete,
+  isOpen,
+  onOpenChange,
   className,
   children,
-  showCloseButton = true,
+  showCloseButton,
 }: {
+  animation: OverlayAnimationState;
+  onAnimationComplete: (state: OverlayAnimationState) => void;
+  /** Only `ControlledDialogContent` (no `DialogTrigger` ancestor) needs to pass these through directly. */
+  isOpen?: boolean;
+  onOpenChange?: (isOpen: boolean) => void;
   className?: string;
   children: React.ReactNode;
-  showCloseButton?: boolean;
+  showCloseButton: boolean;
 }) {
-  const { animation, onAnimationComplete } = useOverlayTransitionState();
   if (animation === "unmounted") return null;
 
   return (
     <MotionModalOverlay
+      {...(isOpen !== undefined ? { isOpen } : {})}
+      {...(onOpenChange ? { onOpenChange } : {})}
       isExiting={animation === "hidden"}
       initial="hidden"
       animate={animation}
@@ -85,6 +84,81 @@ export function DialogContent({
         </RACDialog>
       </MotionModal>
     </MotionModalOverlay>
+  );
+}
+
+export function Dialog({ isOpen, onOpenChange, children, ...props }: DialogTriggerProps) {
+  const { contextValue, handleOpenChange } = useOverlayTransition(isOpen, onOpenChange);
+  return (
+    <DialogTrigger
+      {...props}
+      {...(isOpen !== undefined ? { isOpen } : {})}
+      onOpenChange={handleOpenChange}
+    >
+      <OverlayTransitionProvider value={contextValue}>{children}</OverlayTransitionProvider>
+    </DialogTrigger>
+  );
+}
+
+export function DialogContent({
+  className,
+  children,
+  showCloseButton = true,
+}: {
+  className?: string;
+  children: React.ReactNode;
+  showCloseButton?: boolean;
+}) {
+  const { animation, onAnimationComplete } = useOverlayTransitionState();
+  return (
+    <DialogSurface
+      animation={animation}
+      onAnimationComplete={onAnimationComplete}
+      {...(className !== undefined ? { className } : {})}
+      showCloseButton={showCloseButton}
+    >
+      {children}
+    </DialogSurface>
+  );
+}
+
+/**
+ * `DialogContent`, but fully controlled and with no `DialogTrigger`/`Dialog`
+ * ancestor — for a dialog opened from something other than an adjacent
+ * trigger button (e.g. `photos/-tag-face-dialog.tsx`, opened by pressing a
+ * face box that lives on the photo itself). Same visual shell and closing
+ * mechanics as `DialogContent`, minus the trigger-based open/close wiring —
+ * see `ImageViewer` for the equivalent split applied to the lightbox instead
+ * of the form-sized dialog.
+ */
+export function ControlledDialogContent({
+  isOpen,
+  onOpenChange,
+  className,
+  children,
+  showCloseButton = true,
+}: {
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+  className?: string;
+  children: React.ReactNode;
+  showCloseButton?: boolean;
+}) {
+  const {
+    contextValue: { animation, onAnimationComplete },
+    handleOpenChange,
+  } = useOverlayTransition(isOpen, onOpenChange);
+  return (
+    <DialogSurface
+      animation={animation}
+      onAnimationComplete={onAnimationComplete}
+      isOpen
+      onOpenChange={handleOpenChange}
+      {...(className !== undefined ? { className } : {})}
+      showCloseButton={showCloseButton}
+    >
+      {children}
+    </DialogSurface>
   );
 }
 

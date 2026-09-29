@@ -1,5 +1,5 @@
 import type { AppRouter } from "@genealogy/backend";
-import { configurableTopicSchema, TOPIC_LABELS, type ConfigurableTopic } from "@genealogy/core";
+import { configurableTopicSchema, type ConfigurableTopic } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
 import { DialogFooter } from "@genealogy/ui/components/dialog";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
@@ -13,7 +13,9 @@ import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
+import type { TFunction } from "i18next";
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import {
   addOption,
@@ -42,7 +44,19 @@ type ConfigurableOptionRow = RouterOutputs["settings"]["listOptions"][number];
 
 const LIST_OPTIONS_KEY = ["settings", "listOptions"];
 
+function topicLabels(t: TFunction): Record<ConfigurableTopic, string> {
+  return {
+    event_type: t("settings.topic.event_type"),
+    name_variant_type: t("settings.topic.name_variant_type"),
+    confidence: t("settings.topic.confidence"),
+    union_status: t("settings.topic.union_status"),
+    parentage: t("settings.topic.parentage"),
+    research_note_type: t("settings.topic.research_note_type"),
+  };
+}
+
 function SettingsRoute() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { topic = DEFAULT_TOPIC } = Route.useSearch();
   const options = useQuery({ queryKey: LIST_OPTIONS_KEY, queryFn: () => listOptions() });
@@ -53,9 +67,9 @@ function SettingsRoute() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Settings</h1>
+      <h1 className="text-2xl font-semibold">{t("settings.title")}</h1>
       <div className="grid gap-6 md:grid-cols-[240px_1fr]">
-        <SectionCard title="Categories" titleClassName="text-base" className="h-fit">
+        <SectionCard title={t("settings.categories")} titleClassName="text-base" className="h-fit">
           <nav className="flex flex-col gap-1">
             {configurableTopicSchema.options.map((option) => (
               <Link
@@ -67,7 +81,7 @@ function SettingsRoute() {
                   option === topic && "border-primary bg-accent font-medium text-foreground",
                 )}
               >
-                {TOPIC_LABELS[option]}
+                {topicLabels(t)[option]}
               </Link>
             ))}
           </nav>
@@ -91,18 +105,19 @@ function TopicPanel({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   return (
     <SectionCard
-      title={TOPIC_LABELS[topic]}
+      title={topicLabels(t)[topic]}
       contentClassName="space-y-2"
       action={
         <FormDialog
           trigger={
             <Button variant="outline" size="sm">
-              + Add
+              {t("settings.add")}
             </Button>
           }
-          title={`Add ${TOPIC_LABELS[topic].toLowerCase()} option`}
+          title={t("settings.addOptionTitle", { topic: topicLabels(t)[topic].toLowerCase() })}
         >
           {(close) => (
             <AddOptionForm
@@ -116,7 +131,9 @@ function TopicPanel({
         </FormDialog>
       }
     >
-      {options.length === 0 && <p className="text-sm text-muted-foreground">None recorded.</p>}
+      {options.length === 0 && (
+        <p className="text-sm text-muted-foreground">{t("settings.noneRecorded")}</p>
+      )}
       {options.map((option, index) => (
         <OptionRow
           key={option.id}
@@ -141,6 +158,7 @@ function OptionRow({
   isLast: boolean;
   onChanged: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const moveOptionMutation = useMutation({ mutationFn: moveOption });
   const removeOptionMutation = useMutation({ mutationFn: removeOption });
 
@@ -165,7 +183,7 @@ function OptionRow({
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Move up"
+            aria-label={t("settings.moveUp")}
             isDisabled={isFirst}
             onPress={() => void move("up")}
           >
@@ -174,7 +192,7 @@ function OptionRow({
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Move down"
+            aria-label={t("settings.moveDown")}
             isDisabled={isLast}
             onPress={() => void move("down")}
           >
@@ -183,10 +201,10 @@ function OptionRow({
           <FormDialog
             trigger={
               <Button variant="ghost" size="sm">
-                Edit
+                {t("common.edit")}
               </Button>
             }
-            title="Edit option"
+            title={t("settings.editOption")}
           >
             {(close) => (
               <EditOptionForm
@@ -199,11 +217,11 @@ function OptionRow({
             )}
           </FormDialog>
           {option.isProtected ? (
-            <span className="text-xs text-muted-foreground">Built-in</span>
+            <span className="text-xs text-muted-foreground">{t("settings.builtIn")}</span>
           ) : (
             <RemoveButton
               itemLabel={`"${option.label}"`}
-              description="This cannot be undone. Removal is refused if any record still uses it."
+              description={t("settings.removeOptionDescription")}
               onConfirm={() => void remove()}
             />
           )}
@@ -227,6 +245,7 @@ function AddOptionForm({
   topic: ConfigurableTopic;
   onDone: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const addOptionMutation = useMutation({ mutationFn: addOption });
 
   const form = useForm({
@@ -252,7 +271,7 @@ function AddOptionForm({
       <form.Field name="key">
         {(field) => (
           <Input
-            placeholder="Key, e.g. graduation (lowercase, no spaces)"
+            placeholder={t("settings.keyPlaceholder")}
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
@@ -261,7 +280,7 @@ function AddOptionForm({
       <form.Field name="label">
         {(field) => (
           <Input
-            placeholder="Label, e.g. Graduation"
+            placeholder={t("settings.labelPlaceholder")}
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
@@ -272,7 +291,7 @@ function AddOptionForm({
       )}
       <DialogFooter>
         <SaveButton isDirty={isDirty} isPending={isSubmitting}>
-          Add
+          {t("common.add")}
         </SaveButton>
       </DialogFooter>
     </form>
@@ -286,6 +305,7 @@ function EditOptionForm({
   option: ConfigurableOptionRow;
   onDone: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const updateOptionMutation = useMutation({ mutationFn: updateOption });
 
   const form = useForm({
@@ -308,11 +328,11 @@ function EditOptionForm({
         void form.handleSubmit();
       }}
     >
-      <LabeledStatic label="Key" value={option.key} />
+      <LabeledStatic label={t("settings.keyLabel")} value={option.key} />
       <form.Field name="label">
         {(field) => (
           <Input
-            placeholder="Label"
+            placeholder={t("settings.labelOnly")}
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
@@ -323,7 +343,7 @@ function EditOptionForm({
       )}
       <DialogFooter>
         <SaveButton isDirty={isDirty} isPending={isSubmitting}>
-          Save
+          {t("common.save")}
         </SaveButton>
       </DialogFooter>
     </form>

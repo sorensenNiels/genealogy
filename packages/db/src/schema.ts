@@ -364,6 +364,59 @@ export const personImmichLinks = pgTable(
 );
 
 /**
+ * A manual per-photo position within an Immich album — the one piece of
+ * local state this Immich integration keeps; everywhere else Immich stays
+ * sole source of truth (see TECH_STACK.md). Needed because Immich's own API
+ * has no per-asset custom ordering, only a whole-album date ascending/
+ * descending toggle (`AlbumResponseDto.order`) — nowhere to persist "the
+ * user dragged this photo to the front" except here. `albumId`/`assetId`
+ * are plain `text`, not foreign keys, for the same reason
+ * `personImmichLinks.immichPersonId` is: they reference Immich's own ids,
+ * not a row this database owns. A row with no matching Immich asset/album
+ * anymore (removed elsewhere, e.g. via Immich's own UI) is simply ignored
+ * when assembling an album's ordered asset list, then pruned — same "fails
+ * open" philosophy as `personImmichLinks`'s own dangling-link handling.
+ */
+export const immichAlbumAssetOrder = pgTable(
+  "immich_album_asset_order",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    albumId: text("album_id").notNull(),
+    assetId: text("asset_id").notNull(),
+    position: integer("position").notNull(),
+  },
+  (table) => [
+    uniqueIndex("immich_album_asset_order_album_asset_idx").on(table.albumId, table.assetId),
+    index("immich_album_asset_order_album_idx").on(table.albumId, table.position),
+  ],
+);
+
+/**
+ * Local metadata for an Immich album — date, place, and freeform tags. Immich's
+ * own album object has none of these, so this is layered on top the same way
+ * `immichAlbumAssetOrder` layers on custom ordering: `albumId` is plain `text`,
+ * not a foreign key, since it references Immich's own id, not a row this
+ * database owns. `tags` is a plain array rather than a separate tags/join
+ * table — this is a single-user app with at most a few thousand albums, so
+ * filtering/autocomplete work fine done in memory over the whole table; a
+ * normalized many-to-many would be solving a scale problem that doesn't exist
+ * here. `date` reuses `HistoricalDate`, the same approximate/range date type
+ * `personEvents.date` uses, so album dates get the same "circa 1950" handling.
+ */
+export const albumMetadata = pgTable("album_metadata", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  albumId: text("album_id").notNull().unique(),
+  date: jsonb("date").$type<HistoricalDate>(),
+  place: text("place"),
+  tags: text("tags")
+    .array()
+    .notNull()
+    .default(sql`ARRAY[]::text[]`),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * A research to-do tied to a person: an open question to chase down later, or
  * a plain note — distinguished by `noteType` (user-configurable, topic
  * "research_note_type"). `resolved` is deliberately independent of
@@ -415,7 +468,12 @@ export const userNotes = pgTable(
  * type is a code change on both ends anyway (something has to produce it and
  * something has to render it), so a migration to add one costs nothing extra.
  */
-export const notificationTypeEnum = pgEnum("notification_type", ["backup_ready"]);
+export const notificationTypeEnum = pgEnum("notification_type", [
+  "backup_ready",
+  "immich_faces_rescanned",
+  "restore_complete",
+  "album_zip_ready",
+]);
 
 /**
  * System-generated, one-way notices for the logged-in account — "your
@@ -462,6 +520,9 @@ export const userProfiles = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     personId: uuid("person_id").references(() => persons.id, { onDelete: "set null" }),
     phoneNumber: text("phone_number"),
+    // No default/not-null — absence means "no preference set yet," resolved
+    // to English at the read layer (see ProfileService), not baked in here.
+    language: text("language"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -481,6 +542,8 @@ export const schema = {
   citations,
   configurableOptions,
   personImmichLinks,
+  immichAlbumAssetOrder,
+  albumMetadata,
   userProfiles,
   researchNotes,
   userNotes,
@@ -503,6 +566,8 @@ export type SourceRow = typeof sources.$inferSelect;
 export type CitationRow = typeof citations.$inferSelect;
 export type ConfigurableOptionRow = typeof configurableOptions.$inferSelect;
 export type PersonImmichLinkRow = typeof personImmichLinks.$inferSelect;
+export type ImmichAlbumAssetOrderRow = typeof immichAlbumAssetOrder.$inferSelect;
+export type AlbumMetadataRow = typeof albumMetadata.$inferSelect;
 export type UserProfileRow = typeof userProfiles.$inferSelect;
 export type ResearchNoteRow = typeof researchNotes.$inferSelect;
 export type UserNoteRow = typeof userNotes.$inferSelect;

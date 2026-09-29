@@ -30,21 +30,28 @@ import {
   SettingsIcon,
   UserIcon,
   WrenchIcon,
+  XIcon,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { I18nextProvider, useTranslation } from "react-i18next";
 
+import { createI18nInstance, type SupportedLanguage } from "../i18n/create-i18n-instance";
 import { authClient, useSession } from "../lib/auth-client";
 import {
+  deleteAllNotifications,
+  deleteNotification,
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
 } from "../server/functions/notification.functions";
+import { getMyLanguage } from "../server/functions/profile.functions";
 import { getSession } from "../server/functions/session.functions";
 
 import appCss from "../styles.css?url";
 
 export interface RouterContext {
   queryClient: QueryClient;
+  language: SupportedLanguage;
 }
 
 export const Route = createRootRouteWithContext<RouterContext>()({
@@ -52,12 +59,20 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   // proxied unchanged) — this redirect is just so an unauthenticated visitor
   // lands on /login instead of a page full of failed queries. Runs via a
   // server function (not the browser authClient) so it also works during SSR.
-  beforeLoad: async ({ location }) => {
-    if (location.pathname === "/login") return;
+  //
+  // Also resolves the language SSR renders in — see "Internationalization"
+  // in FEATURES.md for why this can't wait for a client-side correction
+  // pass the way dark mode's `use-theme.ts` placeholder-then-fix hook does:
+  // translated text flashing from English to Danish after hydration would
+  // be far more jarring than a one-frame icon flip.
+  beforeLoad: async ({ location }): Promise<{ language: SupportedLanguage }> => {
+    if (location.pathname === "/login") return { language: "en" };
     const session = await getSession();
     if (!session) {
       throw redirect({ to: "/login" });
     }
+    const language = await getMyLanguage();
+    return { language };
   },
   head: () => ({
     meta: [
@@ -74,17 +89,35 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 function RootComponent() {
+  const { language } = Route.useRouteContext();
+  // A lazy `useState` initializer, not a plain `createI18nInstance(language)`
+  // call — this must run exactly once (server: once per request; client:
+  // once at mount) and then persist across re-renders, so the language
+  // switcher's `i18n.changeLanguage()` mutates this same instance in place
+  // instead of every render silently recreating it back to `language`. See
+  // `create-i18n-instance.ts` for why it's one instance per page load
+  // rather than one shared module-level singleton.
+  const [i18nInstance] = useState(() => createI18nInstance(language));
+
   return (
-    <RootDocument>
-      <RootLayout />
-    </RootDocument>
+    <I18nextProvider i18n={i18nInstance}>
+      <RootDocument language={language}>
+        <RootLayout />
+      </RootDocument>
+    </I18nextProvider>
   );
 }
 
-function RootDocument({ children }: { children: ReactNode }) {
+function RootDocument({
+  children,
+  language,
+}: {
+  children: ReactNode;
+  language: SupportedLanguage;
+}) {
   return (
     <html
-      lang="en"
+      lang={language}
       // The anti-flash script below mutates this element's class before
       // hydration runs, so its class will legitimately differ from what was
       // server-rendered — that's the point, not a bug, so don't let React
@@ -121,11 +154,13 @@ function RootDocument({ children }: { children: ReactNode }) {
  * `max-w-5xl` is the default. The People list (a data table with six columns
  * plus a filters sidebar), a person's own detail page (a header card plus a
  * Parents/Spouses/Children grid), Settings/Profile (a category sidebar plus
- * a single section's card), and the Tree view (a React Flow canvas that
- * wants every pixel it can get) all have real content that benefits from
- * the browser's actual width on a normal-or-wider monitor, so these opt out
- * and stretch edge to edge. The print route under `/people/$personId/print`
- * is deliberately excluded — it's laid out for paper, not a wide monitor.
+ * a single section's card), the Tree view (a React Flow canvas that wants
+ * every pixel it can get), and Photos (an album grid plus a filters sidebar,
+ * the same "sidebar + wide content" shape as the People list) all have real
+ * content that benefits from the browser's actual width on a
+ * normal-or-wider monitor, so these opt out and stretch edge to edge. The
+ * print route under `/people/$personId/print` is deliberately excluded —
+ * it's laid out for paper, not a wide monitor.
  */
 function isFullWidthPath(pathname: string): boolean {
   return (
@@ -134,6 +169,7 @@ function isFullWidthPath(pathname: string): boolean {
     pathname === "/profile" ||
     pathname === "/tools" ||
     pathname === "/tree" ||
+    pathname === "/photos" ||
     /^\/people\/[^/]+$/.test(pathname)
   );
 }
@@ -160,6 +196,7 @@ const NAV_LINK_ACTIVE_PROPS = {
 };
 
 function RootLayout() {
+  const { t } = useTranslation();
   const location = useLocation();
   const isFullWidth = isFullWidthPath(location.pathname);
   const isNoScroll = isNoScrollPath(location.pathname);
@@ -174,7 +211,7 @@ function RootLayout() {
       <header className="border-b bg-card print:hidden">
         <div className="h-0.75 bg-primary" aria-hidden="true" />
         <nav className="flex w-full items-center gap-6 px-6 py-4">
-          <span className="font-semibold text-primary">Genealogy</span>
+          <span className="font-semibold text-primary">{t("nav.brand")}</span>
           <span className="flex items-center gap-1">
             <Link
               to="/"
@@ -182,16 +219,16 @@ function RootLayout() {
               activeProps={NAV_LINK_ACTIVE_PROPS}
               activeOptions={{ exact: true }}
             >
-              Overview
+              {t("nav.overview")}
             </Link>
             <Link to="/people" className={NAV_LINK_CLASS} activeProps={NAV_LINK_ACTIVE_PROPS}>
-              People
+              {t("nav.people")}
             </Link>
             <Link to="/tree" className={NAV_LINK_CLASS} activeProps={NAV_LINK_ACTIVE_PROPS}>
-              Tree
+              {t("nav.tree")}
             </Link>
             <Link to="/photos" className={NAV_LINK_CLASS} activeProps={NAV_LINK_ACTIVE_PROPS}>
-              Photos
+              {t("nav.photos")}
             </Link>
           </span>
           <span className="ml-auto flex items-center gap-3">
@@ -228,6 +265,7 @@ const NOTIFICATIONS_KEY = ["notifications"];
 const NOTIFICATIONS_POLL_INTERVAL_MS = 15_000;
 
 function NotificationsBell() {
+  const { t } = useTranslation();
   const { data: session, isPending: sessionPending } = useSession();
   const queryClient = useQueryClient();
   const notifications = useQuery({
@@ -244,6 +282,14 @@ function NotificationsBell() {
     mutationFn: markAllNotificationsRead,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY }),
   });
+  const deleteMutation = useMutation({
+    mutationFn: deleteNotification,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY }),
+  });
+  const deleteAllMutation = useMutation({
+    mutationFn: deleteAllNotifications,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY }),
+  });
 
   if (sessionPending || !session) {
     return null;
@@ -254,7 +300,7 @@ function NotificationsBell() {
 
   return (
     <DropdownMenu>
-      <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
+      <Button variant="ghost" size="icon" className="relative" aria-label={t("nav.notifications")}>
         <BellIcon className="size-5" aria-hidden="true" />
         {unreadCount > 0 && (
           <Badge
@@ -269,26 +315,37 @@ function NotificationsBell() {
         className="w-80"
         header={
           <DropdownMenuLabel className="mb-1 flex items-center justify-between border-b font-normal text-muted-foreground">
-            Notifications
-            {unreadCount > 0 && (
-              <button
-                type="button"
-                className="text-xs text-primary hover:underline"
-                onClick={() => markAllReadMutation.mutate()}
-              >
-                Mark all read
-              </button>
-            )}
+            {t("nav.notifications")}
+            <span className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  className="text-xs text-primary hover:underline"
+                  onClick={() => markAllReadMutation.mutate()}
+                >
+                  {t("notifications.markAllRead")}
+                </button>
+              )}
+              {items.length > 0 && (
+                <button
+                  type="button"
+                  className="text-xs text-primary hover:underline"
+                  onClick={() => deleteAllMutation.mutate()}
+                >
+                  {t("notifications.deleteAll")}
+                </button>
+              )}
+            </span>
           </DropdownMenuLabel>
         }
       >
         {items.length === 0 ? (
-          <DropdownMenuItem isDisabled>Nothing yet</DropdownMenuItem>
+          <DropdownMenuItem isDisabled>{t("notifications.nothingYet")}</DropdownMenuItem>
         ) : (
           items.map((item) => (
             <DropdownMenuItem
               key={item.id}
-              className="flex-col items-start gap-0.5"
+              className="items-start gap-0.5"
               onAction={() => {
                 if (!item.isRead) {
                   markReadMutation.mutate({ data: { id: item.id } });
@@ -301,8 +358,26 @@ function NotificationsBell() {
                 }
               }}
             >
-              <span className={cn("text-sm", !item.isRead && "font-medium")}>{item.title}</span>
-              {item.body && <span className="text-xs text-muted-foreground">{item.body}</span>}
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className={cn("text-sm", !item.isRead && "font-medium")}>{item.title}</span>
+                {item.body && <span className="text-xs text-muted-foreground">{item.body}</span>}
+              </span>
+              <button
+                type="button"
+                aria-label={t("notifications.delete")}
+                className="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+                // Stops the press from reaching the MenuItem underneath —
+                // RAC's usePress attaches its pointer handlers to the item
+                // itself, so without this a delete click would also fire
+                // onAction (mark-as-read/navigate) before deleting.
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  deleteMutation.mutate({ data: { id: item.id } });
+                }}
+              >
+                <XIcon className="size-3.5" aria-hidden="true" />
+              </button>
             </DropdownMenuItem>
           ))
         )}
@@ -312,6 +387,7 @@ function NotificationsBell() {
 }
 
 function ToolsLink() {
+  const { t } = useTranslation();
   const { data: session, isPending } = useSession();
 
   if (isPending || !session) {
@@ -323,7 +399,7 @@ function ToolsLink() {
       to="/tools"
       className="text-muted-foreground hover:text-foreground"
       activeProps={{ className: "text-foreground" }}
-      aria-label="Tools"
+      aria-label={t("nav.tools")}
     >
       <WrenchIcon className="size-5" aria-hidden="true" />
     </Link>
@@ -331,6 +407,7 @@ function ToolsLink() {
 }
 
 function SettingsLink() {
+  const { t } = useTranslation();
   const { data: session, isPending } = useSession();
 
   if (isPending || !session) {
@@ -342,7 +419,7 @@ function SettingsLink() {
       to="/settings"
       className="text-muted-foreground hover:text-foreground"
       activeProps={{ className: "text-foreground" }}
-      aria-label="Settings"
+      aria-label={t("nav.settings")}
     >
       <SettingsIcon className="size-5" aria-hidden="true" />
     </Link>
@@ -350,6 +427,7 @@ function SettingsLink() {
 }
 
 function SignInLink() {
+  const { t } = useTranslation();
   const { data: session, isPending } = useSession();
 
   if (isPending || session) {
@@ -358,13 +436,14 @@ function SignInLink() {
 
   return (
     <Link to="/login" className="text-sm text-muted-foreground hover:text-foreground">
-      Sign in
+      {t("nav.signIn")}
     </Link>
   );
 }
 
 /** Replaces the old separate Profile icon + name + Sign out button with one trigger. */
 function UserMenu() {
+  const { t } = useTranslation();
   const { data: session, isPending } = useSession();
   const navigate = useNavigate();
 
@@ -392,11 +471,11 @@ function UserMenu() {
       >
         <DropdownMenuItem onAction={() => navigate({ to: "/profile" })}>
           <UserIcon className="size-4" aria-hidden="true" />
-          Profile settings
+          {t("userMenu.profileSettings")}
         </DropdownMenuItem>
         <DropdownMenuItem onAction={() => navigate({ to: "/notes" })}>
           <NotebookTextIcon className="size-4" aria-hidden="true" />
-          My Notes
+          {t("userMenu.myNotes")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -408,7 +487,7 @@ function UserMenu() {
           }}
         >
           <LogOutIcon className="size-4" aria-hidden="true" />
-          Sign out
+          {t("userMenu.signOut")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

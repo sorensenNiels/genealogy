@@ -18,6 +18,7 @@ import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
 import { useMutation } from "@tanstack/react-query";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { labelFor, optionsFor } from "../../lib/person-display";
 import { addCitation, createSource, removeCitation } from "../../server/functions/source.functions";
@@ -56,6 +57,7 @@ export function CitationsSection({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const removeCitationMutation = useMutation({ mutationFn: removeCitation });
 
   const remove = async (id: string) => {
@@ -68,42 +70,48 @@ export function CitationsSection({
   const factLabel = (citation: CitationRow): string => {
     switch (citation.factType) {
       case "person":
-        return "This person";
+        return t("person.citations.thisPerson");
       case "name": {
         const name = names.find((candidate) => candidate.id === citation.factId);
         return name
-          ? `Alternate name: ${[name.given, name.surname].filter(Boolean).join(" ")}`
-          : "Alternate name";
+          ? t("person.citations.alternateNameWithValue", {
+              name: [name.given, name.surname].filter(Boolean).join(" "),
+            })
+          : t("person.citations.alternateName");
       }
       case "event": {
         const event = events.find((candidate) => candidate.id === citation.factId);
         return event
-          ? `Event: ${labelFor(options, "event_type", event.eventType)}${event.label ? ` (${event.label})` : ""}`
-          : "Event";
+          ? `${t("person.events.eventFixedFactLabel", { type: labelFor(options, "event_type", event.eventType) })}${event.label ? ` (${event.label})` : ""}`
+          : t("person.citations.eventFallback");
       }
       case "union": {
         const union = unions.find((candidate) => candidate.id === citation.factId);
-        return union ? `Union (${labelFor(options, "union_status", union.status)})` : "Union";
+        return union
+          ? t("person.citations.unionWithStatus", {
+              status: labelFor(options, "union_status", union.status),
+            })
+          : t("person.citations.unionFallback");
       }
     }
   };
 
   return (
     <SectionCard
-      title="Sources & citations"
+      title={t("person.citations.title")}
       titleClassName="text-base"
       contentClassName="space-y-2"
       action={
         <FormDialog
           trigger={
             <Tooltip>
-              <Button variant="outline" size="icon" aria-label="Add citation">
+              <Button variant="outline" size="icon" aria-label={t("person.events.addCitation")}>
                 <PlusIcon className="size-4" />
               </Button>
-              <TooltipContent>Add citation</TooltipContent>
+              <TooltipContent>{t("person.events.addCitation")}</TooltipContent>
             </Tooltip>
           }
-          title="Add citation"
+          title={t("person.events.addCitation")}
         >
           {(close) => (
             <CitationForm
@@ -130,15 +138,19 @@ export function CitationsSection({
               <Badge variant="outline" className="mr-2">
                 {labelFor(options, "confidence", citation.confidence)}
               </Badge>
-              <span className="font-medium">{source?.title ?? "Unknown source"}</span>
+              <span className="font-medium">
+                {source?.title ?? t("person.events.unknownSource")}
+              </span>
               <p className="text-xs text-muted-foreground">
                 {factLabel(citation)}
-                {citation.page ? ` · p. ${citation.page}` : ""}
+                {citation.page ? ` · ${t("person.events.page", { page: citation.page })}` : ""}
                 {citation.note ? ` · ${citation.note}` : ""}
               </p>
             </div>
             <RemoveButton
-              itemLabel={`this citation of "${source?.title ?? "this source"}"`}
+              itemLabel={t("person.events.thisCitationOf", {
+                title: source?.title ?? t("person.events.unknownSource"),
+              })}
               onConfirm={() => void remove(citation.id)}
             />
           </div>
@@ -193,13 +205,19 @@ export function CitationForm({
   embedded?: boolean;
   onDone: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const createSourceMutation = useMutation({ mutationFn: createSource });
   const addCitationMutation = useMutation({ mutationFn: addCitation });
 
   const factOptions: FactOption[] = fixedFact
     ? [fixedFact]
     : [
-        { key: "person|none", factType: "person", factId: null, label: "This person (general)" },
+        {
+          key: "person|none",
+          factType: "person",
+          factId: null,
+          label: t("person.citations.thisPersonGeneral"),
+        },
         // No separate "birth"/"death" entries — those are `person_events` rows
         // now (see PersonService), so they fall out of the `events.map` below
         // like any other event ("Event: Birth").
@@ -207,19 +225,25 @@ export function CitationForm({
           key: `name|${name.id}`,
           factType: "name" as const,
           factId: name.id,
-          label: `Name: ${[name.given, name.surname].filter(Boolean).join(" ") || "unnamed"}`,
+          label: t("person.citations.nameLabel", {
+            name:
+              [name.given, name.surname].filter(Boolean).join(" ") ||
+              t("person.citations.nameUnnamed"),
+          }),
         })),
         ...events.map((event) => ({
           key: `event|${event.id}`,
           factType: "event" as const,
           factId: event.id,
-          label: `Event: ${labelFor(options, "event_type", event.eventType)}${event.label ? ` (${event.label})` : ""}`,
+          label: `${t("person.events.eventFixedFactLabel", { type: labelFor(options, "event_type", event.eventType) })}${event.label ? ` (${event.label})` : ""}`,
         })),
         ...unions.map((union) => ({
           key: `union|${union.id}`,
           factType: "union" as const,
           factId: union.id,
-          label: `Union (${labelFor(options, "union_status", union.status)})`,
+          label: t("person.citations.unionWithStatus", {
+            status: labelFor(options, "union_status", union.status),
+          }),
         })),
       ];
 
@@ -293,7 +317,7 @@ export function CitationForm({
     <>
       {!fixedFact && (
         <Select
-          aria-label="What this cites"
+          aria-label={t("person.citations.whatThisCites")}
           value={factKey}
           onChange={(value) => {
             if (value) setFactKey(String(value));
@@ -315,7 +339,7 @@ export function CitationForm({
       {sourceMode === "existing" ? (
         <div className="space-y-2">
           <Select
-            aria-label="Source"
+            aria-label={t("person.citations.source")}
             value={sourceId}
             onChange={(value) => {
               if (value) setSourceId(String(value));
@@ -340,18 +364,18 @@ export function CitationForm({
               setSourceMode("new");
             }}
           >
-            + New source instead
+            {t("person.citations.newSourceInstead")}
           </Button>
         </div>
       ) : (
         <div className="space-y-2">
           <Input
-            placeholder="Source title"
+            placeholder={t("person.citations.sourceTitle")}
             value={newSourceTitle}
             onChange={(inputEvent) => setNewSourceTitle(inputEvent.target.value)}
           />
           <Input
-            placeholder="Author (optional)"
+            placeholder={t("person.citations.authorOptional")}
             value={newSourceAuthor}
             onChange={(inputEvent) => setNewSourceAuthor(inputEvent.target.value)}
           />
@@ -364,14 +388,14 @@ export function CitationForm({
                 setSourceMode("existing");
               }}
             >
-              Use an existing source instead
+              {t("person.citations.useExistingSourceInstead")}
             </Button>
           )}
         </div>
       )}
 
       <Select
-        aria-label="Confidence"
+        aria-label={t("person.citations.confidence")}
         value={confidence}
         onChange={(value) => {
           if (value) setConfidence(confidenceSchema.parse(value));
@@ -389,12 +413,12 @@ export function CitationForm({
         </SelectContent>
       </Select>
       <Input
-        placeholder="Page"
+        placeholder={t("person.citations.pagePlaceholder")}
         value={page}
         onChange={(inputEvent) => setPage(inputEvent.target.value)}
       />
       <Input
-        placeholder="Note"
+        placeholder={t("person.citations.notePlaceholder")}
         value={note}
         onChange={(inputEvent) => setNote(inputEvent.target.value)}
       />
@@ -415,7 +439,7 @@ export function CitationForm({
               { type: "button", onPress: () => void submit() }
             : {})}
         >
-          Add
+          {t("common.add")}
         </SaveButton>
       </DialogFooter>
     </>

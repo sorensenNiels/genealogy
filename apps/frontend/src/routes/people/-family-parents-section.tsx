@@ -33,6 +33,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { PlusIcon, UnlinkIcon } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { GenderIcon, labelFor, optionsFor } from "../../lib/person-display";
 import {
@@ -65,6 +66,7 @@ export function ParentsSection({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const unlinkParentMutation = useMutation({ mutationFn: unlinkParent });
 
   const remove = async (parentId: string) => {
@@ -79,7 +81,7 @@ export function ParentsSection({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">Parents</span>
+        <span className="text-sm font-medium">{t("person.family.parents")}</span>
         <AddOtherParent
           personId={personId}
           excludeIds={excludeIds}
@@ -89,7 +91,7 @@ export function ParentsSection({
       </div>
       <div className="space-y-3">
         <ParentSlot
-          label="Father"
+          label={t("person.family.father")}
           personId={personId}
           parent={father}
           presetGender="M"
@@ -98,7 +100,7 @@ export function ParentsSection({
           onChanged={onChanged}
         />
         <ParentSlot
-          label="Mother"
+          label={t("person.family.mother")}
           personId={personId}
           parent={mother}
           presetGender="F"
@@ -125,10 +127,15 @@ export function ParentsSection({
                 <Badge variant="outline">{labelFor(options, "parentage", parent.parentage)}</Badge>
               </div>
               <RemoveButton
-                itemLabel={`the relationship with ${formatPersonName(parent)}`}
+                itemLabel={t("person.family.relationshipWith", { name: formatPersonName(parent) })}
                 onConfirm={() => void remove(parent.id)}
                 trigger={
-                  <Button type="button" variant="ghost" size="icon" aria-label="Remove parent">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("person.family.removeParentAria")}
+                  >
                     <UnlinkIcon className="size-4" />
                   </Button>
                 }
@@ -158,6 +165,7 @@ function ParentSlot({
   onRemove: (parentId: string) => Promise<void>;
   onChanged: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   if (!parent) {
     return (
       <AddParentSlot
@@ -182,10 +190,15 @@ function ParentSlot({
         </Link>
       </div>
       <RemoveButton
-        itemLabel={`the relationship with ${formatPersonName(parent)}`}
+        itemLabel={t("person.family.relationshipWith", { name: formatPersonName(parent) })}
         onConfirm={() => void onRemove(parent.id)}
         trigger={
-          <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${label}`}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={t("person.family.removeLabel", { label })}
+          >
             <UnlinkIcon className="size-4" />
           </Button>
         }
@@ -208,6 +221,7 @@ function AddParentSlot({
   excludeIds: Set<string>;
   onChanged: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"search" | "create">("search");
   const [query, setQuery] = useState("");
@@ -222,6 +236,7 @@ function AddParentSlot({
 
   const linkParentMutation = useMutation({ mutationFn: linkParent });
   const options = (search.data?.items ?? []).filter((candidate) => !excludeIds.has(candidate.id));
+  const lowerLabel = label.toLowerCase();
 
   const link = async (target: PersonRow, close: () => void) => {
     await linkParentMutation.mutateAsync({
@@ -235,10 +250,10 @@ function AddParentSlot({
     <FormDialog
       trigger={
         <Button variant="outline" size="sm" className="w-full justify-start">
-          + Add {label.toLowerCase()}
+          {t("person.family.addLabel", { label: lowerLabel })}
         </Button>
       }
-      title={`Add ${label.toLowerCase()}`}
+      title={t("person.family.addLabelTitle", { label: lowerLabel })}
       onOpenChange={(next) => {
         setOpen(next);
         if (!next) {
@@ -252,7 +267,7 @@ function AddParentSlot({
           {mode === "search" ? (
             <>
               <Combobox<PersonRow>
-                aria-label={`Search for ${label.toLowerCase()}`}
+                aria-label={t("person.family.searchForLabel", { label: lowerLabel })}
                 items={options}
                 inputValue={query}
                 onInputChange={setQuery}
@@ -261,9 +276,11 @@ function AddParentSlot({
                   if (target) void link(target, close);
                 }}
               >
-                <ComboboxInput placeholder="Search people…" />
+                <ComboboxInput placeholder={t("person.family.searchPeople")} />
                 <ComboboxContent<PersonRow>
-                  renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
+                  renderEmptyState={() => (
+                    <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>
+                  )}
                 >
                   {(item) => (
                     <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
@@ -282,13 +299,13 @@ function AddParentSlot({
                 className="w-full"
                 onPress={() => setMode("create")}
               >
-                + Create new person
+                {t("person.family.createNewPerson")}
               </Button>
             </>
           ) : (
             <>
               <Button variant="ghost" size="sm" onPress={() => setMode("search")}>
-                ← Search instead
+                {t("person.family.searchInstead")}
               </Button>
               <CreateAndLinkParentForm
                 personId={personId}
@@ -319,6 +336,7 @@ function AddOtherParent({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"search" | "create">("search");
   const [query, setQuery] = useState("");
@@ -347,13 +365,13 @@ function AddOtherParent({
     <FormDialog
       trigger={
         <Tooltip>
-          <Button variant="outline" size="icon" aria-label="Add other parent">
+          <Button variant="outline" size="icon" aria-label={t("person.family.addOtherParent")}>
             <PlusIcon className="size-4" />
           </Button>
-          <TooltipContent>Add other parent</TooltipContent>
+          <TooltipContent>{t("person.family.addOtherParent")}</TooltipContent>
         </Tooltip>
       }
-      title="Add other parent"
+      title={t("person.family.addOtherParent")}
       onOpenChange={(next) => {
         setOpen(next);
         if (!next) {
@@ -365,7 +383,7 @@ function AddOtherParent({
       {(close) => (
         <div className="space-y-3">
           <Select
-            aria-label="Parentage"
+            aria-label={t("person.family.parentage")}
             value={parentage}
             onChange={(value) => {
               if (value) setParentage(parentageSchema.parse(value));
@@ -385,7 +403,7 @@ function AddOtherParent({
           {mode === "search" ? (
             <>
               <Combobox<PersonRow>
-                aria-label="Search people"
+                aria-label={t("person.family.searchPeople")}
                 items={options}
                 inputValue={query}
                 onInputChange={setQuery}
@@ -394,9 +412,11 @@ function AddOtherParent({
                   if (target) void link(target, close);
                 }}
               >
-                <ComboboxInput placeholder="Search people…" />
+                <ComboboxInput placeholder={t("person.family.searchPeople")} />
                 <ComboboxContent<PersonRow>
-                  renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
+                  renderEmptyState={() => (
+                    <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>
+                  )}
                 >
                   {(item) => (
                     <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
@@ -412,13 +432,13 @@ function AddOtherParent({
                 className="w-full"
                 onPress={() => setMode("create")}
               >
-                + Create new person
+                {t("person.family.createNewPerson")}
               </Button>
             </>
           ) : (
             <>
               <Button variant="ghost" size="sm" onPress={() => setMode("search")}>
-                ← Search instead
+                {t("person.family.searchInstead")}
               </Button>
               <CreateAndLinkParentForm
                 personId={personId}
@@ -448,6 +468,7 @@ function CreateAndLinkParentForm({
   presetGender: Gender | null;
   onDone: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const createPersonMutation = useMutation({ mutationFn: createPerson });
   const linkParentMutation = useMutation({ mutationFn: linkParent });
 
@@ -478,7 +499,7 @@ function CreateAndLinkParentForm({
       <form.Field name="given">
         {(field) => (
           <Input
-            placeholder="First names"
+            placeholder={t("person.firstNames")}
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
@@ -487,7 +508,7 @@ function CreateAndLinkParentForm({
       <form.Field name="surname">
         {(field) => (
           <Input
-            placeholder="Last names"
+            placeholder={t("person.lastNames")}
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
@@ -495,7 +516,7 @@ function CreateAndLinkParentForm({
       </form.Field>
       <DialogFooter>
         <SaveButton isDirty={isDirty} isPending={isSubmitting}>
-          {isSubmitting ? "Creating…" : "Create and link"}
+          {isSubmitting ? t("person.family.creating") : t("person.family.createAndLink")}
         </SaveButton>
       </DialogFooter>
     </form>

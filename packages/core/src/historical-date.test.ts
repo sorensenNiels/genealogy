@@ -382,3 +382,53 @@ describe("joinHistoricalDateText", () => {
     }
   });
 });
+
+describe("Danish ('da') dates", () => {
+  it("parses Danish quality words the same way as their English equivalents", () => {
+    expect(parseHistoricalDate("ca. 1854", "da")).toEqual(parseHistoricalDate("abt 1854"));
+    expect(parseHistoricalDate("før 1920", "da")).toEqual(parseHistoricalDate("bef 1920"));
+    expect(parseHistoricalDate("efter 1920", "da")).toEqual(parseHistoricalDate("aft 1920"));
+    expect(parseHistoricalDate("mellem 1850 og 1860", "da")).toEqual(
+      parseHistoricalDate("bet 1850 and 1860"),
+    );
+  });
+
+  it("understands Danish month names", () => {
+    expect(parseHistoricalDate("12 marts 1901", "da")).toEqual({
+      earliest: "1901-03-12",
+      latest: "1901-03-12",
+    });
+    expect(parseHistoricalDate("oktober 1901", "da")).toEqual({
+      earliest: "1901-10-01",
+      latest: "1901-10-31",
+    });
+  });
+
+  it("formats display text in Danish", () => {
+    expect(formatHistoricalDate(parseHistoricalDateDetailed("ca. 1854", "da"), "da")).toBe(
+      "Cirka 1854",
+    );
+    expect(formatHistoricalDate(parseHistoricalDateDetailed("før 1920", "da"), "da")).toBe(
+      "Før 1920",
+    );
+    expect(
+      formatHistoricalDate(parseHistoricalDateDetailed("mellem 1850 og 1860", "da"), "da"),
+    ).toBe("Mellem 1850 og 1860");
+    expect(formatHistoricalDate(parseHistoricalDateDetailed("12 marts 1901", "da"), "da")).toBe(
+      "12 marts 1901",
+    );
+  });
+
+  it("round-trips split/join through Danish wording", () => {
+    const parts = splitHistoricalDateText("mellem 1850 og 1860", "da");
+    expect(parts).toEqual({ quality: "between", value: "1850", endValue: "1860" });
+    expect(joinHistoricalDateText(parts, "da")).toBe("Mellem 1850 og 1860");
+  });
+
+  it("does not recognize English quality words when parsing as Danish", () => {
+    // "before 1920" has no Danish qualifier prefix, so it falls through to
+    // the plain exact-value case — and fails to parse as a date at all,
+    // since "before" isn't a recognized month/year shape either.
+    expect(parseHistoricalDateDetailed("before 1920", "da")).toEqual({ kind: "unparsed" });
+  });
+});

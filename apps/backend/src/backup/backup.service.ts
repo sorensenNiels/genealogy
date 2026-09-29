@@ -78,13 +78,40 @@ export class BackupService {
     });
   }
 
-  /** Plain SQL rather than pg_dump's custom format — restorable with a plain `psql < file`, no `pg_restore` required, and still small once gzipped. */
+  /**
+   * Plain SQL rather than pg_dump's custom format — restorable with a plain
+   * `psql < file`, no `pg_restore` required, and still small once gzipped.
+   *
+   * Two separate `pg_dump` runs, concatenated into one file, not one dump of
+   * the whole database — confirmed live against the local sandbox (never
+   * the real environment) that a single dump doesn't work for this app's
+   * two-store setup:
+   *
+   * - `--schema=public --clean --if-exists`: ordinary relational tables
+   *   (people, sources, citations, better-auth's own tables, ...). `--clean
+   *   --if-exists` makes this half self-contained — a `DROP TABLE IF EXISTS
+   *   ... CASCADE` before each `CREATE`, so restoring into a database that
+   *   already has these tables doesn't collide on every `CREATE TABLE`.
+   * - `--schema=family_tree --data-only`: the Apache AGE graph's own
+   *   internal vertex/edge tables, **data only, no DDL at all**. Apache AGE
+   *   installs an event trigger that refuses plain DDL (`DROP TABLE`,
+   *   `CREATE TABLE`, even wrapped in `IF EXISTS`) against its own label
+   *   tables — `ERROR: table "_ag_label_vertex" is for label
+   *   "_ag_label_vertex"` — so a `--clean` dump of this schema can never be
+   *   replayed; only `TRUNCATE` is permitted (confirmed live), which is what
+   *   `RestoreService` runs before restoring this half. `ag_catalog`
+   *   (AGE's own extension schema, holding which graphs/labels exist — not
+   *   data this app owns) and `drizzle` (migration-tracking, meaningful
+   *   only to *this* live instance) are deliberately excluded from both
+   *   dumps entirely — restoring assumes the same already-provisioned
+   *   Postgres/AGE setup the backup was taken from, not bootstrapping a
+   *   fresh one, so neither needs restoring.
+   */
   private dumpTo(path: string): Promise<void> {
     const databaseUrl = this.config.getOrThrow<string>("DATABASE_URL");
     return new Promise<void>((resolve, reject) => {
-      const pgDump = spawn("pg_dump", ["--format=plain", "--no-owner", databaseUrl]);
       const out = createWriteStream(path);
-      let stderr = "";
+      const gzip = createGzip();
       let settled = false;
 
       const fail = (error: Error): void => {
@@ -98,19 +125,46 @@ export class BackupService {
         resolve();
       };
 
-      pgDump.stderr.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString();
-      });
-      pgDump.on("error", (error) => fail(new Error(`pg_dump failed to start: ${error.message}`)));
-      pgDump.on("close", (code) => {
-        if (code !== 0) {
-          fail(new Error(`pg_dump exited with code ${code}: ${stderr}`));
-        }
-      });
       out.on("error", fail);
+      gzip.on("error", fail);
       out.on("finish", succeed);
+      gzip.pipe(out);
 
-      pgDump.stdout.pipe(createGzip()).pipe(out);
+      const runDump = (args: string[]): Promise<void> =>
+        new Promise<void>((res, rej) => {
+          const pgDump = spawn("pg_dump", [...args, databaseUrl]);
+          let stderr = "";
+          pgDump.stderr.on("data", (chunk: Buffer) => {
+            stderr += chunk.toString();
+          });
+          pgDump.on("error", (error) =>
+            rej(new Error(`pg_dump failed to start: ${error.message}`)),
+          );
+          pgDump.on("close", (code) => {
+            if (code !== 0) rej(new Error(`pg_dump exited with code ${code}: ${stderr}`));
+            else res();
+          });
+          // `{ end: false }` — a second pg_dump run pipes into the same
+          // gzip stream afterward, so it must not close when this one's
+          // stdout ends.
+          pgDump.stdout.pipe(gzip, { end: false });
+        });
+
+      (async () => {
+        try {
+          await runDump([
+            "--format=plain",
+            "--no-owner",
+            "--clean",
+            "--if-exists",
+            "--schema=public",
+          ]);
+          await runDump(["--format=plain", "--no-owner", "--data-only", "--schema=family_tree"]);
+          gzip.end();
+        } catch (error) {
+          fail(error instanceof Error ? error : new Error(String(error)));
+        }
+      })();
     });
   }
 }

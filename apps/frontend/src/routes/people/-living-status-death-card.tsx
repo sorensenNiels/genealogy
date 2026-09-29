@@ -13,7 +13,9 @@ import { SectionCard } from "@genealogy/ui/components/section-card";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 
+import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { updatePerson } from "../../server/functions/person.functions";
 import { historicalDateFieldPreview } from "./-shared";
 import type { PersonRow } from "./-types";
@@ -26,9 +28,11 @@ export function LivingStatusDeathCard({
   person: PersonRow;
   onChanged: () => Promise<void>;
 }) {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
   const updatePersonMutation = useMutation({ mutationFn: updatePerson, onSuccess: onChanged });
-  const deathSplit = splitHistoricalDateText(person.death?.original ?? "");
-  const burialSplit = splitHistoricalDateText(person.burial?.original ?? "");
+  const deathSplit = splitHistoricalDateText(person.death?.original ?? "", language);
+  const burialSplit = splitHistoricalDateText(person.burial?.original ?? "", language);
 
   const form = useForm({
     defaultValues: {
@@ -44,16 +48,22 @@ export function LivingStatusDeathCard({
       burialPlace: person.burialPlace ?? "",
     },
     onSubmit: async ({ value, formApi }) => {
-      const deathOriginal = joinHistoricalDateText({
-        quality: value.deathQuality,
-        value: value.deathValue,
-        endValue: value.deathEndValue,
-      });
-      const burialOriginal = joinHistoricalDateText({
-        quality: value.burialQuality,
-        value: value.burialValue,
-        endValue: value.burialEndValue,
-      });
+      const deathOriginal = joinHistoricalDateText(
+        {
+          quality: value.deathQuality,
+          value: value.deathValue,
+          endValue: value.deathEndValue,
+        },
+        language,
+      );
+      const burialOriginal = joinHistoricalDateText(
+        {
+          quality: value.burialQuality,
+          value: value.burialValue,
+          endValue: value.burialEndValue,
+        },
+        language,
+      );
       await updatePersonMutation.mutateAsync({
         data: {
           id: person.id,
@@ -61,13 +71,13 @@ export function LivingStatusDeathCard({
           death:
             deathOriginal === null
               ? null
-              : { original: deathOriginal, ...parseHistoricalDate(deathOriginal) },
+              : { original: deathOriginal, ...parseHistoricalDate(deathOriginal, language) },
           deathPlace: value.deathPlace.trim() === "" ? null : value.deathPlace,
           causeOfDeath: value.causeOfDeath.trim() === "" ? null : value.causeOfDeath,
           burial:
             burialOriginal === null
               ? null
-              : { original: burialOriginal, ...parseHistoricalDate(burialOriginal) },
+              : { original: burialOriginal, ...parseHistoricalDate(burialOriginal, language) },
           burialPlace: value.burialPlace.trim() === "" ? null : value.burialPlace,
         },
       });
@@ -92,17 +102,17 @@ export function LivingStatusDeathCard({
       }}
     >
       <SectionCard
-        title="Living status & death"
+        title={t("person.livingStatusDeath.title")}
         contentClassName="grid grid-cols-1 gap-4 sm:grid-cols-2"
         footerClassName="flex-col items-stretch gap-2"
         footer={
           <>
             <div className="flex items-center justify-end gap-2">
               <Button type="button" variant="outline" onPress={() => form.reset()}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <SaveButton isDirty={isDirty} isPending={isSubmitting}>
-                Save
+                {t("common.save")}
               </SaveButton>
             </div>
             {updatePersonMutation.isError && (
@@ -115,12 +125,12 @@ export function LivingStatusDeathCard({
           <form.Field name="isLiving">
             {(field) => (
               <ButtonRadioGroup
-                aria-label="Is this person living?"
+                aria-label={t("person.livingStatusDeath.isLiving")}
                 value={field.state.value ? "living" : "deceased"}
                 onChange={(value) => field.handleChange(value === "living")}
                 options={[
-                  { value: "living", label: "Living" },
-                  { value: "deceased", label: "Deceased" },
+                  { value: "living", label: t("person.livingStatusDeath.living") },
+                  { value: "deceased", label: t("person.livingStatusDeath.deceased") },
                 ]}
               />
             )}
@@ -128,21 +138,26 @@ export function LivingStatusDeathCard({
         </div>
         {!isLiving && (
           <>
-            <LabeledField label="Date of Death">
+            <LabeledField label={t("person.livingStatusDeath.dateOfDeath")}>
               <HistoricalDateInput
-                placeholder="e.g. 12 MAR 1901"
+                placeholder={t("person.livingStatusDeath.deathDatePlaceholder")}
                 quality={deathQuality}
                 onQualityChange={(quality) => form.setFieldValue("deathQuality", quality)}
                 value={deathValue}
                 onChange={(value) => form.setFieldValue("deathValue", value)}
                 endValue={deathEndValue}
                 onEndChange={(value) => form.setFieldValue("deathEndValue", value)}
-                preview={historicalDateFieldPreview(deathQuality, deathValue, deathEndValue)}
+                preview={historicalDateFieldPreview(
+                  deathQuality,
+                  deathValue,
+                  deathEndValue,
+                  language,
+                )}
               />
             </LabeledField>
             <form.Field name="deathPlace">
               {(field) => (
-                <LabeledField label="Place of Death">
+                <LabeledField label={t("person.livingStatusDeath.placeOfDeath")}>
                   <Input
                     value={field.state.value}
                     onBlur={field.handleBlur}
@@ -151,23 +166,28 @@ export function LivingStatusDeathCard({
                 </LabeledField>
               )}
             </form.Field>
-            <LabeledField label="Burial date">
+            <LabeledField label={t("person.livingStatusDeath.burialDate")}>
               <HistoricalDateInput
-                placeholder="e.g. c. Nov 1901"
+                placeholder={t("person.livingStatusDeath.burialDatePlaceholder")}
                 quality={burialQuality}
                 onQualityChange={(quality) => form.setFieldValue("burialQuality", quality)}
                 value={burialValue}
                 onChange={(value) => form.setFieldValue("burialValue", value)}
                 endValue={burialEndValue}
                 onEndChange={(value) => form.setFieldValue("burialEndValue", value)}
-                preview={historicalDateFieldPreview(burialQuality, burialValue, burialEndValue)}
+                preview={historicalDateFieldPreview(
+                  burialQuality,
+                  burialValue,
+                  burialEndValue,
+                  language,
+                )}
               />
             </LabeledField>
             <form.Field name="burialPlace">
               {(field) => (
-                <LabeledField label="Burial place">
+                <LabeledField label={t("person.livingStatusDeath.burialPlace")}>
                   <Input
-                    placeholder="Cemetery or churchyard"
+                    placeholder={t("person.livingStatusDeath.burialPlacePlaceholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(event) => field.handleChange(event.target.value)}
@@ -177,9 +197,12 @@ export function LivingStatusDeathCard({
             </form.Field>
             <form.Field name="causeOfDeath">
               {(field) => (
-                <LabeledField label="Cause of death" className="sm:col-span-2">
+                <LabeledField
+                  label={t("person.livingStatusDeath.causeOfDeath")}
+                  className="sm:col-span-2"
+                >
                   <Input
-                    placeholder="As written in the record, e.g. Alderdomssvaghed"
+                    placeholder={t("person.livingStatusDeath.causeOfDeathPlaceholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(event) => field.handleChange(event.target.value)}

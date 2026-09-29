@@ -27,6 +27,18 @@ export class NotificationRouter {
         await this.notifications.markAllRead(ctx.session.user.id);
         return { ok: true } as const;
       }),
+
+      delete: protectedProcedure
+        .input(z.object({ id: notificationIdSchema }))
+        .mutation(async ({ input, ctx }) => {
+          await this.notifications.delete(ctx.session.user.id, input.id);
+          return { ok: true } as const;
+        }),
+
+      deleteAll: protectedProcedure.mutation(async ({ ctx }) => {
+        await this.notifications.deleteAll(ctx.session.user.id);
+        return { ok: true } as const;
+      }),
     });
   }
 }

@@ -1,10 +1,39 @@
-import { formatPersonName } from "@genealogy/core";
-import { personImmichLinks, persons, type Database, type PersonImmichLinkRow } from "@genealogy/db";
+import { readFile } from "node:fs/promises";
+
+import type {
+  CreateAlbumInput,
+  HistoricalDate,
+  ListAlbumsInput,
+  SearchAssetsInput,
+  SetAssetTagsInput,
+  TagFaceInput,
+  UpdateAlbumInput,
+  UpdateAlbumMetadataInput,
+} from "@genealogy/core";
+import { formatPersonName, parseHistoricalDate } from "@genealogy/core";
+import {
+  albumMetadata,
+  immichAlbumAssetOrder,
+  personImmichLinks,
+  persons,
+  type Database,
+  type PersonImmichLinkRow,
+} from "@genealogy/db";
+import { InjectQueue } from "@nestjs/bullmq";
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { eq } from "drizzle-orm";
+import type { Queue } from "bullmq";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { DRIZZLE } from "../database/database.module.js";
+import { NotificationService } from "../notification/notification.service.js";
+
+export const IMMICH_FACE_SCAN_QUEUE = "immich-face-scan";
+export const RESCAN_FACES_JOB = "rescan";
+
+export interface RescanFacesJob {
+  userId: string;
+}
 
 /** The handful of fields this app actually uses from Immich's `PersonResponseDto`. */
 export interface ImmichPerson {
@@ -18,6 +47,25 @@ export interface ImmichAsset {
   id: string;
   originalFileName: string;
   type: string;
+  fileCreatedAt: string;
+}
+
+/** Immich's native tag object (`GET/PUT /api/tags`) — distinct from this app's own `album_metadata.tags`. */
+export interface ImmichTag {
+  id: string;
+  name: string;
+}
+
+/**
+ * The description/tags this app cares about, off Immich's *full* asset
+ * response (`GET /assets/{id}`) — unlike `ImmichAsset` above, neither field
+ * is present on the lighter `/search/metadata` listing every album/library
+ * grid uses, so this is only ever fetched per-asset, on demand (opening the
+ * viewer, or an explicit "Check captions" batch), never for a whole grid.
+ */
+export interface AssetDetail {
+  description: string;
+  tags: ImmichTag[];
 }
 
 /** The handful of fields this app actually uses from Immich's `AlbumResponseDto`. */
@@ -34,9 +82,66 @@ export interface LinkedImmichPerson extends ImmichPerson {
   linkId: string;
 }
 
+/** Local metadata layered on an Immich album — see `albumMetadata` in `@genealogy/db`'s schema. */
+export interface AlbumMetadata {
+  date: HistoricalDate | null;
+  place: string | null;
+  tags: string[];
+}
+
+export type AlbumWithMetadata = ImmichAlbum & AlbumMetadata;
+
+const emptyAlbumMetadata: AlbumMetadata = { date: null, place: null, tags: [] };
+
+/** Same re-derivation `person.service.ts`'s own `resolveDate` does — never trust a client-sent `earliest`/`latest`, only `original`. */
+function resolveDate(date: HistoricalDate | null | undefined): HistoricalDate | null | undefined {
+  if (date == null) return date;
+  return { ...date, ...parseHistoricalDate(date.original) };
+}
+
 export interface ImmichBinary {
   buffer: Buffer;
   contentType: string;
+}
+
+/**
+ * A detected face, normalised so callers never touch Immich's raw
+ * `boundingBoxX1/Y1/X2/Y2` + `imageWidth/imageHeight` coordinates — `box`
+ * fields are fractions of the image (0–1), ready for percentage-based CSS
+ * positioning in `FaceBoxOverlay`.
+ */
+export interface ImmichFace {
+  /** Asset-face id — what `tagFace`'s `PUT /faces/{personId}` body references. */
+  id: string;
+  box: { left: number; top: number; width: number; height: number };
+  immichPerson: ImmichPerson | null;
+  /** Non-null once this Immich person has a `person_immich_links` row. */
+  linkedPerson: { personId: string; linkId: string } | null;
+}
+
+export interface UploadedImmichFile {
+  /** Disk path from multer's `diskStorage` — see the controller's `@UseInterceptors`. Never buffered fully in this process beyond the one read in `uploadAsset`. */
+  path: string;
+  mimetype: string;
+  originalname: string;
+}
+
+export interface UploadAssetResult {
+  assetId: string;
+  /** Immich matched an existing checksum — the upload is a no-op success, not an error. */
+  isDuplicate: boolean;
+}
+
+/** Immich's raw `AssetFaceResponseDto` shape — kept private to this file; see `ImmichFace` for what callers actually get. */
+interface RawImmichFace {
+  id: string;
+  imageWidth: number;
+  imageHeight: number;
+  boundingBoxX1: number;
+  boundingBoxX2: number;
+  boundingBoxY1: number;
+  boundingBoxY2: number;
+  person: ImmichPerson | null;
 }
 
 /**
@@ -59,6 +164,8 @@ export class ImmichService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly config: ConfigService,
+    @InjectQueue(IMMICH_FACE_SCAN_QUEUE) private readonly faceScanQueue: Queue<RescanFacesJob>,
+    private readonly notifications: NotificationService,
   ) {}
 
   isConfigured(): boolean {
@@ -76,16 +183,37 @@ export class ImmichService {
     return { url, apiKey };
   }
 
+  /**
+   * Throws on a non-ok response, mapping 404 to `NotFoundException` (not
+   * just `BadRequestException`) so callers like `getPerson` that only
+   * expect to catch a 404 actually can — this used to only happen in
+   * `requestBinary`, which meant a deleted/merged Immich person threw a
+   * generic `BadRequestException` here instead of the `null` the "dangling
+   * link fails open" behavior documented in TECH_STACK.md depends on.
+   *
+   * Includes the response body in the thrown message: reads mostly fail
+   * for boring reasons (Immich down), but a write failing is almost always
+   * actionable — 403 means the configured API key lacks a scope the write
+   * needs (see the `IMMICH_API_KEY` comment in env.ts), 400 means a bad
+   * request body — and a bare "403 Forbidden" gives no hint which.
+   */
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const { url, apiKey } = this.requireConfig();
     const response = await fetch(`${url}/api${path}`, {
       ...init,
       headers: { ...init.headers, "x-api-key": apiKey, accept: "application/json" },
     });
+    if (response.status === 404) {
+      throw new NotFoundException(`Immich request failed: 404 (${path})`);
+    }
     if (!response.ok) {
+      const body = await response.text().catch(() => "");
       throw new BadRequestException(
-        `Immich request failed: ${response.status} ${response.statusText} (${path})`,
+        `Immich request failed: ${response.status} ${response.statusText} (${path})${body ? ` — ${body}` : ""}`,
       );
+    }
+    if (response.status === 204) {
+      return undefined as T;
     }
     return response.json() as Promise<T>;
   }
@@ -105,7 +233,14 @@ export class ImmichService {
     return { buffer, contentType: response.headers.get("content-type") ?? "image/jpeg" };
   }
 
-  /** Every Immich "Person" (a face cluster), paginated — named or not; most start unnamed. */
+  /**
+   * Every Immich "Person" (a face cluster), paginated — named or not; most
+   * start unnamed. `withHidden=true`: a person Immich auto-hides (e.g. a
+   * low-confidence or since-merged cluster) is still a real cluster this
+   * app's own pickers (`ImmichPersonPicker`) should be able to link against
+   * — excluding it silently was one of two confirmed causes of "the Link a
+   * face picker doesn't show everyone."
+   */
   async listPeople(
     page: number,
     size: number,
@@ -114,7 +249,7 @@ export class ImmichService {
       people: ImmichPerson[];
       total: number;
       hasNextPage: boolean;
-    }>(`/people?page=${page}&size=${size}&withHidden=false`);
+    }>(`/people?page=${page}&size=${size}&withHidden=true`);
     return result;
   }
 
@@ -123,6 +258,19 @@ export class ImmichService {
       return await this.request<ImmichPerson>(`/people/${immichPersonId}`);
     } catch (error) {
       if (error instanceof NotFoundException) return null;
+      // Confirmed live (not assumed from the OpenAPI spec): Immich's actual
+      // `GET /people/{id}` returns **400**, not 404, for a person id that
+      // doesn't exist — "Not found or no person.read access" is its literal
+      // message, conflating "doesn't exist" with "no permission" into one
+      // status. This app's own API key has full access (see
+      // TECH_STACK.md), so a genuine permission denial here doesn't happen
+      // in practice — treat this message as the missing-person case the
+      // "dangling link fails open" design already expects from a 404.
+      // Without this, every dangling-link caller (a person's Photos card,
+      // `listDanglingLinks`, ...) threw a raw 500 instead of degrading
+      // gracefully — this surfaced live while testing the new integrity
+      // checker's dangling-Immich-link check.
+      if (error instanceof BadRequestException && /not found/i.test(error.message)) return null;
       throw error;
     }
   }
@@ -146,31 +294,637 @@ export class ImmichService {
     });
   }
 
-  async assetThumbnail(assetId: string): Promise<ImmichBinary> {
-    return this.requestBinary(`/assets/${assetId}/thumbnail?size=thumbnail`);
-  }
-
-  private async assetsForPersonIds(immichPersonIds: string[]): Promise<ImmichAsset[]> {
-    if (immichPersonIds.length === 0) return [];
-    const result = await this.request<{ assets: { items: ImmichAsset[] } }>("/search/metadata", {
+  /** `POST /people` — used by `tagFace` when a detected face has no Immich person at all yet. */
+  private async createImmichPerson(name: string): Promise<ImmichPerson> {
+    return this.request<ImmichPerson>("/people", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ personIds: immichPersonIds }),
+      body: JSON.stringify({ name }),
     });
-    return result.assets.items;
   }
 
-  async listAlbums(): Promise<ImmichAlbum[]> {
-    return this.request<ImmichAlbum[]>("/albums");
+  async assetImage(assetId: string, size: "thumbnail" | "preview"): Promise<ImmichBinary> {
+    return this.requestBinary(`/assets/${assetId}/thumbnail?size=${size}`);
+  }
+
+  async assetThumbnail(assetId: string): Promise<ImmichBinary> {
+    return this.assetImage(assetId, "thumbnail");
+  }
+
+  async assetOriginal(assetId: string): Promise<ImmichBinary> {
+    return this.requestBinary(`/assets/${assetId}/original`);
+  }
+
+  /**
+   * `POST /search/metadata` underlies every asset-listing method in this
+   * file (person photos, album assets, the general browser) — one request
+   * shape, not three copies of it. Immich's own OpenAPI spec marks
+   * `personIds`/`albumIds`/`page` deprecated as of v3.2.0 in favor of a
+   * `cursor`-based replacement it doesn't specify yet; they still work at
+   * the exact v3.2.2 this app pins (see TECH_STACK.md's Immich version
+   * note), but a future Immich upgrade should re-check this against
+   * whatever supersedes it.
+   */
+  private async searchMetadata(
+    body: Record<string, unknown>,
+  ): Promise<{ items: ImmichAsset[]; nextCursor: string | null }> {
+    const result = await this.request<{
+      assets: { items: ImmichAsset[]; nextCursor: string | null };
+    }>("/search/metadata", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return result.assets;
+  }
+
+  /**
+   * One `/search/metadata` call per id, not one call with the whole array —
+   * Immich's `personIds` filter is an intersection (assets containing every
+   * listed person together), not a union, so a single combined call would
+   * silently drop photos for a person with more than one linked cluster
+   * down to just the ones where both clusters co-occur.
+   */
+  private async assetsForPersonIds(immichPersonIds: string[]): Promise<ImmichAsset[]> {
+    const results = await Promise.all(
+      immichPersonIds.map((personId) => this.searchMetadata({ personIds: [personId] })),
+    );
+    return results.flatMap((result) => result.items);
+  }
+
+  private async metadataByAlbumId(): Promise<Map<string, AlbumMetadata>> {
+    const rows = await this.db.select().from(albumMetadata);
+    return new Map(
+      rows.map((row) => [row.albumId, { date: row.date, place: row.place, tags: row.tags }]),
+    );
+  }
+
+  /**
+   * Immich albums, joined with this app's own local metadata (date/place/
+   * tags) and, when `filter` is given, narrowed/sorted by it — all done in
+   * memory over the full list rather than pushed into SQL, since this is a
+   * single-user app with at most a few thousand albums (see `albumMetadata`
+   * in the schema for why tags aren't a normalized join table either).
+   */
+  async listAlbums(filter?: ListAlbumsInput): Promise<AlbumWithMetadata[]> {
+    const [albums, metadata] = await Promise.all([
+      this.request<ImmichAlbum[]>("/albums"),
+      this.metadataByAlbumId(),
+    ]);
+    let merged = albums.map((album) => ({
+      ...album,
+      ...(metadata.get(album.id) ?? emptyAlbumMetadata),
+    }));
+
+    if (filter?.search) {
+      const pattern = filter.search.toLowerCase();
+      merged = merged.filter((album) => album.albumName.toLowerCase().includes(pattern));
+    }
+    if (filter?.tags && filter.tags.length > 0) {
+      const wanted = new Set(filter.tags);
+      merged = merged.filter((album) => album.tags.some((tag) => wanted.has(tag)));
+    }
+    if (filter?.place) {
+      const pattern = filter.place.toLowerCase();
+      merged = merged.filter((album) => album.place?.toLowerCase().includes(pattern));
+    }
+    if (filter?.dateFrom != null) {
+      const { dateFrom } = filter;
+      merged = merged.filter(
+        (album) => album.date?.earliest != null && album.date.earliest >= dateFrom,
+      );
+    }
+    if (filter?.dateTo != null) {
+      const { dateTo } = filter;
+      merged = merged.filter(
+        (album) => album.date?.earliest != null && album.date.earliest <= dateTo,
+      );
+    }
+    if (filter?.missingInfo) {
+      merged = merged.filter(
+        (album) => album.date == null && album.place == null && album.tags.length === 0,
+      );
+    }
+
+    if (filter?.sort === "name") {
+      merged = merged.toSorted((a, b) => a.albumName.localeCompare(b.albumName));
+    } else if (filter?.sort === "date") {
+      merged = merged.toSorted((a, b) =>
+        (a.date?.earliest ?? "").localeCompare(b.date?.earliest ?? ""),
+      );
+    } else if (filter?.sort === "assetCount") {
+      merged = merged.toSorted((a, b) => b.assetCount - a.assetCount);
+    }
+
+    return merged;
+  }
+
+  async getAlbum(albumId: string): Promise<AlbumWithMetadata> {
+    const [album, metadata] = await Promise.all([
+      this.request<ImmichAlbum>(`/albums/${albumId}`),
+      this.getAlbumMetadata(albumId),
+    ]);
+    return { ...album, ...metadata };
+  }
+
+  async getAlbumMetadata(albumId: string): Promise<AlbumMetadata> {
+    const [row] = await this.db
+      .select()
+      .from(albumMetadata)
+      .where(eq(albumMetadata.albumId, albumId))
+      .limit(1);
+    return row ? { date: row.date, place: row.place, tags: row.tags } : emptyAlbumMetadata;
+  }
+
+  async upsertAlbumMetadata(input: UpdateAlbumMetadataInput): Promise<AlbumMetadata> {
+    const date = resolveDate(input.date ?? null) ?? null;
+    const place = input.place ?? null;
+    const tags = input.tags ?? [];
+    await this.db
+      .insert(albumMetadata)
+      .values({ albumId: input.albumId, date, place, tags })
+      .onConflictDoUpdate({
+        target: albumMetadata.albumId,
+        set: { date, place, tags, updatedAt: new Date() },
+      });
+    return { date, place, tags };
+  }
+
+  /** Every tag in use, for the tag-input's autocomplete suggestions. */
+  async listAlbumTags(): Promise<string[]> {
+    const rows = await this.db.select({ tags: albumMetadata.tags }).from(albumMetadata);
+    const tags = new Set<string>();
+    for (const row of rows) {
+      for (const tag of row.tags) tags.add(tag);
+    }
+    return [...tags].toSorted((a, b) => a.localeCompare(b));
+  }
+
+  async createAlbum(input: CreateAlbumInput): Promise<ImmichAlbum> {
+    return this.request<ImmichAlbum>("/albums", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  }
+
+  async updateAlbum(
+    albumId: string,
+    patch: Omit<UpdateAlbumInput, "albumId">,
+  ): Promise<ImmichAlbum> {
+    return this.request<ImmichAlbum>(`/albums/${albumId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+  }
+
+  async addAssetsToAlbum(albumId: string, assetIds: string[]): Promise<void> {
+    await this.request(`/albums/${albumId}/assets`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: assetIds }),
+    });
+  }
+
+  /** Unlinks assets from this album — the assets themselves stay in Immich's library, in every other album they're also in. */
+  async removeAssetsFromAlbum(albumId: string, assetIds: string[]): Promise<void> {
+    await this.request(`/albums/${albumId}/assets`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: assetIds }),
+    });
+    // A removed asset's manual position in this album is meaningless now —
+    // prune it rather than leave an orphaned row nothing else will clean up.
+    await this.db
+      .delete(immichAlbumAssetOrder)
+      .where(
+        and(
+          eq(immichAlbumAssetOrder.albumId, albumId),
+          inArray(immichAlbumAssetOrder.assetId, assetIds),
+        ),
+      );
+  }
+
+  async deleteAlbum(albumId: string): Promise<void> {
+    await this.request(`/albums/${albumId}`, { method: "DELETE" });
+    await this.db.delete(immichAlbumAssetOrder).where(eq(immichAlbumAssetOrder.albumId, albumId));
+    await this.db.delete(albumMetadata).where(eq(albumMetadata.albumId, albumId));
+  }
+
+  /**
+   * `force` deliberately omitted — Immich's default behavior for this
+   * endpoint is a soft delete into its own trash (recoverable there for its
+   * configured retention period, typically 30 days), not an immediate
+   * purge. That's the safer default for a destructive action this app now
+   * exposes with only a confirmation dialog standing between a click and
+   * the delete.
+   */
+  async deleteAssets(assetIds: string[]): Promise<void> {
+    await this.request("/assets", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: assetIds }),
+    });
+    // A deleted asset is gone everywhere, not just one album — prune its
+    // manual position from every album it happened to hold one in.
+    await this.db
+      .delete(immichAlbumAssetOrder)
+      .where(inArray(immichAlbumAssetOrder.assetId, assetIds));
+  }
+
+  /** The asset's caption + tags — only ever fetched per-asset, see `AssetDetail`'s own comment. */
+  async getAssetDetail(assetId: string): Promise<AssetDetail> {
+    const asset = await this.request<{
+      exifInfo?: { description?: string };
+      tags?: ImmichTag[];
+    }>(`/assets/${assetId}`);
+    return { description: asset.exifInfo?.description ?? "", tags: asset.tags ?? [] };
+  }
+
+  /**
+   * One `GET /assets/{id}` per id, run in parallel — Immich has no bulk
+   * multi-get for full asset detail (checked; only `/search/metadata`,
+   * which omits exactly the fields this needs). Used only behind the
+   * album page's explicit "Check captions" toggle, never on every grid
+   * load — see `AssetDetail`'s own comment for why.
+   */
+  async getAssetDetails(assetIds: string[]): Promise<Record<string, AssetDetail>> {
+    const details = await Promise.all(
+      assetIds.map(async (assetId) => [assetId, await this.getAssetDetail(assetId)] as const),
+    );
+    return Object.fromEntries(details);
+  }
+
+  async updateAssetDescription(assetId: string, description: string): Promise<void> {
+    await this.request(`/assets/${assetId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ description }),
+    });
+  }
+
+  /** Immich's own native tags (`GET /tags`), for the tag editor's autocomplete — not this app's `album_metadata.tags`. */
+  async listImmichTags(): Promise<ImmichTag[]> {
+    return this.request<ImmichTag[]>("/tags");
+  }
+
+  private async findOrCreateTagsByName(names: string[]): Promise<ImmichTag[]> {
+    if (names.length === 0) return [];
+    const existing = await this.listImmichTags();
+    const existingByName = new Map(existing.map((tag) => [tag.name.toLowerCase(), tag]));
+    return Promise.all(
+      names.map(async (name) => {
+        const found = existingByName.get(name.toLowerCase());
+        if (found) return found;
+        return this.request<ImmichTag>("/tags", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+      }),
+    );
+  }
+
+  /**
+   * Replaces this one asset's whole set of Immich-native tags with
+   * `tagNames` — diffed against its current tags so only the actual
+   * additions/removals hit the API, not a blanket unassign-then-reassign.
+   * A not-yet-existing name is created first (`findOrCreateTagsByName`),
+   * matching `TagInput`'s own "still accepts anything typed" contract.
+   */
+  async setAssetTags(input: SetAssetTagsInput): Promise<void> {
+    const [{ tags: currentTags }, wantedTags] = await Promise.all([
+      this.getAssetDetail(input.assetId),
+      this.findOrCreateTagsByName(input.tagNames),
+    ]);
+    const currentIds = new Set(currentTags.map((tag) => tag.id));
+    const wantedIds = new Set(wantedTags.map((tag) => tag.id));
+    const toAdd = wantedTags.filter((tag) => !currentIds.has(tag.id));
+    const toRemove = currentTags.filter((tag) => !wantedIds.has(tag.id));
+
+    if (toAdd.length > 0) {
+      await this.request("/tags/assets", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tagIds: toAdd.map((tag) => tag.id), assetIds: [input.assetId] }),
+      });
+    }
+    await Promise.all(
+      toRemove.map((tag) =>
+        this.request(`/tags/${tag.id}/assets`, {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ids: [input.assetId] }),
+        }),
+      ),
+    );
   }
 
   async albumAssets(albumId: string): Promise<ImmichAsset[]> {
-    const result = await this.request<{ assets: { items: ImmichAsset[] } }>("/search/metadata", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ albumIds: [albumId] }),
+    return (await this.searchMetadata({ albumIds: [albumId] })).items;
+  }
+
+  /**
+   * `albumAssets` above, reordered by this app's own manual positions where
+   * one is recorded (`immichAlbumAssetOrder` — see that table's comment for
+   * why this is the one piece of local state in an otherwise Immich-is-
+   * sole-source-of-truth integration). Assets with no recorded position
+   * (added to the album since the last reorder, e.g. via Immich's own UI, or
+   * this app's own upload/add-existing-photos) are appended at the end in
+   * whatever order Immich itself returned them — new arrivals default to
+   * "end of album" until manually repositioned. Rows whose asset is no
+   * longer actually in the album (removed elsewhere) are silently dropped,
+   * not surfaced as an error — same "fails open" reasoning as
+   * `personImmichLinks`'s dangling-link handling.
+   */
+  async orderedAlbumAssets(albumId: string): Promise<ImmichAsset[]> {
+    const assets = await this.albumAssets(albumId);
+    const assetById = new Map(assets.map((asset) => [asset.id, asset]));
+
+    const orderRows = await this.db
+      .select({ assetId: immichAlbumAssetOrder.assetId })
+      .from(immichAlbumAssetOrder)
+      .where(eq(immichAlbumAssetOrder.albumId, albumId))
+      .orderBy(asc(immichAlbumAssetOrder.position));
+
+    const ordered: ImmichAsset[] = [];
+    const seen = new Set<string>();
+    for (const row of orderRows) {
+      const asset = assetById.get(row.assetId);
+      if (asset) {
+        ordered.push(asset);
+        seen.add(asset.id);
+      }
+    }
+    for (const asset of assets) {
+      if (!seen.has(asset.id)) {
+        ordered.push(asset);
+      }
+    }
+    return ordered;
+  }
+
+  /**
+   * Replaces this album's whole manual order with `assetIdsInOrder` —
+   * always the *complete* new sequence from the drag-and-drop grid, not a
+   * single moved item, so this can just delete-and-reinsert rather than
+   * juggle individual position updates.
+   */
+  async reorderAlbumAssets(albumId: string, assetIdsInOrder: string[]): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx.delete(immichAlbumAssetOrder).where(eq(immichAlbumAssetOrder.albumId, albumId));
+      if (assetIdsInOrder.length > 0) {
+        await tx.insert(immichAlbumAssetOrder).values(
+          assetIdsInOrder.map((assetId, index) => ({
+            albumId,
+            assetId,
+            position: index,
+          })),
+        );
+      }
     });
-    return result.assets.items;
+  }
+
+  /**
+   * `POST /download/info` — how many zip archives a given set of assets
+   * needs, and each one's asset ids/size. Immich splits into more than one
+   * only if the total original-file size exceeds its own configured limit;
+   * callers check `.length` rather than assuming `[0]` is everything — see
+   * `AlbumZipService`, the only caller, for why a big set is welcomed here
+   * rather than refused.
+   */
+  async downloadGroupsForAssetIds(
+    assetIds: string[],
+  ): Promise<{ assetIds: string[]; size: number }[]> {
+    const result = await this.request<{ archives: { assetIds: string[]; size: number }[] }>(
+      "/download/info",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ assetIds }),
+      },
+    );
+    return result.archives;
+  }
+
+  /**
+   * `POST /download/archive` — the actual zip bytes, as a stream. Neither
+   * `request` (always parses the response as JSON) nor `requestBinary`
+   * (GET-only, and buffers the whole response into a `Buffer` — fine for a
+   * thumbnail, not for an album-sized zip) fits here, so this is its own
+   * thin `fetch`, checked for failure the same way `request` is but handing
+   * back the raw body stream instead of buffering it — the controller pipes
+   * it straight to the HTTP response.
+   */
+  async downloadArchive(
+    assetIds: string[],
+    archiveName: string,
+  ): Promise<{ body: ReadableStream<Uint8Array>; contentType: string }> {
+    const { url, apiKey } = this.requireConfig();
+    const response = await fetch(`${url}/api/download/archive`, {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "content-type": "application/json" },
+      body: JSON.stringify({ assetIds, archiveName }),
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new BadRequestException(
+        `Immich request failed: ${response.status} ${response.statusText} (/download/archive)${body ? ` — ${body}` : ""}`,
+      );
+    }
+    if (!response.body) {
+      throw new BadRequestException("Immich returned an empty archive response");
+    }
+    return {
+      body: response.body,
+      contentType: response.headers.get("content-type") ?? "application/zip",
+    };
+  }
+
+  /** The general "browse everything" view — no album/person filter required. */
+  async searchAssets(
+    input: SearchAssetsInput,
+  ): Promise<{ assets: ImmichAsset[]; nextCursor: string | null }> {
+    const body: Record<string, unknown> = { size: input.size };
+    if (input.albumId) body.albumIds = [input.albumId];
+    if (input.personIds && input.personIds.length > 0) body.personIds = input.personIds;
+    if (input.cursor) body.cursor = input.cursor;
+    const { items, nextCursor } = await this.searchMetadata(body);
+    return { assets: items, nextCursor };
+  }
+
+  /**
+   * Immich already runs face detection automatically on every asset it
+   * ingests — this exists for the cases that misses: photos uploaded before
+   * face recognition was enabled, or a face the first pass didn't catch.
+   * Just enqueues; `ImmichFaceScanProcessor` does the actual work.
+   */
+  async enqueueFaceRescan(userId: string): Promise<void> {
+    await this.faceScanQueue.add(RESCAN_FACES_JOB, { userId });
+  }
+
+  /**
+   * Called only by `ImmichFaceScanProcessor`. Walks every asset in the
+   * library (`searchMetadata` with no filters) and asks Immich to re-run its
+   * own `refresh-faces` job on each one, in batches — Immich's own
+   * machine-learning pipeline does the actual detection asynchronously from
+   * there, so "done" here means "requested", not "every face is now
+   * tagged". `assetIds` is capped per request to keep each `/assets/jobs`
+   * body a reasonable size against a library with thousands of photos.
+   */
+  async rescanAllFaces(userId: string): Promise<void> {
+    const BATCH_SIZE = 500;
+    const assetIds: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const body: Record<string, unknown> = cursor ? { cursor } : {};
+      const page = await this.searchMetadata(body);
+      assetIds.push(...page.items.map((item) => item.id));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+
+    for (let i = 0; i < assetIds.length; i += BATCH_SIZE) {
+      const batch = assetIds.slice(i, i + BATCH_SIZE);
+      await this.request("/assets/jobs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "refresh-faces", assetIds: batch }),
+      });
+    }
+
+    await this.notifications.create({
+      userId,
+      type: "immich_faces_rescanned",
+      title: "Face re-scan requested",
+      body: `Requested a face-detection re-scan for ${assetIds.length} photo${assetIds.length === 1 ? "" : "s"} in your Immich library. Immich runs detection in the background — check back in a few minutes.`,
+    });
+  }
+
+  /**
+   * `GET /faces?id=` — despite the query param being named `id` (and typed
+   * as the same `FaceDto` the reassign endpoint's body uses), Immich's own
+   * `PersonService.getFacesById` treats it as the **asset** id, not a face
+   * id — confirmed against Immich's server source (`person.service.ts`)
+   * rather than assumed from the OpenAPI description, which is misleading
+   * here (verified during planning: don't trust the param name alone).
+   */
+  async facesForAsset(assetId: string): Promise<ImmichFace[]> {
+    const raw = await this.request<RawImmichFace[]>(`/faces?id=${assetId}`);
+    if (raw.length === 0) return [];
+
+    const immichPersonIds = [
+      ...new Set(raw.flatMap((face) => (face.person ? [face.person.id] : []))),
+    ];
+    const links =
+      immichPersonIds.length === 0
+        ? []
+        : await this.db
+            .select({
+              personId: personImmichLinks.personId,
+              immichPersonId: personImmichLinks.immichPersonId,
+              linkId: personImmichLinks.id,
+            })
+            .from(personImmichLinks)
+            .where(inArray(personImmichLinks.immichPersonId, immichPersonIds));
+    const linkByImmichPersonId = new Map(links.map((link) => [link.immichPersonId, link]));
+
+    return raw.map((face) => {
+      const link = face.person ? linkByImmichPersonId.get(face.person.id) : undefined;
+      return {
+        id: face.id,
+        box: {
+          left: face.boundingBoxX1 / face.imageWidth,
+          top: face.boundingBoxY1 / face.imageHeight,
+          width: (face.boundingBoxX2 - face.boundingBoxX1) / face.imageWidth,
+          height: (face.boundingBoxY2 - face.boundingBoxY1) / face.imageHeight,
+        },
+        immichPerson: face.person,
+        linkedPerson: link ? { personId: link.personId, linkId: link.linkId } : null,
+      };
+    });
+  }
+
+  /**
+   * Reassigns an already-detected face to a (possibly new) Immich person,
+   * then links that person to a genealogy person — the write path for a
+   * face with no Immich person yet, or the wrong one. A face that already
+   * belongs to the *right* Immich person just needs the plain `link` call
+   * below, not this.
+   *
+   * Order matters for what's recoverable on failure:
+   * 1. `assertLinkable` first — cheap, local, fails before any Immich write.
+   * 2. Create the Immich person if the caller didn't pick an existing one.
+   * 3. `PUT /faces/{immichPersonId}` — the write that actually matters. Note
+   *    the inversion versus what the endpoint name suggests: the **path**
+   *    parameter is the *person* id being assigned to, and the *face* id
+   *    goes in the body (`{ id: faceId }`) — confirmed against Immich's
+   *    server source (`FaceController.reassignFacesById` /
+   *    `PersonService.reassignFacesById`), not guessed from the OpenAPI
+   *    schema names alone, which read the other way round.
+   * 4. `link()` — if this fails after step 3 succeeded, the face is tagged
+   *    in Immich but not yet linked locally; recoverable by retrying from
+   *    the same dialog, since the Immich person id result is still known.
+   */
+  async tagFace(input: TagFaceInput): Promise<{ immichPersonId: string; linkId: string | null }> {
+    let immichPersonId = input.immichPersonId;
+    if (immichPersonId) {
+      await this.assertLinkable(input.personId, immichPersonId);
+    } else if (input.newImmichPersonName) {
+      const created = await this.createImmichPerson(input.newImmichPersonName);
+      immichPersonId = created.id;
+    } else {
+      throw new BadRequestException("Either immichPersonId or newImmichPersonName is required");
+    }
+
+    await this.request(`/faces/${immichPersonId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: input.faceId }),
+    });
+
+    const row = await this.link(input.personId, immichPersonId);
+    return { immichPersonId, linkId: row.id };
+  }
+
+  /** `POST /assets`, multipart. Adds to `albumId` afterward when given — Immich's upload call itself has no album parameter. */
+  async uploadAsset(file: UploadedImmichFile, albumId?: string): Promise<UploadAssetResult> {
+    const { url, apiKey } = this.requireConfig();
+
+    // Read the whole file into memory once here, after multer's own
+    // `diskStorage` already avoided buffering it during the inbound parse
+    // (see the controller) — true zero-copy streaming to Immich would need
+    // the `form-data` package (Node's built-in `FormData`/`Blob` can't
+    // stream from disk); one bounded (IMMICH_MAX_UPLOAD_BYTES-capped)
+    // in-memory copy at forward time is a reasonable middle ground at this
+    // app's scale.
+    const bytes = await readFile(file.path);
+    const now = new Date().toISOString();
+    const form = new FormData();
+    form.set("assetData", new Blob([bytes], { type: file.mimetype }), file.originalname);
+    form.set("filename", file.originalname);
+    form.set("fileCreatedAt", now);
+    form.set("fileModifiedAt", now);
+
+    const response = await fetch(`${url}/api/assets`, {
+      method: "POST",
+      headers: { "x-api-key": apiKey, accept: "application/json" },
+      body: form,
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new BadRequestException(
+        `Immich upload failed: ${response.status} ${response.statusText}${body ? ` — ${body}` : ""}`,
+      );
+    }
+    const result = (await response.json()) as { id: string; status: "created" | "duplicate" };
+    const isDuplicate = result.status === "duplicate";
+
+    if (albumId) {
+      await this.addAssetsToAlbum(albumId, [result.id]);
+    }
+
+    return { assetId: result.id, isDuplicate };
   }
 
   /**
@@ -194,6 +948,42 @@ export class ImmichService {
     return resolved.flat();
   }
 
+  /**
+   * Every `person_immich_links` row whose Immich person no longer resolves
+   * (deleted or merged away in Immich itself) — the same dangling-link
+   * check every other read here already does silently (see `linkedPeople`'s
+   * own comment), surfaced explicitly for `IntegrityService.checkData` so
+   * an admin can see the "fails open" cases instead of them just quietly
+   * not showing a photo.
+   */
+  async listDanglingLinks(): Promise<
+    {
+      linkId: string;
+      personId: string;
+      personGiven: string;
+      personSurname: string;
+      immichPersonId: string;
+    }[]
+  > {
+    const links = await this.db
+      .select({
+        linkId: personImmichLinks.id,
+        personId: personImmichLinks.personId,
+        immichPersonId: personImmichLinks.immichPersonId,
+        personGiven: persons.given,
+        personSurname: persons.surname,
+      })
+      .from(personImmichLinks)
+      .innerJoin(persons, eq(personImmichLinks.personId, persons.id));
+    const results = await Promise.all(
+      links.map(async (link) => {
+        const person = await this.getPerson(link.immichPersonId);
+        return person ? [] : [link];
+      }),
+    );
+    return results.flat();
+  }
+
   /** Every photo across all of this person's linked Immich person ids, deduplicated. */
   async photosForPerson(personId: string): Promise<ImmichAsset[]> {
     const links = await this.db
@@ -208,13 +998,10 @@ export class ImmichService {
    * `immichPersonId` is unique across the whole table (see schema.ts) — one
    * face cluster represents at most one genealogy person — so a second link
    * attempt for an already-linked Immich person is rejected with a clear
-   * reason rather than the raw unique-violation.
+   * reason rather than the raw unique-violation. Shared by `link` and
+   * `tagFace`, which both need this check before doing anything remote.
    */
-  async link(personId: string, immichPersonId: string): Promise<PersonImmichLinkRow> {
-    const person = await this.getPerson(immichPersonId);
-    if (!person) {
-      throw new BadRequestException("No such Immich person");
-    }
+  private async assertLinkable(personId: string, immichPersonId: string): Promise<void> {
     const [existing] = await this.db
       .select({ personId: personImmichLinks.personId })
       .from(personImmichLinks)
@@ -227,6 +1014,14 @@ export class ImmichService {
           : "This Immich person is already linked to someone else",
       );
     }
+  }
+
+  async link(personId: string, immichPersonId: string): Promise<PersonImmichLinkRow> {
+    const person = await this.getPerson(immichPersonId);
+    if (!person) {
+      throw new BadRequestException("No such Immich person");
+    }
+    await this.assertLinkable(personId, immichPersonId);
     const [row] = await this.db
       .insert(personImmichLinks)
       .values({ personId, immichPersonId })
@@ -259,8 +1054,30 @@ export class ImmichService {
     return row;
   }
 
-  /** A no-op if the link was already removed. */
+  /**
+   * A no-op if the link was already removed. `link()` best-effort renames
+   * the Immich cluster to the tree person's name; without the mirror image
+   * of that here, a since-unlinked face kept showing the *previous*
+   * person's name in the photo viewer indefinitely (until, and unless, it
+   * happened to be relinked to someone else later) — confirmed live as a
+   * real bug, not just a stale-cache appearance. Best-effort in the same
+   * sense as `link()`'s own rename: never blocks the unlink itself.
+   */
   async unlink(linkId: string): Promise<void> {
+    const [existing] = await this.db
+      .select({ immichPersonId: personImmichLinks.immichPersonId })
+      .from(personImmichLinks)
+      .where(eq(personImmichLinks.id, linkId))
+      .limit(1);
     await this.db.delete(personImmichLinks).where(eq(personImmichLinks.id, linkId));
+    if (existing) {
+      try {
+        await this.renamePerson(existing.immichPersonId, "");
+      } catch (error) {
+        this.logger.warn(
+          `Could not clear name on Immich person ${existing.immichPersonId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
   }
 }

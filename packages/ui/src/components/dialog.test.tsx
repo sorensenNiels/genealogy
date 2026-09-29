@@ -5,7 +5,14 @@ import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
 import { Button } from "./button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./dialog";
+import {
+  ControlledDialogContent,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./dialog";
 
 const testUtilUser = new User({ interactionType: "mouse" });
 
@@ -100,3 +107,33 @@ function ControlledDialog() {
     </Dialog>
   );
 }
+
+function HeadlessControlledDialog() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        Open from elsewhere
+      </button>
+      <ControlledDialogContent isOpen={open} onOpenChange={setOpen}>
+        <DialogHeader>
+          <DialogTitle>Headless dialog</DialogTitle>
+        </DialogHeader>
+      </ControlledDialogContent>
+    </>
+  );
+}
+
+describe("ControlledDialogContent", () => {
+  it("has no adjacent trigger button, yet still opens and closes via isOpen/onOpenChange", async () => {
+    render(<HeadlessControlledDialog />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Open from elsewhere" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(screen.getByText("Headless dialog")).toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+  });
+});

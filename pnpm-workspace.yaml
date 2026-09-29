@@ -91,6 +91,18 @@ catalog:
   motion: 13.4.0
   tailwind-merge: 3.7.0
   lucide-react: 1.47.0
+  # Person profile photo cropper (circular selection from an Immich photo) —
+  # last published 2026-07-24, canary builds as recent as 2026-09-05, so
+  # actively maintained. Its one runtime dependency is normalize-wheel.
+  react-easy-crop: 6.2.3
+
+  # --- i18n (see "Internationalization" in FEATURES.md) ---
+  # Both checked before adding: i18next released 2026-09-03, react-i18next
+  # released 2026-09-21 — actively maintained. No language-detector package:
+  # the current language is account-preference-driven (see ProfileService),
+  # not browser Accept-Language-driven.
+  i18next: 26.4.2
+  react-i18next: 17.0.15
 
   # --- markdown notes (see "Markdown notes" in TECH_STACK.md) ---
   # MDXEditor for the WYSIWYG editing side (Lexical-based, markdown in/out

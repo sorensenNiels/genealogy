@@ -27,6 +27,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { optionsFor } from "../../lib/person-display";
 import { createPerson, linkParent, listPersons } from "../../server/functions/person.functions";
@@ -53,10 +54,11 @@ export function SiblingsSection({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">Siblings</span>
+        <span className="text-sm font-medium">{t("person.family.siblings")}</span>
         {parents.length > 0 && (
           <AddSibling
             parents={parents}
@@ -67,7 +69,7 @@ export function SiblingsSection({
         )}
       </div>
       {parents.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Add a parent first to record siblings.</p>
+        <p className="text-sm text-muted-foreground">{t("person.family.addParentFirst")}</p>
       ) : (
         <div className="space-y-2">
           {siblings.map((sibling) => (
@@ -84,7 +86,7 @@ export function SiblingsSection({
             </Link>
           ))}
           {siblings.length === 0 && (
-            <p className="text-sm text-muted-foreground">No siblings recorded yet.</p>
+            <p className="text-sm text-muted-foreground">{t("person.family.noSiblings")}</p>
           )}
         </div>
       )}
@@ -111,6 +113,7 @@ function AddSibling({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"search" | "create">("search");
   const [query, setQuery] = useState("");
@@ -155,7 +158,7 @@ function AddSibling({
   };
 
   const parentPicker = parents.length > 1 && (
-    <LabeledField label="Shared parent(s)" asDiv>
+    <LabeledField label={t("person.family.sharedParents")} asDiv>
       {parents.map((parent) => (
         <Checkbox
           key={parent.id}
@@ -175,7 +178,9 @@ function AddSibling({
           {formatPersonName(parent)}
         </Checkbox>
       ))}
-      {!canSubmit && <p className="text-sm text-destructive">Select at least one parent.</p>}
+      {!canSubmit && (
+        <p className="text-sm text-destructive">{t("person.family.selectAtLeastOneParent")}</p>
+      )}
     </LabeledField>
   );
 
@@ -183,13 +188,13 @@ function AddSibling({
     <FormDialog
       trigger={
         <Tooltip>
-          <Button variant="outline" size="icon" aria-label="Add sibling">
+          <Button variant="outline" size="icon" aria-label={t("person.family.addSibling")}>
             <PlusIcon className="size-4" />
           </Button>
-          <TooltipContent>Add sibling</TooltipContent>
+          <TooltipContent>{t("person.family.addSibling")}</TooltipContent>
         </Tooltip>
       }
-      title="Add sibling"
+      title={t("person.family.addSibling")}
       onOpenChange={(next) => {
         setOpen(next);
         if (!next) {
@@ -201,7 +206,7 @@ function AddSibling({
       {(close) => (
         <div className="space-y-3">
           <Select
-            aria-label="Parentage"
+            aria-label={t("person.family.parentage")}
             value={parentage}
             onChange={(value) => {
               if (value) setParentage(parentageSchema.parse(value));
@@ -222,7 +227,7 @@ function AddSibling({
           {mode === "search" ? (
             <>
               <Combobox<PersonRow>
-                aria-label="Search people"
+                aria-label={t("person.family.searchPeople")}
                 items={searchOptions}
                 inputValue={query}
                 onInputChange={setQuery}
@@ -231,9 +236,11 @@ function AddSibling({
                   if (target && canSubmit) void link(target, close);
                 }}
               >
-                <ComboboxInput placeholder="Search people…" />
+                <ComboboxInput placeholder={t("person.family.searchPeople")} />
                 <ComboboxContent<PersonRow>
-                  renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
+                  renderEmptyState={() => (
+                    <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>
+                  )}
                 >
                   {(item) => (
                     <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
@@ -249,13 +256,13 @@ function AddSibling({
                 className="w-full"
                 onPress={() => setMode("create")}
               >
-                + Create new person
+                {t("person.family.createNewPerson")}
               </Button>
             </>
           ) : (
             <>
               <Button variant="ghost" size="sm" onPress={() => setMode("search")}>
-                ← Search instead
+                {t("person.family.searchInstead")}
               </Button>
               <AddSiblingCreateForm
                 canSubmit={canSubmit}
@@ -276,6 +283,7 @@ function AddSiblingCreateForm({
   canSubmit: boolean;
   onSubmit: (value: { given: string; surname: string }) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const form = useForm({
     defaultValues: { given: "", surname: "" },
     onSubmit: async ({ value, formApi }) => {
@@ -297,7 +305,7 @@ function AddSiblingCreateForm({
       <form.Field name="given">
         {(field) => (
           <Input
-            placeholder="First names"
+            placeholder={t("person.firstNames")}
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
@@ -306,7 +314,7 @@ function AddSiblingCreateForm({
       <form.Field name="surname">
         {(field) => (
           <Input
-            placeholder="Last names"
+            placeholder={t("person.lastNames")}
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
@@ -314,7 +322,7 @@ function AddSiblingCreateForm({
       </form.Field>
       <DialogFooter>
         <SaveButton isDirty={isDirty} isPending={isSubmitting} isDisabled={!canSubmit}>
-          {isSubmitting ? "Creating…" : "Create and link"}
+          {isSubmitting ? t("person.family.creating") : t("person.family.createAndLink")}
         </SaveButton>
       </DialogFooter>
     </form>

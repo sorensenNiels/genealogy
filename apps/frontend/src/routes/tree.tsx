@@ -26,6 +26,7 @@ import {
 } from "@xyflow/react";
 import { Cross, Loader2, Network, UserRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import "@xyflow/react/dist/style.css";
 
@@ -84,6 +85,7 @@ function TreePage() {
 }
 
 function RootPicker() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const trimmedQuery = query.trim();
@@ -97,14 +99,14 @@ function RootPicker() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 rounded-lg border border-dashed text-center">
       <p className="max-w-sm text-sm text-muted-foreground">
-        Pick a person to center their tree on — or open "View in tree" from a row in the{" "}
+        {t("tree.pickPersonPrefix")}{" "}
         <Link to="/people" className="underline hover:text-foreground">
-          person list
+          {t("tree.personList")}
         </Link>
         .
       </p>
       <Combobox<PersonListItem>
-        aria-label="Search people"
+        aria-label={t("person.family.searchPeople")}
         className="w-full max-w-sm"
         items={options}
         inputValue={query}
@@ -114,9 +116,9 @@ function RootPicker() {
           void navigate({ to: "/tree", search: { personId: value } });
         }}
       >
-        <ComboboxInput placeholder="Search people…" />
+        <ComboboxInput placeholder={t("person.family.searchPeople")} />
         <ComboboxContent<PersonListItem>
-          renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
+          renderEmptyState={() => <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>}
         >
           {(item) => (
             <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
@@ -181,6 +183,7 @@ interface PersonNodeData extends Record<string, unknown> {
 type PersonFlowNode = Node<PersonNodeData, "person">;
 
 function PersonNode({ data }: NodeProps<PersonFlowNode>) {
+  const { t } = useTranslation();
   const { person, isRoot, canLoadAncestors, isLoadingAncestors, onLoadAncestors } = data;
   const photoUrl = person.photoPath ? `${publicBackendUrl}/uploads/${person.photoPath}` : null;
 
@@ -238,7 +241,7 @@ function PersonNode({ data }: NodeProps<PersonFlowNode>) {
         {!person.isLiving && (
           <span
             className="absolute -right-0.5 -bottom-0.5 flex size-4 items-center justify-center rounded-full border-2 border-card bg-muted-foreground"
-            title="Deceased"
+            title={t("tree.deceased")}
           >
             <Cross className="size-2.5 text-card" aria-hidden="true" />
           </span>
@@ -253,7 +256,7 @@ function PersonNode({ data }: NodeProps<PersonFlowNode>) {
           to="/tree"
           search={{ personId: person.id }}
           onClick={(event) => event.stopPropagation()}
-          aria-label={`Center tree on ${formatPersonName(person)}`}
+          aria-label={t("tree.centerTreeOn", { name: formatPersonName(person) })}
           className="shrink-0 text-muted-foreground hover:text-foreground"
         >
           <Network className="size-4" />
@@ -278,8 +281,8 @@ function PersonNode({ data }: NodeProps<PersonFlowNode>) {
             onLoadAncestors();
           }}
           disabled={isLoadingAncestors}
-          aria-label={`Load ${formatPersonName(person)}'s ancestors`}
-          title="Load ancestors"
+          aria-label={t("tree.loadAncestorsOf", { name: formatPersonName(person) })}
+          title={t("tree.loadAncestors")}
           className="flex size-5 items-center justify-center rounded-full border-2 border-card bg-muted text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground disabled:opacity-60"
         >
           {isLoadingAncestors ? (
@@ -361,6 +364,7 @@ function mergeTree(base: TreeData, extra: ExtraTreeData): MergedTree {
 }
 
 function FamilyTree({ rootId }: { rootId: string }) {
+  const { t } = useTranslation();
   const treeQuery = useQuery({
     queryKey: ["person", "tree", rootId],
     queryFn: () => getTree({ data: { id: rootId } }),
@@ -555,14 +559,16 @@ function FamilyTree({ rootId }: { rootId: string }) {
   if (treeQuery.isPending) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        Loading…
+        {t("tree.loading")}
       </div>
     );
   }
 
   if (treeQuery.isError) {
     return (
-      <p className="text-sm text-destructive">Could not load tree: {treeQuery.error.message}</p>
+      <p className="text-sm text-destructive">
+        {t("tree.loadErrorTree", { message: treeQuery.error.message })}
+      </p>
     );
   }
 
@@ -585,7 +591,7 @@ function FamilyTree({ rootId }: { rootId: string }) {
       <div className="relative flex-1 overflow-hidden rounded-lg border">
         {isArranging ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Arranging tree…
+            {t("tree.arrangingTree")}
           </div>
         ) : (
           <ReactFlow
@@ -652,6 +658,7 @@ function AddRelativeButton({
   kind: AddRelativeKind;
   onAdded: (update: Partial<ExtraTreeData>) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -663,6 +670,7 @@ function AddRelativeButton({
     enabled: open,
   });
   const options = (search.data?.items ?? []).filter((candidate) => candidate.id !== subjectId);
+  const kindLabel = t(`tree.kind.${kind}`);
 
   const linkParentMutation = useMutation({ mutationFn: linkParent });
   const linkSpouseMutation = useMutation({ mutationFn: linkSpouse });
@@ -712,15 +720,15 @@ function AddRelativeButton({
       }}
     >
       <Button variant="outline" size="sm" className="w-full justify-start">
-        + Add {kind}
+        {t("tree.addLabel", { kind: kindLabel })}
       </Button>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add {kind}</DialogTitle>
+          <DialogTitle>{t("tree.addTitle", { kind: kindLabel })}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <Combobox<PersonListItem>
-            aria-label={`Search for ${kind}`}
+            aria-label={t("tree.searchForKind", { kind: kindLabel })}
             items={options}
             inputValue={query}
             onInputChange={setQuery}
@@ -729,9 +737,9 @@ function AddRelativeButton({
               if (target) void link(target);
             }}
           >
-            <ComboboxInput placeholder="Search people…" />
+            <ComboboxInput placeholder={t("person.family.searchPeople")} />
             <ComboboxContent<PersonListItem>
-              renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
+              renderEmptyState={() => <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>}
             >
               {(item) => (
                 <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
@@ -748,7 +756,7 @@ function AddRelativeButton({
             isDisabled={createPersonMutation.isPending}
             onPress={() => void createAndLink()}
           >
-            + Create new person
+            {t("tree.createNewPerson")}
           </Button>
         </div>
       </DialogContent>
@@ -771,6 +779,7 @@ function DetailPanel({
   onExpand: (direction: "up" | "down") => void;
   expandingDirection: "up" | "down" | null | undefined;
 }) {
+  const { t } = useTranslation();
   const peopleById = new Map(tree.people.map((row) => [row.id, row]));
 
   const parents = tree.parentEdges
@@ -811,7 +820,7 @@ function DetailPanel({
           {!person.isLiving && (
             <span
               className="absolute -right-0.5 -bottom-0.5 flex size-4 items-center justify-center rounded-full border-2 border-card bg-muted-foreground"
-              title="Deceased"
+              title={t("tree.deceased")}
             >
               <Cross className="size-2.5 text-card" aria-hidden="true" />
             </span>
@@ -829,7 +838,7 @@ function DetailPanel({
           params={{ personId: person.id }}
           className={buttonVariants({ variant: "outline", size: "sm" })}
         >
-          View full profile
+          {t("tree.viewFullProfile")}
         </Link>
         {!isRoot && (
           <Link
@@ -837,18 +846,18 @@ function DetailPanel({
             search={{ personId: person.id }}
             className={buttonVariants({ variant: "outline", size: "sm" })}
           >
-            Center tree here
+            {t("tree.centerTreeHere")}
           </Link>
         )}
       </div>
 
       <section className="mt-6 space-y-2">
-        <h3 className="text-xs font-medium text-muted-foreground uppercase">Parents</h3>
-        {father && <RelativeRow label="Father" person={father} />}
+        <h3 className="text-xs font-medium text-muted-foreground uppercase">{t("tree.parents")}</h3>
+        {father && <RelativeRow label={t("tree.father")} person={father} />}
         {!father && parentsKnown && (
           <AddRelativeButton subjectId={person.id} kind="father" onAdded={onAdded} />
         )}
-        {mother && <RelativeRow label="Mother" person={mother} />}
+        {mother && <RelativeRow label={t("tree.mother")} person={mother} />}
         {!mother && parentsKnown && (
           <AddRelativeButton subjectId={person.id} kind="mother" onAdded={onAdded} />
         )}
@@ -863,13 +872,13 @@ function DetailPanel({
             isDisabled={expandingDirection === "up"}
             onPress={() => onExpand("up")}
           >
-            {expandingDirection === "up" ? "Loading…" : "Load ancestors"}
+            {expandingDirection === "up" ? t("tree.loading") : t("tree.loadAncestors")}
           </Button>
         )}
       </section>
 
       <section className="mt-4 space-y-2">
-        <h3 className="text-xs font-medium text-muted-foreground uppercase">Spouses</h3>
+        <h3 className="text-xs font-medium text-muted-foreground uppercase">{t("tree.spouses")}</h3>
         {spouses.map((spouse) => (
           <RelativeRow key={spouse.id} person={spouse} />
         ))}
@@ -877,7 +886,9 @@ function DetailPanel({
       </section>
 
       <section className="mt-4 space-y-2">
-        <h3 className="text-xs font-medium text-muted-foreground uppercase">Children</h3>
+        <h3 className="text-xs font-medium text-muted-foreground uppercase">
+          {t("tree.children")}
+        </h3>
         {children.map((child) => (
           <RelativeRow key={child.id} person={child} />
         ))}
@@ -892,7 +903,7 @@ function DetailPanel({
             isDisabled={expandingDirection === "down"}
             onPress={() => onExpand("down")}
           >
-            {expandingDirection === "down" ? "Loading…" : "Load descendants"}
+            {expandingDirection === "down" ? t("tree.loading") : t("tree.loadDescendants")}
           </Button>
         )}
       </section>

@@ -42,7 +42,9 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { PencilIcon, PlusIcon, UnlinkIcon } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
+import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { formatDisplayDate } from "../../lib/format-date";
 import { labelFor, optionsFor } from "../../lib/person-display";
 import {
@@ -83,6 +85,7 @@ export function RelativesSection({
   /** Only meaningful for the Spouses section — shown alongside each spouse row. */
   unions?: UnionRow[];
 }) {
+  const { t } = useTranslation();
   const unlinkParentMutation = useMutation({ mutationFn: unlinkParent });
   const unlinkSpouseMutation = useMutation({ mutationFn: unlinkSpouse });
 
@@ -154,10 +157,17 @@ export function RelativesSection({
                 </Link>
               </div>
               <RemoveButton
-                itemLabel={`the relationship with ${formatPersonName(relative)}`}
+                itemLabel={t("person.family.relationshipWith", {
+                  name: formatPersonName(relative),
+                })}
                 onConfirm={() => void remove(relative.id)}
                 trigger={
-                  <Button type="button" variant="ghost" size="icon" aria-label="Remove child">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("person.family.removeChild")}
+                  >
                     <UnlinkIcon className="size-4" />
                   </Button>
                 }
@@ -197,6 +207,8 @@ function OrphanedUnionRow({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
   const otherId = union.personAId === personId ? union.personBId : union.personAId;
   const other = useQuery({
     queryKey: ["person", "byId", otherId],
@@ -217,15 +229,18 @@ function OrphanedUnionRow({
             {formatPersonName(other.data)}
           </Link>
         ) : (
-          <span className="text-muted-foreground">Unknown person</span>
+          <span className="text-muted-foreground">{t("person.family.unknownPerson")}</span>
         )}
         <p className="text-xs text-muted-foreground">
-          {labelFor(options, "union_status", union.status)} · no longer linked
-          {union.startDate ? ` · ${formatDisplayDate(union.startDate)}` : ""}
-          {union.startPlace ? ` in ${union.startPlace}` : ""}
+          {labelFor(options, "union_status", union.status)} · {t("person.family.noLongerLinked")}
+          {union.startDate ? ` · ${formatDisplayDate(union.startDate, language)}` : ""}
+          {union.startPlace ? ` ${t("person.family.inPlace", { place: union.startPlace })}` : ""}
         </p>
       </div>
-      <RemoveButton itemLabel="this union record" onConfirm={() => void remove()} />
+      <RemoveButton
+        itemLabel={t("person.family.thisUnionRecord")}
+        onConfirm={() => void remove()}
+      />
     </div>
   );
 }
@@ -248,6 +263,8 @@ function SpouseRow({
   onChanged: () => Promise<void>;
   onRemove: () => void;
 }) {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
   return (
     <div className="flex items-center justify-between gap-2 text-sm">
       <div>
@@ -260,7 +277,7 @@ function SpouseRow({
         {union && (
           <p className="text-xs text-muted-foreground">
             {labelFor(options, "union_status", union.status)}
-            {union.startDate ? ` · ${formatDisplayDate(union.startDate)}` : ""}
+            {union.startDate ? ` · ${formatDisplayDate(union.startDate, language)}` : ""}
           </p>
         )}
         {union?.notes && (
@@ -271,11 +288,16 @@ function SpouseRow({
         {union && (
           <FormDialog
             trigger={
-              <Button type="button" variant="ghost" size="icon" aria-label="Edit union">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={t("person.family.editUnion")}
+              >
                 <PencilIcon className="size-4" />
               </Button>
             }
-            title="Edit union"
+            title={t("person.family.editUnion")}
           >
             {(close) => (
               <UnionForm
@@ -290,10 +312,15 @@ function SpouseRow({
           </FormDialog>
         )}
         <RemoveButton
-          itemLabel={`the relationship with ${formatPersonName(relative)}`}
+          itemLabel={t("person.family.relationshipWith", { name: formatPersonName(relative) })}
           onConfirm={onRemove}
           trigger={
-            <Button type="button" variant="ghost" size="icon" aria-label="Remove spouse">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={t("person.family.removeSpouse")}
+            >
               <UnlinkIcon className="size-4" />
             </Button>
           }
@@ -313,10 +340,12 @@ function UnionForm({
   options: ConfigurableOptionRow[];
   onDone: () => Promise<void>;
 }) {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
   const updateUnionMutation = useMutation({ mutationFn: updateUnion });
   const [status, setStatus] = useState<UnionStatus>(unionStatusSchema.parse(union.status));
 
-  const startSplit = splitHistoricalDateText(union.startDate?.original ?? "");
+  const startSplit = splitHistoricalDateText(union.startDate?.original ?? "", language);
 
   const form = useForm({
     defaultValues: {
@@ -327,17 +356,22 @@ function UnionForm({
       notes: union.notes ?? "",
     },
     onSubmit: async ({ value }) => {
-      const startDate = joinHistoricalDateText({
-        quality: value.startQuality,
-        value: value.startValue,
-        endValue: value.startEndValue,
-      });
+      const startDate = joinHistoricalDateText(
+        {
+          quality: value.startQuality,
+          value: value.startValue,
+          endValue: value.startEndValue,
+        },
+        language,
+      );
       await updateUnionMutation.mutateAsync({
         data: {
           id: union.id,
           status,
           startDate:
-            startDate === null ? null : { original: startDate, ...parseHistoricalDate(startDate) },
+            startDate === null
+              ? null
+              : { original: startDate, ...parseHistoricalDate(startDate, language) },
           startPlace: value.startPlace.trim() === "" ? null : value.startPlace,
           notes: value.notes.trim() === "" ? null : value.notes,
         },
@@ -363,7 +397,7 @@ function UnionForm({
       }}
     >
       <Select
-        aria-label="Union status"
+        aria-label={t("person.family.unionStatus")}
         value={status}
         onChange={(value) => {
           if (value) setStatus(unionStatusSchema.parse(value));
@@ -381,19 +415,19 @@ function UnionForm({
         </SelectContent>
       </Select>
       <HistoricalDateInput
-        placeholder="Marriage date, e.g. 12 JUN 1920"
+        placeholder={t("person.family.marriageDatePlaceholder")}
         quality={startQuality}
         onQualityChange={(quality) => form.setFieldValue("startQuality", quality)}
         value={startValue}
         onChange={(value) => form.setFieldValue("startValue", value)}
         endValue={startEndValue}
         onEndChange={(value) => form.setFieldValue("startEndValue", value)}
-        preview={historicalDateFieldPreview(startQuality, startValue, startEndValue)}
+        preview={historicalDateFieldPreview(startQuality, startValue, startEndValue, language)}
       />
       <form.Field name="startPlace">
         {(field) => (
           <Input
-            placeholder="Marriage place"
+            placeholder={t("person.family.marriagePlace")}
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
@@ -402,8 +436,8 @@ function UnionForm({
       <form.Field name="notes">
         {(field) => (
           <MarkdownEditor
-            aria-label="Notes"
-            placeholder="Notes"
+            aria-label={t("common.notes")}
+            placeholder={t("common.notes")}
             value={field.state.value}
             onChange={field.handleChange}
           />
@@ -411,7 +445,7 @@ function UnionForm({
       </form.Field>
       <DialogFooter>
         <SaveButton isDirty={isDirty} isPending={isSubmitting}>
-          Save
+          {t("common.save")}
         </SaveButton>
       </DialogFooter>
     </form>
@@ -431,6 +465,8 @@ function AddRelative({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"search" | "create">("search");
   const [query, setQuery] = useState("");
@@ -455,11 +491,14 @@ function AddRelative({
 
   const options = (search.data?.items ?? []).filter((candidate) => !excludeIds.has(candidate.id));
 
-  const unionOriginal = joinHistoricalDateText({
-    quality: unionQuality,
-    value: unionValue,
-    endValue: unionEndValue,
-  });
+  const unionOriginal = joinHistoricalDateText(
+    {
+      quality: unionQuality,
+      value: unionValue,
+      endValue: unionEndValue,
+    },
+    language,
+  );
 
   const link = async (target: PersonRow, close: () => void) => {
     if (kind === "spouse") {
@@ -471,7 +510,7 @@ function AddRelative({
           startDate:
             unionOriginal === null
               ? null
-              : { original: unionOriginal, ...parseHistoricalDate(unionOriginal) },
+              : { original: unionOriginal, ...parseHistoricalDate(unionOriginal, language) },
           startPlace: unionPlace.trim() === "" ? null : unionPlace,
           notes: unionNotes.trim() === "" ? null : unionNotes,
         },
@@ -485,21 +524,19 @@ function AddRelative({
     await onChanged();
   };
 
+  const kindLabel = kind === "spouse" ? t("person.family.addSpouse") : t("person.family.addChild");
+
   return (
     <FormDialog
       trigger={
         <Tooltip>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label={kind === "spouse" ? "Add spouse" : "Add child"}
-          >
+          <Button variant="outline" size="icon" aria-label={kindLabel}>
             <PlusIcon className="size-4" />
           </Button>
-          <TooltipContent>{kind === "spouse" ? "Add spouse" : "Add child"}</TooltipContent>
+          <TooltipContent>{kindLabel}</TooltipContent>
         </Tooltip>
       }
-      title={kind === "spouse" ? "Add spouse" : "Add child"}
+      title={kindLabel}
       onOpenChange={(next) => {
         setOpen(next);
         if (!next) {
@@ -512,7 +549,7 @@ function AddRelative({
         <div className="space-y-3">
           {kind !== "spouse" && (
             <Select
-              aria-label="Parentage"
+              aria-label={t("person.family.parentage")}
               value={parentage}
               onChange={(value) => {
                 if (value) setParentage(parentageSchema.parse(value));
@@ -533,7 +570,7 @@ function AddRelative({
           {kind === "spouse" && (
             <div className="space-y-2">
               <Select
-                aria-label="Union status"
+                aria-label={t("person.family.unionStatus")}
                 value={unionStatus}
                 onChange={(value) => {
                   if (value) setUnionStatus(unionStatusSchema.parse(value));
@@ -551,23 +588,28 @@ function AddRelative({
                 </SelectContent>
               </Select>
               <HistoricalDateInput
-                placeholder="Date, e.g. 12 JUN 1920"
+                placeholder={t("person.family.datePlaceholder")}
                 quality={unionQuality}
                 onQualityChange={setUnionQuality}
                 value={unionValue}
                 onChange={setUnionValue}
                 endValue={unionEndValue}
                 onEndChange={setUnionEndValue}
-                preview={historicalDateFieldPreview(unionQuality, unionValue, unionEndValue)}
+                preview={historicalDateFieldPreview(
+                  unionQuality,
+                  unionValue,
+                  unionEndValue,
+                  language,
+                )}
               />
               <Input
-                placeholder="Place"
+                placeholder={t("common.place")}
                 value={unionPlace}
                 onChange={(event) => setUnionPlace(event.target.value)}
               />
               <MarkdownEditor
-                aria-label="Notes"
-                placeholder="Notes"
+                aria-label={t("common.notes")}
+                placeholder={t("common.notes")}
                 value={unionNotes}
                 onChange={setUnionNotes}
               />
@@ -576,7 +618,7 @@ function AddRelative({
           {mode === "search" ? (
             <>
               <Combobox<PersonRow>
-                aria-label="Search people"
+                aria-label={t("person.family.searchPeople")}
                 items={options}
                 inputValue={query}
                 onInputChange={setQuery}
@@ -585,9 +627,11 @@ function AddRelative({
                   if (target) void link(target, close);
                 }}
               >
-                <ComboboxInput placeholder="Search people…" />
+                <ComboboxInput placeholder={t("person.family.searchPeople")} />
                 <ComboboxContent<PersonRow>
-                  renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
+                  renderEmptyState={() => (
+                    <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>
+                  )}
                 >
                   {(item) => (
                     <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
@@ -603,13 +647,13 @@ function AddRelative({
                 className="w-full"
                 onPress={() => setMode("create")}
               >
-                + Create new person
+                {t("person.family.createNewPerson")}
               </Button>
             </>
           ) : (
             <>
               <Button variant="ghost" size="sm" onPress={() => setMode("search")}>
-                ← Search instead
+                {t("person.family.searchInstead")}
               </Button>
               <CreateAndLinkForm
                 kind={kind}
@@ -651,6 +695,8 @@ function CreateAndLinkForm({
   unionNotes: string;
   onDone: () => Promise<void>;
 }) {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
   const createPersonMutation = useMutation({ mutationFn: createPerson });
   const linkParentMutation = useMutation({ mutationFn: linkParent });
   const addUnionMutation = useMutation({ mutationFn: addUnion });
@@ -668,7 +714,7 @@ function CreateAndLinkForm({
             startDate:
               unionOriginal === null
                 ? null
-                : { original: unionOriginal, ...parseHistoricalDate(unionOriginal) },
+                : { original: unionOriginal, ...parseHistoricalDate(unionOriginal, language) },
             startPlace: unionPlace.trim() === "" ? null : unionPlace,
             notes: unionNotes.trim() === "" ? null : unionNotes,
           },
@@ -696,7 +742,7 @@ function CreateAndLinkForm({
       <form.Field name="given">
         {(field) => (
           <Input
-            placeholder="First names"
+            placeholder={t("person.firstNames")}
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
@@ -705,7 +751,7 @@ function CreateAndLinkForm({
       <form.Field name="surname">
         {(field) => (
           <Input
-            placeholder="Last names"
+            placeholder={t("person.lastNames")}
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
@@ -713,7 +759,7 @@ function CreateAndLinkForm({
       </form.Field>
       <DialogFooter>
         <SaveButton isDirty={isDirty} isPending={isSubmitting}>
-          {isSubmitting ? "Creating…" : "Create and link"}
+          {isSubmitting ? t("person.family.creating") : t("person.family.createAndLink")}
         </SaveButton>
       </DialogFooter>
     </form>

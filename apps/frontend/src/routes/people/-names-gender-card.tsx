@@ -32,9 +32,11 @@ import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
+import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { formatDisplayDate } from "../../lib/format-date";
-import { GENDER_LABELS, labelFor, optionsFor } from "../../lib/person-display";
+import { genderLabel, labelFor, optionsFor } from "../../lib/person-display";
 import {
   addName,
   listSuffixes,
@@ -49,8 +51,11 @@ import type { ConfigurableOptionRow, NameVariantRow, PersonRow } from "./-types"
 // A starting point, not a closed vocabulary — the Title/prefix and Suffix
 // fields below merge these with whatever's already been typed for other
 // people (see the listTitlePrefixes/listSuffixes queries), so the
-// autocomplete favors values already in use once there are any.
-const STANDARD_TITLE_PREFIXES = [
+// autocomplete favors values already in use once there are any. Swapped by
+// current UI language, not by anything about the record itself — a title as
+// actually recorded should still be typed in whatever language the source
+// used, this only changes which suggestions are offered.
+const STANDARD_TITLE_PREFIXES_EN = [
   "Mr.",
   "Mrs.",
   "Miss",
@@ -70,7 +75,21 @@ const STANDARD_TITLE_PREFIXES = [
   "Sgt.",
   "Hon.",
 ];
-const STANDARD_SUFFIXES = [
+const STANDARD_TITLE_PREFIXES_DA = [
+  "Hr.",
+  "Fru",
+  "Frk.",
+  "Dr.",
+  "Pastor",
+  "Prof.",
+  "Kaptajn",
+  "Oberst",
+  "Major",
+  "General",
+  "Løjtnant",
+  "Sergent",
+];
+const STANDARD_SUFFIXES_EN = [
   "Jr.",
   "Sr.",
   "II",
@@ -84,6 +103,7 @@ const STANDARD_SUFFIXES = [
   "DVM",
   "RN",
 ];
+const STANDARD_SUFFIXES_DA = ["Jr.", "Sr.", "II", "III", "IV", "V"];
 
 /**
  * Names, gender, and alternate names — its own form/mutation/Save/Cancel,
@@ -102,6 +122,8 @@ export function NamesGenderCard({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
   const updatePersonMutation = useMutation({ mutationFn: updatePerson, onSuccess: onChanged });
   const removeNameMutation = useMutation({ mutationFn: removeName });
   const titlePrefixesQuery = useQuery({
@@ -112,8 +134,14 @@ export function NamesGenderCard({
     queryKey: ["person", "listSuffixes"],
     queryFn: () => listSuffixes(),
   });
-  const titlePrefixOptions = mergeOptions(STANDARD_TITLE_PREFIXES, titlePrefixesQuery.data);
-  const suffixOptions = mergeOptions(STANDARD_SUFFIXES, suffixesQuery.data);
+  const titlePrefixOptions = mergeOptions(
+    language === "da" ? STANDARD_TITLE_PREFIXES_DA : STANDARD_TITLE_PREFIXES_EN,
+    titlePrefixesQuery.data,
+  );
+  const suffixOptions = mergeOptions(
+    language === "da" ? STANDARD_SUFFIXES_DA : STANDARD_SUFFIXES_EN,
+    suffixesQuery.data,
+  );
 
   const removeNameById = async (id: string) => {
     await removeNameMutation.mutateAsync({ data: { id } });
@@ -158,17 +186,17 @@ export function NamesGenderCard({
       }}
     >
       <SectionCard
-        title="Names & gender"
+        title={t("person.namesGender.title")}
         contentClassName="grid gap-4 sm:grid-cols-2"
         footerClassName="flex-col items-stretch gap-2"
         footer={
           <>
             <div className="flex items-center justify-end gap-2">
               <Button type="button" variant="outline" onPress={() => form.reset()}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <SaveButton isDirty={isDirty} isPending={isSubmitting}>
-                Save
+                {t("common.save")}
               </SaveButton>
             </div>
             {updatePersonMutation.isError && (
@@ -181,12 +209,12 @@ export function NamesGenderCard({
           <form.Field name="gender">
             {(field) => (
               <ButtonRadioGroup
-                aria-label="Gender"
+                aria-label={t("common.gender.label")}
                 value={field.state.value}
                 onChange={(value) => field.handleChange(value)}
                 options={genderSchema.options.map((option) => ({
                   value: option,
-                  label: GENDER_LABELS[option],
+                  label: genderLabel(option, t),
                 }))}
               />
             )}
@@ -195,7 +223,7 @@ export function NamesGenderCard({
         <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
           <form.Field name="given">
             {(field) => (
-              <LabeledField label="First names">
+              <LabeledField label={t("person.firstNames")}>
                 <Input
                   value={field.state.value}
                   onBlur={field.handleBlur}
@@ -206,7 +234,7 @@ export function NamesGenderCard({
           </form.Field>
           <form.Field name="surname">
             {(field) => (
-              <LabeledField label="Last names">
+              <LabeledField label={t("person.lastNames")}>
                 <Input
                   value={field.state.value}
                   onBlur={field.handleBlur}
@@ -218,14 +246,19 @@ export function NamesGenderCard({
         </div>
         <div className="space-y-2 text-sm sm:col-span-2">
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Alternate names</span>
+            <span className="text-muted-foreground">{t("person.namesGender.alternateNames")}</span>
             <FormDialog
               trigger={
-                <Button type="button" variant="ghost" size="icon" aria-label="Add alternate name">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t("person.namesGender.addAlternateName")}
+                >
                   <PlusIcon className="size-4" />
                 </Button>
               }
-              title="Add alternate name"
+              title={t("person.namesGender.addAlternateName")}
             >
               {(close) => (
                 <NameForm
@@ -257,10 +290,10 @@ export function NamesGenderCard({
         </div>
         <form.Field name="titlePrefix">
           {(field) => (
-            <LabeledField label="Title / prefix">
+            <LabeledField label={t("person.namesGender.titlePrefix")}>
               <Autocomplete
-                aria-label="Title / prefix"
-                placeholder="e.g. Dr., Rev."
+                aria-label={t("person.namesGender.titlePrefix")}
+                placeholder={t("person.namesGender.titlePrefixPlaceholder")}
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={field.handleChange}
@@ -272,10 +305,10 @@ export function NamesGenderCard({
         </form.Field>
         <form.Field name="suffix">
           {(field) => (
-            <LabeledField label="Suffix">
+            <LabeledField label={t("person.namesGender.suffix")}>
               <Autocomplete
-                aria-label="Suffix"
-                placeholder="e.g. Jr., III"
+                aria-label={t("person.namesGender.suffix")}
+                placeholder={t("person.namesGender.suffixPlaceholder")}
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={field.handleChange}
@@ -319,6 +352,8 @@ function NameRow({
   onChanged: () => Promise<void>;
   onRemove: () => void;
 }) {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
   return (
     <div className="flex items-center justify-between gap-2 text-sm">
       <div>
@@ -328,7 +363,7 @@ function NameRow({
         <span>{[name.given, name.surname].filter(Boolean).join(" ")}</span>
         {name.since && (
           <span className="ml-1 text-muted-foreground">
-            (since {formatDisplayDate(name.since)})
+            {t("person.namesGender.since", { date: formatDisplayDate(name.since, language) })}
           </span>
         )}
         {name.notes && (
@@ -338,11 +373,16 @@ function NameRow({
       <div className="flex items-center gap-1">
         <FormDialog
           trigger={
-            <Button type="button" variant="ghost" size="icon" aria-label="Edit alternate name">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={t("person.namesGender.editAlternateName")}
+            >
               <PencilIcon className="size-4" />
             </Button>
           }
-          title="Edit alternate name"
+          title={t("person.namesGender.editAlternateName")}
         >
           {(close) => (
             <NameForm
@@ -357,10 +397,17 @@ function NameRow({
           )}
         </FormDialog>
         <RemoveButton
-          itemLabel={`the alternate name "${[name.given, name.surname].filter(Boolean).join(" ")}"`}
+          itemLabel={t("person.namesGender.alternateNameLabel", {
+            name: [name.given, name.surname].filter(Boolean).join(" "),
+          })}
           onConfirm={onRemove}
           trigger={
-            <Button type="button" variant="ghost" size="icon" aria-label="Remove alternate name">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={t("person.namesGender.removeAlternateName")}
+            >
               <Trash2Icon className="size-4" />
             </Button>
           }
@@ -381,12 +428,14 @@ function NameForm({
   options: ConfigurableOptionRow[];
   onDone: () => Promise<void>;
 }) {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
   const addNameMutation = useMutation({ mutationFn: addName });
   const updateNameMutation = useMutation({ mutationFn: updateName });
   const initialNameType: NameVariantType = name?.nameType ?? "birth";
   const [nameType, setNameType] = useState(initialNameType);
 
-  const sinceSplit = splitHistoricalDateText(name?.since?.original ?? "");
+  const sinceSplit = splitHistoricalDateText(name?.since?.original ?? "", language);
 
   const form = useForm({
     defaultValues: {
@@ -398,11 +447,14 @@ function NameForm({
       notes: name?.notes ?? "",
     },
     onSubmit: async ({ value }) => {
-      const sinceOriginal = joinHistoricalDateText({
-        quality: value.sinceQuality,
-        value: value.sinceValue,
-        endValue: value.sinceEndValue,
-      });
+      const sinceOriginal = joinHistoricalDateText(
+        {
+          quality: value.sinceQuality,
+          value: value.sinceValue,
+          endValue: value.sinceEndValue,
+        },
+        language,
+      );
       const payload = {
         nameType,
         given: value.given,
@@ -410,7 +462,7 @@ function NameForm({
         since:
           sinceOriginal === null
             ? null
-            : { original: sinceOriginal, ...parseHistoricalDate(sinceOriginal) },
+            : { original: sinceOriginal, ...parseHistoricalDate(sinceOriginal, language) },
         notes: value.notes.trim() === "" ? null : value.notes,
       };
       if (name) {
@@ -439,7 +491,7 @@ function NameForm({
       }}
     >
       <Select
-        aria-label="Name type"
+        aria-label={t("person.namesGender.nameType")}
         value={nameType}
         onChange={(value) => {
           if (value) setNameType(nameVariantTypeSchema.parse(value));
@@ -459,7 +511,7 @@ function NameForm({
       <form.Field name="given">
         {(field) => (
           <Input
-            placeholder="First names"
+            placeholder={t("person.firstNames")}
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
@@ -468,27 +520,27 @@ function NameForm({
       <form.Field name="surname">
         {(field) => (
           <Input
-            placeholder="Last names"
+            placeholder={t("person.lastNames")}
             value={field.state.value}
             onChange={(event) => field.handleChange(event.target.value)}
           />
         )}
       </form.Field>
       <HistoricalDateInput
-        placeholder="Since, e.g. 12 JUN 1998"
+        placeholder={t("person.namesGender.sincePlaceholder")}
         quality={sinceQuality}
         onQualityChange={(quality) => form.setFieldValue("sinceQuality", quality)}
         value={sinceValue}
         onChange={(value) => form.setFieldValue("sinceValue", value)}
         endValue={sinceEndValue}
         onEndChange={(value) => form.setFieldValue("sinceEndValue", value)}
-        preview={historicalDateFieldPreview(sinceQuality, sinceValue, sinceEndValue)}
+        preview={historicalDateFieldPreview(sinceQuality, sinceValue, sinceEndValue, language)}
       />
       <form.Field name="notes">
         {(field) => (
           <MarkdownEditor
-            aria-label="Notes"
-            placeholder="Notes"
+            aria-label={t("common.notes")}
+            placeholder={t("common.notes")}
             value={field.state.value}
             onChange={field.handleChange}
           />
@@ -496,7 +548,7 @@ function NameForm({
       </form.Field>
       <DialogFooter>
         <SaveButton isDirty={isDirty} isPending={isSubmitting}>
-          {name ? "Save" : "Add"}
+          {name ? t("common.save") : t("common.add")}
         </SaveButton>
       </DialogFooter>
     </form>
