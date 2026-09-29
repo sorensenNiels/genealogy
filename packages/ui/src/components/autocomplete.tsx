@@ -1,6 +1,6 @@
 import { XIcon } from "lucide-react";
 import { motion } from "motion/react";
-import { useMemo, type ComponentProps } from "react";
+import { useMemo, type ComponentProps, type Key } from "react";
 import {
   ComboBox as RACComboBox,
   Group,
@@ -33,6 +33,8 @@ export interface AutocompleteProps extends Omit<
   options: readonly string[];
   /** Shows a clear (×) button inside the field, on the right, whenever there's a value to clear. */
   isClearable?: boolean;
+  /** Fires when an option is chosen from the list — by click, or Enter/arrow-keys landing on it — as opposed to a plain typed Enter, which `onChange`/the input's own onKeyDown already cover. */
+  onSelectionChange?: (key: Key | null) => void;
 }
 
 /**
@@ -48,6 +50,7 @@ export function Autocomplete({
   options,
   className,
   isClearable,
+  onSelectionChange,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledby,
   ...props
@@ -78,6 +81,7 @@ export function Autocomplete({
       onInputChange={onChange}
       items={items}
       onOpenChange={handleOpenChange}
+      {...(onSelectionChange ? { onSelectionChange } : {})}
       {...(ariaLabel !== undefined ? { "aria-label": ariaLabel } : {})}
       {...(ariaLabelledby !== undefined ? { "aria-labelledby": ariaLabelledby } : {})}
     >

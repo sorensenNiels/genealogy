@@ -109,6 +109,8 @@ function UploadForm({
     let lastError: unknown;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
+        // Each attempt must finish (and fail) before the next is worth trying — sequential by design.
+        // eslint-disable-next-line no-await-in-loop
         const result = await attemptUpload(file);
         setItems((prev) =>
           prev.map((it) =>
@@ -125,6 +127,8 @@ function UploadForm({
       } catch (error) {
         lastError = error;
         const delay = RETRY_DELAYS_MS[attempt - 1];
+        // The backoff delay before the next attempt is the whole point — sequential by design.
+        // eslint-disable-next-line no-await-in-loop
         if (delay !== undefined) await sleep(delay);
       }
     }
@@ -156,6 +160,8 @@ function UploadForm({
         const next = queue[cursor];
         cursor += 1;
         if (next) {
+          // Each worker uploads one at a time by design — see the comment above `worker`.
+          // eslint-disable-next-line no-await-in-loop
           await uploadOne(next.id, next.file);
         }
       }

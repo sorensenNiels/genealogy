@@ -31,11 +31,12 @@ import {
   TableHeader,
   TableRow,
 } from "@genealogy/ui/components/table";
+import { useViewMode } from "@genealogy/ui/hooks/use-view-mode";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
 import type { TFunction } from "i18next";
-import { Network, Trash2Icon } from "lucide-react";
+import { LayoutGrid, List, Network, Trash2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -51,6 +52,7 @@ import {
 } from "../../lib/person-display";
 import { createPerson, listPersons, removePerson } from "../../server/functions/person.functions";
 import { listOptions } from "../../server/functions/settings.functions";
+import { PeopleCardView } from "./-people-card-view";
 import { historicalDatePreview } from "./-shared";
 
 export const Route = createFileRoute("/people/")({
@@ -77,12 +79,18 @@ function sortLabels(t: TFunction): Record<SortOption, string> {
 const features = tableFeatures({});
 const helper = createColumnHelper<typeof features, PersonListItem>();
 
-const PAGE_SIZE = 50;
+type ViewMode = "table" | "card";
+const VIEW_MODES: readonly ViewMode[] = ["table", "card"];
 
 function People() {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+
+  const [viewMode, setViewMode] = useViewMode<ViewMode>("people-view-mode", VIEW_MODES, "table");
+  // A large-photo grid reads better with fewer items per screen than the
+  // dense table does.
+  const PAGE_SIZE = viewMode === "card" ? 24 : 50;
 
   const [search, setSearch] = useState("");
   const [place, setPlace] = useState("");
@@ -221,21 +229,19 @@ function People() {
             />
           </LabeledField>
 
-          <LabeledField label={t("common.gender.label")} asDiv>
-            <ButtonRadioGroup
-              aria-label={t("people.filterGender")}
-              value={gender}
-              onChange={(value) => {
-                setGender(value);
-                resetToFirstPage();
-              }}
-              options={[
-                { value: "all", label: t("people.genderAll") },
-                { value: "M", label: t("common.gender.M") },
-                { value: "F", label: t("common.gender.F") },
-              ]}
-            />
-          </LabeledField>
+          <ButtonRadioGroup
+            aria-label={t("people.filterGender")}
+            value={gender}
+            onChange={(value) => {
+              setGender(value);
+              resetToFirstPage();
+            }}
+            options={[
+              { value: "all", label: t("people.genderAll") },
+              { value: "M", label: t("common.gender.M") },
+              { value: "F", label: t("common.gender.F") },
+            ]}
+          />
         </SectionCard>
 
         <Card>
@@ -251,27 +257,57 @@ function People() {
                 }}
                 aria-label={t("people.searchByName")}
               />
-              <Select
-                aria-label={t("people.sortLabel")}
-                value={sort}
-                onChange={(value) => {
-                  if (value) {
-                    setSort(value as SortOption);
+              <div className="flex items-center gap-2">
+                <Select
+                  aria-label={t("people.sortLabel")}
+                  value={sort}
+                  onChange={(value) => {
+                    if (value) {
+                      setSort(value as SortOption);
+                      resetToFirstPage();
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(sortLabels(t)).map(([value, label]) => (
+                      <SelectItem key={value} id={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <ButtonRadioGroup
+                  aria-label={t("people.viewModeLabel")}
+                  value={viewMode}
+                  onChange={(value) => {
+                    setViewMode(value);
                     resetToFirstPage();
-                  }
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(sortLabels(t)).map(([value, label]) => (
-                    <SelectItem key={value} id={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  }}
+                  options={[
+                    {
+                      value: "table",
+                      label: (
+                        <span className="flex items-center" title={t("people.viewModeTable")}>
+                          <List className="size-4" aria-hidden="true" />
+                          <span className="sr-only">{t("people.viewModeTable")}</span>
+                        </span>
+                      ),
+                    },
+                    {
+                      value: "card",
+                      label: (
+                        <span className="flex items-center" title={t("people.viewModeCard")}>
+                          <LayoutGrid className="size-4" aria-hidden="true" />
+                          <span className="sr-only">{t("people.viewModeCard")}</span>
+                        </span>
+                      ),
+                    },
+                  ]}
+                />
+              </div>
             </div>
 
             {people.isError && (
@@ -284,47 +320,51 @@ function People() {
               {t("people.showingCount", { shown: rows.length, total })}
             </p>
 
-            <Table>
-              <TableHeader>
-                {table.getHeaderGroups().map((group) => (
-                  <TableRow key={group.id}>
-                    {group.headers.map((header) => (
-                      <TableHead key={header.id}>
-                        {header.isPlaceholder ? null : <table.FlexRender header={header} />}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                {table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id} className="group">
-                    {row.getAllCells().map((cell) => (
+            {viewMode === "table" ? (
+              <Table>
+                <TableHeader>
+                  {table.getHeaderGroups().map((group) => (
+                    <TableRow key={group.id}>
+                      {group.headers.map((header) => (
+                        <TableHead key={header.id}>
+                          {header.isPlaceholder ? null : <table.FlexRender header={header} />}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableHeader>
+                <TableBody>
+                  {table.getRowModel().rows.map((row) => (
+                    <TableRow key={row.id} className="group">
+                      {row.getAllCells().map((cell) => (
+                        <TableCell
+                          key={cell.id}
+                          className={
+                            cell.column.id === "actions"
+                              ? "opacity-0 transition-opacity group-hover:opacity-100"
+                              : undefined
+                          }
+                        >
+                          <table.FlexRender cell={cell} />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                  {rows.length === 0 && !people.isPending && (
+                    <TableRow>
                       <TableCell
-                        key={cell.id}
-                        className={
-                          cell.column.id === "actions"
-                            ? "opacity-0 transition-opacity group-hover:opacity-100"
-                            : undefined
-                        }
+                        colSpan={columns.length}
+                        className="py-8 text-center text-muted-foreground"
                       >
-                        <table.FlexRender cell={cell} />
+                        {t("people.noMatches")}
                       </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-                {rows.length === 0 && !people.isPending && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={columns.length}
-                      className="py-8 text-center text-muted-foreground"
-                    >
-                      {t("people.noMatches")}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            ) : (
+              <PeopleCardView people={rows} />
+            )}
 
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <p>{t("people.pageOf", { page: page + 1, totalPages })}</p>

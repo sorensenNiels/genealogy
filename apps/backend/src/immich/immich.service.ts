@@ -371,10 +371,9 @@ export class ImmichService {
       this.request<ImmichAlbum[]>("/albums"),
       this.metadataByAlbumId(),
     ]);
-    let merged = albums.map((album) => ({
-      ...album,
-      ...(metadata.get(album.id) ?? emptyAlbumMetadata),
-    }));
+    let merged = albums.map((album) =>
+      Object.assign({}, album, metadata.get(album.id) ?? emptyAlbumMetadata),
+    );
 
     if (filter?.search) {
       const pattern = filter.search.toLowerCase();
@@ -779,19 +778,26 @@ export class ImmichService {
     let cursor: string | undefined;
     do {
       const body: Record<string, unknown> = cursor ? { cursor } : {};
+      // Each page's cursor comes from the previous page's response — sequential by design.
+      // eslint-disable-next-line no-await-in-loop
       const page = await this.searchMetadata(body);
       assetIds.push(...page.items.map((item) => item.id));
       cursor = page.nextCursor ?? undefined;
     } while (cursor);
 
+    const batches: string[][] = [];
     for (let i = 0; i < assetIds.length; i += BATCH_SIZE) {
-      const batch = assetIds.slice(i, i + BATCH_SIZE);
-      await this.request("/assets/jobs", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "refresh-faces", assetIds: batch }),
-      });
+      batches.push(assetIds.slice(i, i + BATCH_SIZE));
     }
+    await Promise.all(
+      batches.map((batch) =>
+        this.request("/assets/jobs", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: "refresh-faces", assetIds: batch }),
+        }),
+      ),
+    );
 
     await this.notifications.create({
       userId,

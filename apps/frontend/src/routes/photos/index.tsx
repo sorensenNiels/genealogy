@@ -30,7 +30,6 @@ import {
 } from "../../server/functions/immich.functions";
 import { EditAlbumDialog } from "./-edit-album-dialog";
 import { NewAlbumDialog } from "./-new-album-dialog";
-import { UploadDialog } from "./-upload-dialog";
 
 type AlbumSort = "name" | "date" | "assetCount";
 
@@ -80,7 +79,6 @@ function PhotosPage() {
 }
 
 function PhotosToolbar() {
-  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -95,10 +93,6 @@ function PhotosToolbar() {
           await refreshAlbums();
           await navigate({ to: "/photos/$albumId", params: { albumId } });
         }}
-      />
-      <UploadDialog
-        trigger={<Button>{t("photosPage.uploadPhotos")}</Button>}
-        onUploaded={() => Promise.resolve()}
       />
     </div>
   );

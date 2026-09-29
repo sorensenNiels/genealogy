@@ -191,7 +191,6 @@
     "photoCount_one": "{{count}} photo",
     "photoCount_other": "{{count}} photos",
     "loading": "Loading…",
-    "uploadPhotos": "Upload photos",
     "notConfiguredPrefix": "Immich isn't set up yet. Start it with",
     "notConfiguredMiddle": ", create an API key in its own web UI, and set",
     "notConfiguredSuffix": "in the backend's environment.",
@@ -349,6 +348,9 @@
     "genderAll": "All",
     "searchByName": "Search by name",
     "sortLabel": "Sort",
+    "viewModeLabel": "View",
+    "viewModeTable": "Table",
+    "viewModeCard": "Cards",
     "sort": {
       "surnameAsc": "Surname A-Z",
       "givenAsc": "Given name A-Z",

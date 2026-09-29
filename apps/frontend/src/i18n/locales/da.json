@@ -191,7 +191,6 @@
     "photoCount_one": "{{count}} foto",
     "photoCount_other": "{{count}} fotos",
     "loading": "Indlæser…",
-    "uploadPhotos": "Upload fotos",
     "notConfiguredPrefix": "Immich er ikke sat op endnu. Start det med",
     "notConfiguredMiddle": ", opret en API-nøgle i dets eget webinterface, og sæt",
     "notConfiguredSuffix": "i backendens miljøvariabler.",
@@ -349,6 +348,9 @@
     "genderAll": "Alle",
     "searchByName": "Søg efter navn",
     "sortLabel": "Sortering",
+    "viewModeLabel": "Visning",
+    "viewModeTable": "Tabel",
+    "viewModeCard": "Kort",
     "sort": {
       "surnameAsc": "Efternavn A-Å",
       "givenAsc": "Fornavn A-Å",

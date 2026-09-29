@@ -147,7 +147,7 @@ export interface ListPersonsResult {
     /** `hasRelations` mirrors the guard in `remove` — lets the list hide the delete action per row without a `relatives()` round trip each. */
     hasRelations: boolean;
     /** Birth parents only, for the list's "Parents" column — up to however many are recorded. */
-    parents: { given: string; surname: string }[];
+    parents: { id: string; given: string; surname: string }[];
     citationCount: number;
     /** The single highest-ranked confidence among this person's citations (by `configurableOptions.sortOrder`), null when uncited. */
     topConfidence: string | null;
@@ -243,7 +243,7 @@ export class PersonService {
           .filter((edge) => edge.parentage === "birth")
           .flatMap((edge) => {
             const row = parentPersonById.get(edge.personId);
-            return row ? [{ given: row.given, surname: row.surname }] : [];
+            return row ? [{ id: row.id, given: row.given, surname: row.surname }] : [];
           });
         const rollup = citationRollup.get(item.id);
         return Object.assign(item, {
