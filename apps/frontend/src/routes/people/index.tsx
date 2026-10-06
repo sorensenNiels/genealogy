@@ -397,6 +397,18 @@ function People() {
 function buildColumns(options: ConfigurableOptionRow[], t: TFunction, language: SupportedLanguage) {
   const dash = "—";
   return helper.columns([
+    // Icon-only, first, with no visible title — the word stays in the DOM as
+    // screen-reader text, since `GenderIcon` itself is `aria-hidden`.
+    helper.accessor("gender", {
+      id: "gender",
+      header: () => <span className="sr-only">{t("common.gender.label")}</span>,
+      cell: (context) => (
+        <span className="flex items-center">
+          <GenderIcon gender={context.getValue()} className="size-4" />
+          <span className="sr-only">{genderLabel(context.getValue(), t)}</span>
+        </span>
+      ),
+    }),
     helper.accessor((row) => formatPersonName(row), {
       id: "name",
       header: t("people.columnPerson"),
@@ -421,16 +433,6 @@ function buildColumns(options: ConfigurableOptionRow[], t: TFunction, language: 
           </Link>
         );
       },
-    }),
-    helper.accessor("gender", {
-      id: "gender",
-      header: t("common.gender.label"),
-      cell: (context) => (
-        <span className="flex items-center gap-1.5">
-          <GenderIcon gender={context.getValue()} className="size-4" />
-          {genderLabel(context.getValue(), t)}
-        </span>
-      ),
     }),
     helper.accessor("isLiving", {
       id: "status",
@@ -464,15 +466,6 @@ function buildColumns(options: ConfigurableOptionRow[], t: TFunction, language: 
     helper.accessor((row) => row.birthPlace ?? row.deathPlace ?? dash, {
       id: "place",
       header: t("common.place"),
-    }),
-    helper.display({
-      id: "parents",
-      header: t("people.columnParents"),
-      cell: (context) => {
-        const parents = context.row.original.parents;
-        if (parents.length === 0) return dash;
-        return parents.map((parent) => `${parent.given} ${parent.surname}`.trim()).join(", ");
-      },
     }),
     helper.display({
       id: "sources",

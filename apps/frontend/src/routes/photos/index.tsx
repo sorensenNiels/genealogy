@@ -24,7 +24,6 @@ import {
   TableHeader,
   TableRow,
 } from "@genealogy/ui/components/table";
-import { TagInput } from "@genealogy/ui/components/tag-input";
 import { useViewMode } from "@genealogy/ui/hooks/use-view-mode";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -38,9 +37,14 @@ import {
   getSourceAlbumsForAssets,
   isImmichConfigured,
   listAlbumAssets,
-  listImmichAlbumTags,
   listImmichAlbums,
 } from "../../server/functions/immich.functions";
+import {
+  CategoriesPanel,
+  CategoryDot,
+  useAlbumCategories,
+  type AlbumCategorySelection,
+} from "./-album-categories";
 import { AlbumCover } from "./-album-cover";
 import { EditAlbumDialog, type AlbumWithMetadata } from "./-edit-album-dialog";
 import { NewAlbumDialog } from "./-new-album-dialog";
@@ -125,7 +129,6 @@ function AlbumsSection() {
     "grid",
   );
   const [search, setSearch] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
   const [place, setPlace] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -133,10 +136,10 @@ function AlbumsSection() {
   const [sort, setSort] = useState<AlbumSort>("name");
   const [kindFilter, setKindFilter] = useState<AlbumKind | "all">("all");
   const [bookAlbumId, setBookAlbumId] = useState<string | null>(null);
+  const [categorySelection, setCategorySelection] = useState<AlbumCategorySelection>("all");
 
   const filterInput = {
     ...(search.trim() !== "" ? { search: search.trim() } : {}),
-    ...(tags.length > 0 ? { tags } : {}),
     ...(place.trim() !== "" ? { place: place.trim() } : {}),
     ...(dateFrom.trim() !== ""
       ? { dateFrom: resolveHistoricalDate(dateFrom, language).earliest ?? undefined }
@@ -149,23 +152,34 @@ function AlbumsSection() {
     sort,
   };
 
-  const tagsQuery = useQuery({
-    queryKey: ["immich", "albumTags"],
-    queryFn: () => listImmichAlbumTags(),
-  });
   const albums = useQuery({
     queryKey: ["immich", "listAlbums", filterInput],
     queryFn: () => listImmichAlbums({ data: filterInput }),
   });
 
+  const categories = useAlbumCategories();
+  const categoryList = categories.data ?? [];
+  // A category deleted elsewhere (another tab) falls back to "all" rather
+  // than showing an empty, unexplained list.
+  const selection: AlbumCategorySelection =
+    categorySelection === "all" ||
+    categorySelection === "uncategorised" ||
+    categoryList.some((category) => category.id === categorySelection)
+      ? categorySelection
+      : "all";
+  const albumGroups = groupAlbumsByCategory(
+    albums.data ?? [],
+    categoryList,
+    selection,
+    t("albumCategories.uncategorised"),
+  );
+
   const refreshAlbums = async (): Promise<void> => {
     await queryClient.invalidateQueries({ queryKey: ["immich", "listAlbums"] });
-    await queryClient.invalidateQueries({ queryKey: ["immich", "albumTags"] });
   };
 
   const resetFilters = () => {
     setSearch("");
-    setTags([]);
     setPlace("");
     setDateFrom("");
     setDateTo("");
@@ -213,6 +227,9 @@ function AlbumsSection() {
           ]}
         />
         <NewAlbumDialog
+          defaultCategoryIds={
+            selection === "all" || selection === "uncategorised" ? [] : [selection]
+          }
           onCreated={async (albumId) => {
             await refreshAlbums();
             await navigate({ to: "/photos/$albumId", params: { albumId } });
@@ -221,91 +238,95 @@ function AlbumsSection() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-        <SectionCard
-          className="h-fit"
-          title={t("photosPage.filters")}
-          titleClassName="text-base"
-          contentClassName="space-y-4"
-          action={
-            <Button type="button" variant="ghost" size="sm" onPress={resetFilters}>
-              {t("photosPage.reset")}
-            </Button>
-          }
-        >
-          <LabeledField label={t("photosPage.name")} asDiv>
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              aria-label={t("photosPage.filterByAlbumName")}
-            />
-          </LabeledField>
+        <div className="space-y-6">
+          <CategoriesPanel
+            categories={categoryList}
+            albums={albums.data ?? []}
+            selected={selection}
+            onSelect={setCategorySelection}
+          />
+          <SectionCard
+            className="h-fit"
+            title={t("photosPage.filters")}
+            titleClassName="text-base"
+            contentClassName="space-y-4"
+            action={
+              <Button type="button" variant="ghost" size="sm" onPress={resetFilters}>
+                {t("photosPage.reset")}
+              </Button>
+            }
+          >
+            <LabeledField label={t("photosPage.name")} asDiv>
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                aria-label={t("photosPage.filterByAlbumName")}
+              />
+            </LabeledField>
 
-          <LabeledField label={t("photosPage.kindFilterLabel")} asDiv>
-            <ButtonRadioGroup
-              aria-label={t("photosPage.kindFilterLabel")}
-              value={kindFilter}
-              onChange={setKindFilter}
-              options={[
-                { value: "all", label: t("photosPage.kindFilterAll") },
-                { value: "physical", label: t("album.kindPhysical") },
-                { value: "virtual", label: t("album.kindVirtual") },
-              ]}
-            />
-          </LabeledField>
+            <LabeledField label={t("photosPage.kindFilterLabel")} asDiv>
+              <ButtonRadioGroup
+                aria-label={t("photosPage.kindFilterLabel")}
+                value={kindFilter}
+                onChange={setKindFilter}
+                options={[
+                  { value: "all", label: t("photosPage.kindFilterAll") },
+                  { value: "physical", label: t("album.kindPhysical") },
+                  { value: "virtual", label: t("album.kindVirtual") },
+                ]}
+              />
+            </LabeledField>
 
-          <LabeledField label={t("photosPage.tagsAnyMatch")} asDiv>
-            <TagInput value={tags} onChange={setTags} suggestions={tagsQuery.data ?? []} />
-          </LabeledField>
+            <LabeledField label={t("photosPage.place")} asDiv>
+              <Input
+                value={place}
+                onChange={(event) => setPlace(event.target.value)}
+                aria-label={t("photosPage.filterByPlace")}
+              />
+            </LabeledField>
 
-          <LabeledField label={t("photosPage.place")} asDiv>
-            <Input
-              value={place}
-              onChange={(event) => setPlace(event.target.value)}
-              aria-label={t("photosPage.filterByPlace")}
-            />
-          </LabeledField>
+            <LabeledField label={t("photosPage.dateAfter")} asDiv>
+              <HistoricalDateInput
+                aria-label={t("photosPage.dateAfter")}
+                value={dateFrom}
+                onChange={setDateFrom}
+                preview={historicalDatePreview(dateFrom, language)}
+              />
+            </LabeledField>
 
-          <LabeledField label={t("photosPage.dateAfter")} asDiv>
-            <HistoricalDateInput
-              aria-label={t("photosPage.dateAfter")}
-              value={dateFrom}
-              onChange={setDateFrom}
-              preview={historicalDatePreview(dateFrom, language)}
-            />
-          </LabeledField>
+            <LabeledField label={t("photosPage.dateBefore")} asDiv>
+              <HistoricalDateInput
+                aria-label={t("photosPage.dateBefore")}
+                value={dateTo}
+                onChange={setDateTo}
+                preview={historicalDatePreview(dateTo, language)}
+              />
+            </LabeledField>
 
-          <LabeledField label={t("photosPage.dateBefore")} asDiv>
-            <HistoricalDateInput
-              aria-label={t("photosPage.dateBefore")}
-              value={dateTo}
-              onChange={setDateTo}
-              preview={historicalDatePreview(dateTo, language)}
-            />
-          </LabeledField>
+            <Switch isSelected={missingInfo} onChange={setMissingInfo}>
+              {t("photosPage.missingInfo")}
+            </Switch>
 
-          <Switch isSelected={missingInfo} onChange={setMissingInfo}>
-            {t("photosPage.missingInfo")}
-          </Switch>
-
-          <LabeledField label={t("photosPage.sortBy")} asDiv>
-            <Select
-              aria-label={t("photosPage.sortAlbumsBy")}
-              selectedKey={sort}
-              onSelectionChange={(key) => {
-                if (key) setSort(key as AlbumSort);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem id="name">{t("photosPage.sortName")}</SelectItem>
-                <SelectItem id="date">{t("photosPage.sortDate")}</SelectItem>
-                <SelectItem id="assetCount">{t("photosPage.sortPhotoCount")}</SelectItem>
-              </SelectContent>
-            </Select>
-          </LabeledField>
-        </SectionCard>
+            <LabeledField label={t("photosPage.sortBy")} asDiv>
+              <Select
+                aria-label={t("photosPage.sortAlbumsBy")}
+                selectedKey={sort}
+                onSelectionChange={(key) => {
+                  if (key) setSort(key as AlbumSort);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem id="name">{t("photosPage.sortName")}</SelectItem>
+                  <SelectItem id="date">{t("photosPage.sortDate")}</SelectItem>
+                  <SelectItem id="assetCount">{t("photosPage.sortPhotoCount")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </LabeledField>
+          </SectionCard>
+        </div>
 
         {albums.isPending ? (
           <p className="text-sm text-muted-foreground">{t("photosPage.loadingAlbums")}</p>
@@ -313,14 +334,41 @@ function AlbumsSection() {
           <p className="text-sm text-destructive">
             {t("photosPage.loadErrorAlbums", { message: albums.error.message })}
           </p>
-        ) : albums.data.length === 0 ? (
+        ) : albumGroups.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("photosPage.noMatchingAlbums")}</p>
-        ) : viewMode === "list" ? (
-          <AlbumListView albums={albums.data} language={language} onRefresh={refreshAlbums} />
-        ) : viewMode === "grid" ? (
-          <AlbumGridView albums={albums.data} language={language} onRefresh={refreshAlbums} />
         ) : (
-          <AlbumShelfView albums={albums.data} onOpen={setBookAlbumId} />
+          <div className="space-y-8">
+            {albumGroups.map((group) => (
+              <section key={group.key} className="space-y-3" aria-label={group.heading?.name}>
+                {group.heading && (
+                  <h2 className="flex items-center gap-2 border-b pb-1.5 text-sm font-semibold">
+                    {group.heading.color && <CategoryDot color={group.heading.color} />}
+                    <span className={group.heading.color ? undefined : "text-muted-foreground"}>
+                      {group.heading.name}
+                    </span>
+                    <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                      {group.albums.length}
+                    </span>
+                  </h2>
+                )}
+                {viewMode === "list" ? (
+                  <AlbumListView
+                    albums={group.albums}
+                    language={language}
+                    onRefresh={refreshAlbums}
+                  />
+                ) : viewMode === "grid" ? (
+                  <AlbumGridView
+                    albums={group.albums}
+                    language={language}
+                    onRefresh={refreshAlbums}
+                  />
+                ) : (
+                  <AlbumShelfView albums={group.albums} onOpen={setBookAlbumId} />
+                )}
+              </section>
+            ))}
+          </div>
         )}
       </div>
 
@@ -335,6 +383,54 @@ function AlbumsSection() {
       )}
     </section>
   );
+}
+
+interface AlbumGroup {
+  key: string;
+  /** Absent when there's nothing to group by — one plain, headingless list. */
+  heading?: { name: string; color?: string };
+  albums: AlbumRow[];
+}
+
+/**
+ * On "all", one section per category that has albums (alphabetical, like
+ * the sidebar), then "Uncategorised" — an album in two categories appears
+ * in both, since it genuinely belongs to both. With no categories at all,
+ * or with one category picked, it's a single headingless list, exactly as
+ * before categories existed.
+ */
+function groupAlbumsByCategory(
+  albums: AlbumRow[],
+  categories: { id: string; name: string; color: string }[],
+  selection: AlbumCategorySelection,
+  uncategorisedLabel: string,
+): AlbumGroup[] {
+  const uncategorised = albums.filter((album) => album.categoryIds.length === 0);
+  if (selection === "uncategorised") {
+    return uncategorised.length > 0 ? [{ key: "uncategorised", albums: uncategorised }] : [];
+  }
+  if (selection !== "all") {
+    const inCategory = albums.filter((album) => album.categoryIds.includes(selection));
+    return inCategory.length > 0 ? [{ key: selection, albums: inCategory }] : [];
+  }
+  if (categories.length === 0) {
+    return albums.length > 0 ? [{ key: "all", albums }] : [];
+  }
+  const groups: AlbumGroup[] = categories
+    .map((category) => ({
+      key: category.id,
+      heading: { name: category.name, color: category.color },
+      albums: albums.filter((album) => album.categoryIds.includes(category.id)),
+    }))
+    .filter((group) => group.albums.length > 0);
+  if (uncategorised.length > 0) {
+    groups.push({
+      key: "uncategorised",
+      heading: { name: uncategorisedLabel },
+      albums: uncategorised,
+    });
+  }
+  return groups;
 }
 
 function AlbumGridView({
@@ -378,15 +474,6 @@ function AlbumGridView({
                   ? ` · ${formatDisplayDate(album.date, language)}`
                   : ""}
               </p>
-              {album.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {album.tags.map((tag) => (
-                    <Badge key={tag} variant="secondary">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-              )}
             </CardContent>
           </Link>
           <EditAlbumDialog

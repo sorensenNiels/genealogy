@@ -71,8 +71,6 @@ export class ImmichRouter {
         .input(listAlbumsInputSchema.optional())
         .query(({ input }) => this.immich.listAlbums(input)),
 
-      albumTags: protectedProcedure.query(() => this.immich.listAlbumTags()),
-
       album: protectedProcedure
         .input(z.object({ albumId: immichAlbumIdSchema }))
         .query(({ input }) => this.immich.getAlbum(input.albumId)),

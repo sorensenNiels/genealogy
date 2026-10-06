@@ -159,7 +159,7 @@ const LANGUAGES: Record<Language, DateLanguage> = { en: EN, da: DA };
  * "FROM 1900 TO 1905") into a structured, precision-tagged result. This is a
  * first pass covering the wordings this app's own date fields actually
  * produce, not the full GEDCOM date grammar (no double-dating, no calendar
- * escapes yet) — see "GEDCOM import and export" in TECH_STACK.md.
+ * escapes yet) — see "GEDCOM export" in TECH_STACK.md.
  *
  * Deliberately does not guess at ambiguous numeric-only dates like
  * "03/04/1901" (DD/MM vs MM/DD disagree by locale) — those come back

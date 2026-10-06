@@ -10,7 +10,7 @@ import {
 } from "@genealogy/ui/components/combobox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@genealogy/ui/components/dialog";
 import { cn } from "@genealogy/ui/lib/utils";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import {
   Background,
@@ -639,7 +639,7 @@ function RelativeRow({ label, person }: { label?: string; person: TreePersonRow 
   );
 }
 
-type AddRelativeKind = "father" | "mother" | "spouse" | "child";
+type AddRelativeKind = "father" | "mother" | "spouse" | "child" | "sibling";
 
 /**
  * Search for an existing person to link, or create a blank one on the spot —
@@ -648,17 +648,32 @@ type AddRelativeKind = "father" | "mother" | "spouse" | "child";
  * enough from the tree canvas, and "View full profile" in the panel is one
  * click away to fill in a name afterward. Full parentage-type choice (step/
  * adopted/etc.) also stays on the person page — this only ever links "birth".
+ *
+ * A sibling has no edge of its own: it's linked as a birth child of every
+ * parent in `siblingParentIds` (a full sibling). Half-siblings, which need a
+ * choice of which parent, stay on the person page's own Add sibling dialog.
+ * The new sibling only joins the canvas when all those parents are already on
+ * it (`siblingParentsOnCanvas`) — otherwise it would float unconnected — but
+ * it always shows in the panel's list, which reads `person.relatives`.
  */
 function AddRelativeButton({
   subjectId,
   kind,
   onAdded,
+  excludeIds,
+  siblingParentIds = [],
+  siblingParentsOnCanvas = false,
 }: {
   subjectId: string;
   kind: AddRelativeKind;
   onAdded: (update: Partial<ExtraTreeData>) => void;
+  /** People who can't be picked — e.g. existing siblings and parents, for a sibling. */
+  excludeIds?: ReadonlySet<string>;
+  siblingParentIds?: readonly string[];
+  siblingParentsOnCanvas?: boolean;
 }) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -669,7 +684,9 @@ function AddRelativeButton({
     queryFn: () => listPersons({ data: searchInput }),
     enabled: open,
   });
-  const options = (search.data?.items ?? []).filter((candidate) => candidate.id !== subjectId);
+  const options = (search.data?.items ?? []).filter(
+    (candidate) => candidate.id !== subjectId && !excludeIds?.has(candidate.id),
+  );
   const kindLabel = t(`tree.kind.${kind}`);
 
   const linkParentMutation = useMutation({ mutationFn: linkParent });
@@ -684,6 +701,24 @@ function AddRelativeButton({
     if (kind === "spouse") {
       await linkSpouseMutation.mutateAsync({ data: { aId: subjectId, bId: target.id } });
       onAdded({ people: [target], spouseEdges: [[subjectId, target.id]] });
+    } else if (kind === "sibling") {
+      await Promise.all(
+        siblingParentIds.map((parentId) =>
+          linkParentMutation.mutateAsync({
+            data: { parentId, childId: target.id, parentage: "birth" },
+          }),
+        ),
+      );
+      if (siblingParentsOnCanvas) {
+        onAdded({
+          people: [target],
+          parentEdges: siblingParentIds.map((parentId) => ({
+            parentId,
+            childId: target.id,
+            parentage: "birth",
+          })),
+        });
+      }
     } else if (kind === "child") {
       await linkParentMutation.mutateAsync({
         data: { parentId: subjectId, childId: target.id, parentage: "birth" },
@@ -701,6 +736,9 @@ function AddRelativeButton({
         parentEdges: [{ parentId: target.id, childId: subjectId, parentage: "birth" }],
       });
     }
+    // The panel's Siblings list (and the person page, if open elsewhere)
+    // reads this person's relatives, so refresh it after any link.
+    await queryClient.invalidateQueries({ queryKey: ["person", "relatives", subjectId] });
     setOpen(false);
     setQuery("");
   };
@@ -805,6 +843,22 @@ function DetailPanel({
 
   const parentsKnown = tree.parentsKnownIds.has(person.id);
   const childrenKnown = tree.childrenKnownIds.has(person.id);
+
+  // Siblings come from the backend rather than the tree data: the tree walk
+  // never fetches an ancestor's *other* children, so the canvas can't say who
+  // someone's siblings are. Same query (and cache) as the person page.
+  const relatives = useQuery({
+    queryKey: ["person", "relatives", person.id],
+    queryFn: () => getRelatives({ data: { id: person.id } }),
+  });
+  const siblings = relatives.data?.siblings ?? [];
+  const birthParentIds = (relatives.data?.parents ?? [])
+    .filter((parent) => parent.parentage === "birth")
+    .map((parent) => parent.id);
+  const siblingExcludeIds = new Set([
+    ...siblings.map((sibling) => sibling.id),
+    ...(relatives.data?.parents ?? []).map((parent) => parent.id),
+  ]);
   const photoUrl = person.photoPath ? `${publicBackendUrl}/uploads/${person.photoPath}` : null;
 
   return (
@@ -905,6 +959,33 @@ function DetailPanel({
           >
             {expandingDirection === "down" ? t("tree.loading") : t("tree.loadDescendants")}
           </Button>
+        )}
+      </section>
+
+      <section className="mt-4 space-y-2">
+        <h3 className="text-xs font-medium text-muted-foreground uppercase">
+          {t("tree.siblings")}
+        </h3>
+        {relatives.isPending ? (
+          <p className="text-sm text-muted-foreground">{t("tree.loading")}</p>
+        ) : (
+          <>
+            {siblings.map((sibling) => (
+              <RelativeRow key={sibling.id} person={sibling} />
+            ))}
+            {birthParentIds.length > 0 ? (
+              <AddRelativeButton
+                subjectId={person.id}
+                kind="sibling"
+                onAdded={onAdded}
+                excludeIds={siblingExcludeIds}
+                siblingParentIds={birthParentIds}
+                siblingParentsOnCanvas={birthParentIds.every((id) => peopleById.has(id))}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">{t("tree.addParentFirst")}</p>
+            )}
+          </>
         )}
       </section>
     </div>

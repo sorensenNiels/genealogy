@@ -28,13 +28,14 @@ import { authClient, useSession } from "../lib/auth-client";
 import { getPersonById, listPersons } from "../server/functions/person.functions";
 import { getMyProfile, updateProfile } from "../server/functions/profile.functions";
 
-const PROFILE_SECTIONS = ["account", "theme", "language", "person"] as const;
+// Language isn't here: it's switched from the header (`LanguageMenu` in
+// `__root.tsx`), so it's one click away on every page.
+const PROFILE_SECTIONS = ["account", "theme", "person"] as const;
 type ProfileSection = (typeof PROFILE_SECTIONS)[number];
 function sectionLabels(t: TFunction): Record<ProfileSection, string> {
   return {
     account: t("profile.sectionAccount"),
     theme: t("profile.sectionTheme"),
-    language: t("profile.sectionLanguage"),
     person: t("profile.sectionPerson"),
   };
 }
@@ -196,12 +197,6 @@ function ProfileForm({
           </SectionCard>
         )}
 
-        {section === "language" && (
-          <SectionCard title={t("profile.sectionLanguage")}>
-            <LanguagePicker />
-          </SectionCard>
-        )}
-
         {section === "person" && (
           <SectionCard
             title={t("profile.sectionPerson")}
@@ -326,36 +321,6 @@ function ThemePicker() {
         { value: "light", label: t("profile.themeLight") },
         { value: "dark", label: t("profile.themeDark") },
         { value: "system", label: t("profile.themeSystem") },
-      ]}
-    />
-  );
-}
-
-/**
- * Instant-apply, same reasoning as `ThemePicker` — no Save/Cancel baseline
- * to diff against. `i18n.language` (not a separately-tracked `useState`) is
- * the single source of truth here: it's already seeded from the account's
- * saved preference at SSR time (see `__root.tsx`'s `beforeLoad`), so reading
- * it back avoids a second, possibly-stale copy of the same value.
- * `changeLanguage` re-renders every `useTranslation()` consumer in the tree
- * immediately; `updateProfile` persists it to the account (and refreshes the
- * `lang` cookie the backend-error-translation link reads) in the background.
- */
-function LanguagePicker() {
-  const { t, i18n } = useTranslation();
-  const updateProfileMutation = useMutation({ mutationFn: updateProfile });
-
-  return (
-    <ButtonRadioGroup
-      aria-label={t("profile.language")}
-      value={i18n.language === "da" ? "da" : "en"}
-      onChange={(value) => {
-        void i18n.changeLanguage(value);
-        updateProfileMutation.mutate({ data: { language: value } });
-      }}
-      options={[
-        { value: "en", label: t("profile.languageEnglish") },
-        { value: "da", label: t("profile.languageDanish") },
       ]}
     />
   );

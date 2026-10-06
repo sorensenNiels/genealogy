@@ -90,8 +90,8 @@ export function ComboboxContent<T extends object>({
   const { animation, onAnimationComplete } = useOverlayTransitionState();
 
   // Motion animates a plain `motion.div` nested inside `Popover`, rather than
-  // wrapping `Popover` itself with `motion.create()` — see the "Motion +
-  // React Aria Popover" note in TECH_STACK.md.
+  // wrapping `Popover` itself with `motion.create()` — see "Motion for
+  // animation" in TECH_STACK.md.
   return (
     <Popover className="w-(--trigger-width)" isExiting={animation === "hidden"}>
       <MotionDiv

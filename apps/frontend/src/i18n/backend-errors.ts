@@ -25,6 +25,9 @@ const EXACT: Record<string, string> = {
   "Either immichPersonId or newImmichPersonName is required":
     "Enten immichPersonId eller newImmichPersonName er påkrævet",
   "Already linked to this person": "Allerede knyttet til denne person",
+  "An album category with that name already exists":
+    "Der findes allerede en albumkategori med det navn",
+  "Unknown album category": "Ukendt albumkategori",
   "This Immich person is already linked to someone else":
     "Denne Immich-person er allerede knyttet til en anden",
   "No such Immich person": "Ingen sådan Immich-person",
@@ -66,6 +69,10 @@ const TEMPLATES: { pattern: RegExp; translate: (...groups: string[]) => string }
   {
     pattern: /^No research note with id (.+)$/,
     translate: (id) => `Ingen forskningsnote med id ${id}`,
+  },
+  {
+    pattern: /^No album category with id (.+)$/,
+    translate: (id) => `Ingen albumkategori med id ${id}`,
   },
   { pattern: /^No union with id (.+)$/, translate: (id) => `Intet parforhold med id ${id}` },
   {

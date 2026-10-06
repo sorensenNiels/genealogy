@@ -16,6 +16,8 @@ import type {
 } from "@genealogy/core";
 import { formatPersonName, parseHistoricalDate } from "@genealogy/core";
 import {
+  albumCategories,
+  albumCategoryMembers,
   albumMetadata,
   immichAlbumAssetOrder,
   personImmichLinks,
@@ -91,12 +93,13 @@ export interface LinkedImmichPerson extends ImmichPerson {
 export interface AlbumMetadata {
   date: HistoricalDate | null;
   place: string | null;
-  tags: string[];
   kind: AlbumKind;
   cover: AlbumCover | null;
   found: string | null;
   scanned: string | null;
   photosPerPage: number;
+  /** The `album_categories` this album is in — see `albumCategoryMembers` in the schema. */
+  categoryIds: string[];
 }
 
 export type AlbumWithMetadata = ImmichAlbum & AlbumMetadata;
@@ -121,20 +124,20 @@ export interface AssetSourceAlbum {
 const emptyAlbumMetadata: AlbumMetadata = {
   date: null,
   place: null,
-  tags: [],
   kind: "physical",
   cover: null,
   found: null,
   scanned: null,
   photosPerPage: 4,
+  categoryIds: [],
 };
 
 /** `kind` is stored as plain `text` (see the column's own doc comment in `@genealogy/db`'s schema), so it's narrowed to `AlbumKind` here at the one place a row becomes this app's typed shape. */
-function rowToAlbumMetadata(row: AlbumMetadataRow): AlbumMetadata {
+function rowToAlbumMetadata(row: AlbumMetadataRow, categoryIds: string[]): AlbumMetadata {
   return {
+    categoryIds,
     date: row.date,
     place: row.place,
-    tags: row.tags,
     kind: row.kind as AlbumKind,
     cover: row.cover,
     found: row.found,
@@ -403,16 +406,37 @@ export class ImmichService {
   }
 
   private async metadataByAlbumId(): Promise<Map<string, AlbumMetadata>> {
-    const rows = await this.db.select().from(albumMetadata);
-    return new Map(rows.map((row) => [row.albumId, rowToAlbumMetadata(row)]));
+    const [rows, members] = await Promise.all([
+      this.db.select().from(albumMetadata),
+      this.db.select().from(albumCategoryMembers),
+    ]);
+    const categoryIdsByAlbum = new Map<string, string[]>();
+    for (const member of members) {
+      const ids = categoryIdsByAlbum.get(member.albumId) ?? [];
+      ids.push(member.categoryId);
+      categoryIdsByAlbum.set(member.albumId, ids);
+    }
+    return new Map(
+      rows.map((row) => [
+        row.albumId,
+        rowToAlbumMetadata(row, categoryIdsByAlbum.get(row.albumId) ?? []),
+      ]),
+    );
+  }
+
+  private async categoryIdsForAlbum(albumId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ categoryId: albumCategoryMembers.categoryId })
+      .from(albumCategoryMembers)
+      .where(eq(albumCategoryMembers.albumId, albumId));
+    return rows.map((row) => row.categoryId);
   }
 
   /**
-   * Immich albums, joined with this app's own local metadata (date/place/
-   * tags) and, when `filter` is given, narrowed/sorted by it — all done in
-   * memory over the full list rather than pushed into SQL, since this is a
-   * single-user app with at most a few thousand albums (see `albumMetadata`
-   * in the schema for why tags aren't a normalized join table either).
+   * Immich albums, joined with this app's own local metadata (date, place,
+   * categories, ...) and, when `filter` is given, narrowed/sorted by it — all
+   * done in memory over the full list rather than pushed into SQL, since this
+   * is a single-user app with at most a few thousand albums.
    */
   async listAlbums(filter?: ListAlbumsInput): Promise<AlbumWithMetadata[]> {
     const [albums, metadata] = await Promise.all([
@@ -426,10 +450,6 @@ export class ImmichService {
     if (filter?.search) {
       const pattern = filter.search.toLowerCase();
       merged = merged.filter((album) => album.albumName.toLowerCase().includes(pattern));
-    }
-    if (filter?.tags && filter.tags.length > 0) {
-      const wanted = new Set(filter.tags);
-      merged = merged.filter((album) => album.tags.some((tag) => wanted.has(tag)));
     }
     if (filter?.place) {
       const pattern = filter.place.toLowerCase();
@@ -448,9 +468,7 @@ export class ImmichService {
       );
     }
     if (filter?.missingInfo) {
-      merged = merged.filter(
-        (album) => album.date == null && album.place == null && album.tags.length === 0,
-      );
+      merged = merged.filter((album) => album.date == null && album.place == null);
     }
     if (filter?.kind) {
       merged = merged.filter((album) => album.kind === filter.kind);
@@ -483,7 +501,9 @@ export class ImmichService {
       .from(albumMetadata)
       .where(eq(albumMetadata.albumId, albumId))
       .limit(1);
-    return row ? rowToAlbumMetadata(row) : emptyAlbumMetadata;
+    return row
+      ? rowToAlbumMetadata(row, await this.categoryIdsForAlbum(albumId))
+      : emptyAlbumMetadata;
   }
 
   /**
@@ -491,6 +511,12 @@ export class ImmichService {
    * `setAssetTags`, callers always send the whole current state (an edit
    * dialog pre-filled from `getAlbum`), never a partial patch, so a field
    * left out here means "clear it", not "leave it alone".
+   *
+   * `categoryIds` is the other exception, the other way round: when given
+   * it's the complete new set of categories, but leaving it out keeps the
+   * album's current ones (see `updateAlbumMetadataInputSchema`). The
+   * metadata row and the memberships are written in one transaction, since
+   * a membership's foreign key needs the row to exist first.
    *
    * `kind` is the one exception: it isn't part of `UpdateAlbumMetadataInput`
    * at all (creation-only), and is never included in the `onConflictDoUpdate`
@@ -505,7 +531,6 @@ export class ImmichService {
   ): Promise<AlbumMetadata> {
     const date = resolveDate(input.date ?? null) ?? null;
     const place = input.place ?? null;
-    const tags = input.tags ?? [];
     const cover = input.cover ?? null;
     const found = input.found ?? null;
     const scanned = input.scanned ?? null;
@@ -522,34 +547,51 @@ export class ImmichService {
     const kind: AlbumKind =
       (existing?.kind as AlbumKind | undefined) ?? options?.kind ?? "physical";
 
-    await this.db
-      .insert(albumMetadata)
-      .values({
-        albumId: input.albumId,
-        date,
-        place,
-        tags,
-        kind,
-        cover,
-        found,
-        scanned,
-        photosPerPage,
-      })
-      .onConflictDoUpdate({
-        target: albumMetadata.albumId,
-        set: { date, place, tags, cover, found, scanned, photosPerPage, updatedAt: new Date() },
-      });
-    return { date, place, tags, kind, cover, found, scanned, photosPerPage };
-  }
+    const categoryIds = await this.db.transaction(async (tx) => {
+      await tx
+        .insert(albumMetadata)
+        .values({
+          albumId: input.albumId,
+          date,
+          place,
+          kind,
+          cover,
+          found,
+          scanned,
+          photosPerPage,
+        })
+        .onConflictDoUpdate({
+          target: albumMetadata.albumId,
+          set: { date, place, cover, found, scanned, photosPerPage, updatedAt: new Date() },
+        });
 
-  /** Every tag in use, for the tag-input's autocomplete suggestions. */
-  async listAlbumTags(): Promise<string[]> {
-    const rows = await this.db.select({ tags: albumMetadata.tags }).from(albumMetadata);
-    const tags = new Set<string>();
-    for (const row of rows) {
-      for (const tag of row.tags) tags.add(tag);
-    }
-    return [...tags].toSorted((a, b) => a.localeCompare(b));
+      if (input.categoryIds === undefined) {
+        const rows = await tx
+          .select({ categoryId: albumCategoryMembers.categoryId })
+          .from(albumCategoryMembers)
+          .where(eq(albumCategoryMembers.albumId, input.albumId));
+        return rows.map((row) => row.categoryId);
+      }
+
+      const wanted = [...new Set(input.categoryIds)];
+      if (wanted.length > 0) {
+        const known = await tx
+          .select({ id: albumCategories.id })
+          .from(albumCategories)
+          .where(inArray(albumCategories.id, wanted));
+        if (known.length !== wanted.length) {
+          throw new BadRequestException("Unknown album category");
+        }
+      }
+      await tx.delete(albumCategoryMembers).where(eq(albumCategoryMembers.albumId, input.albumId));
+      if (wanted.length > 0) {
+        await tx
+          .insert(albumCategoryMembers)
+          .values(wanted.map((categoryId) => ({ albumId: input.albumId, categoryId })));
+      }
+      return wanted;
+    });
+    return { date, place, kind, cover, found, scanned, photosPerPage, categoryIds };
   }
 
   async createAlbum(input: CreateAlbumInput): Promise<ImmichAlbum> {
@@ -568,10 +610,10 @@ export class ImmichService {
    * request failed.
    */
   async createAlbumWithMetadata(input: CreateAlbumWithMetadataInput): Promise<AlbumWithMetadata> {
-    const { kind, cover, found, scanned, photosPerPage, ...createInput } = input;
+    const { kind, cover, found, scanned, photosPerPage, categoryIds, ...createInput } = input;
     const album = await this.createAlbum(createInput);
     const metadata = await this.upsertAlbumMetadata(
-      { albumId: album.id, cover, found, scanned, photosPerPage },
+      { albumId: album.id, cover, found, scanned, photosPerPage, categoryIds },
       { kind },
     );
     return { ...album, ...metadata };

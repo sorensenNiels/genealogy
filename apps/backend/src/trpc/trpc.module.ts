@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 
+import { AlbumCategoryModule } from "../album-category/album-category.module.js";
 import { AssociationModule } from "../association/association.module.js";
 import { BackupModule } from "../backup/backup.module.js";
 import { GedcomModule } from "../gedcom/gedcom.module.js";
@@ -30,6 +31,7 @@ import { TrpcRouter } from "./trpc.router.js";
     GedcomModule,
     IntegrityModule,
     AssociationModule,
+    AlbumCategoryModule,
   ],
   providers: [TrpcRouter],
   exports: [TrpcRouter],

@@ -9,6 +9,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -474,15 +475,16 @@ export const immichAlbumAssetOrder = pgTable(
 );
 
 /**
- * Local metadata for an Immich album — date, place, and freeform tags. Immich's
- * own album object has none of these, so this is layered on top the same way
+ * Local metadata for an Immich album — date, place, and more. Immich's own
+ * album object has none of these, so this is layered on top the same way
  * `immichAlbumAssetOrder` layers on custom ordering: `albumId` is plain `text`,
  * not a foreign key, since it references Immich's own id, not a row this
- * database owns. `tags` is a plain array rather than a separate tags/join
- * table — this is a single-user app with at most a few thousand albums, so
- * filtering/autocomplete work fine done in memory over the whole table; a
- * normalized many-to-many would be solving a scale problem that doesn't exist
- * here. `date` reuses `HistoricalDate`, the same approximate/range date type
+ * database owns.
+ *
+ * `tags` is currently unused: album tags were taken out of the app in favor
+ * of album categories (`albumCategories`), but the column and its data are
+ * kept in case they come back. Nothing reads it, and `upsertAlbumMetadata`
+ * never writes it, so existing tags survive edits. `date` reuses `HistoricalDate`, the same approximate/range date type
  * `personEvents.date` uses, so album dates get the same "circa 1950" handling.
  *
  * `kind` distinguishes a "physical" album (mirrors a real scanned album,
@@ -524,6 +526,47 @@ export const albumMetadata = pgTable("album_metadata", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * A user-defined grouping for albums (a family name, "Holidays", ...) — see
+ * `albumCategoryIdSchema` in `@genealogy/core` for why this is its own table
+ * rather than a `configurableOptions` topic. Names are unique
+ * case-insensitively, so "Sørensen" and "sørensen" can't both exist.
+ */
+export const albumCategories = pgTable(
+  "album_categories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    color: text("color").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("album_categories_name_lower_idx").on(sql`lower(${table.name})`)],
+);
+
+/**
+ * Which albums are in which categories — many-to-many. `albumId` references
+ * `album_metadata.album_id` (unique) rather than Immich directly, so deleting
+ * an album's local metadata (`ImmichService.deleteAlbum`) or a category
+ * cascades here with no extra cleanup code; an album gets a metadata row
+ * before it can be categorized (`upsertAlbumMetadata` writes both).
+ */
+export const albumCategoryMembers = pgTable(
+  "album_category_members",
+  {
+    albumId: text("album_id")
+      .notNull()
+      .references(() => albumMetadata.albumId, { onDelete: "cascade" }),
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => albumCategories.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.albumId, table.categoryId] }),
+    index("album_category_members_category_idx").on(table.categoryId),
+  ],
+);
 
 /**
  * A research to-do tied to a person: an open question to chase down later, or

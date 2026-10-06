@@ -24,7 +24,9 @@ import {
 } from "@tanstack/react-router";
 import {
   BellIcon,
+  CheckIcon,
   ChevronDownIcon,
+  LanguagesIcon,
   LogOutIcon,
   NotebookTextIcon,
   SettingsIcon,
@@ -44,7 +46,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "../server/functions/notification.functions";
-import { getMyLanguage } from "../server/functions/profile.functions";
+import { getMyLanguage, updateProfile } from "../server/functions/profile.functions";
 import { getSession } from "../server/functions/session.functions";
 
 import appCss from "../styles.css?url";
@@ -242,6 +244,7 @@ function RootLayout() {
             <ToolsLink />
             <SettingsLink />
             <ThemeToggle />
+            <LanguageMenu />
             <UserMenu />
             <SignInLink />
           </span>
@@ -444,6 +447,67 @@ function SignInLink() {
     <Link to="/login" className="text-sm text-muted-foreground hover:text-foreground">
       {t("nav.signIn")}
     </Link>
+  );
+}
+
+/**
+ * Each language is named in itself ("Dansk", not "Danish"), so someone who
+ * can't read the current UI language can still find their own — which is
+ * why these aren't translation keys.
+ */
+const LANGUAGE_NAMES: Record<SupportedLanguage, string> = { en: "English", da: "Dansk" };
+
+/**
+ * Instant-apply, like `ThemeToggle`: `changeLanguage` re-renders every
+ * `useTranslation()` consumer immediately, and `updateProfile` persists the
+ * choice to the account (and refreshes the `lang` cookie the
+ * backend-error-translation link reads) in the background. `i18n.language` is
+ * the single source of truth — `beforeLoad` already seeded it from the
+ * account. Hidden when signed out, like `UserMenu`, since the preference
+ * lives on the account.
+ */
+function LanguageMenu() {
+  const { t, i18n } = useTranslation();
+  const { data: session, isPending } = useSession();
+  const updateProfileMutation = useMutation({ mutationFn: updateProfile });
+
+  if (isPending || !session) {
+    return null;
+  }
+
+  const current: SupportedLanguage = i18n.language === "da" ? "da" : "en";
+
+  return (
+    <DropdownMenu>
+      <Button
+        variant="ghost"
+        className="gap-1.5 px-2"
+        aria-label={t("nav.language", { language: LANGUAGE_NAMES[current] })}
+      >
+        <LanguagesIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+        <span className="text-sm font-medium uppercase">{current}</span>
+      </Button>
+      <DropdownMenuContent>
+        {(Object.keys(LANGUAGE_NAMES) as SupportedLanguage[]).map((language) => (
+          <DropdownMenuItem
+            key={language}
+            id={language}
+            textValue={LANGUAGE_NAMES[language]}
+            onAction={() => {
+              if (language === current) return;
+              void i18n.changeLanguage(language);
+              updateProfileMutation.mutate({ data: { language } });
+            }}
+          >
+            <CheckIcon
+              className={cn("size-4", language !== current && "invisible")}
+              aria-hidden="true"
+            />
+            <span lang={language}>{LANGUAGE_NAMES[language]}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

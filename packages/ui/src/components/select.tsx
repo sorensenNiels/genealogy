@@ -82,8 +82,8 @@ export function SelectContent<T extends object>({
   const { animation, onAnimationComplete } = useOverlayTransitionState();
 
   // Motion animates a plain `motion.div` nested inside `Popover`, rather than
-  // wrapping `Popover` itself with `motion.create()` — see the "Motion +
-  // React Aria Popover" note in TECH_STACK.md for why: `Popover` re-renders
+  // wrapping `Popover` itself with `motion.create()` — see "Motion for
+  // animation" in TECH_STACK.md for why: `Popover` re-renders
   // to recompute its own position (`--trigger-anchor-point`/`--trigger-width`
   // custom properties), and that stomps whatever inline style Motion last
   // wrote for `opacity`/`transform` on the *same* node, leaving it stuck at

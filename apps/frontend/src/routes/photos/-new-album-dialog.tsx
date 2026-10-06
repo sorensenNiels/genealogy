@@ -13,15 +13,24 @@ import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 import { createImmichAlbum } from "../../server/functions/immich.functions";
+import { AlbumCategoryPicker } from "./-album-categories";
 
 const COVER_COLORS = ["#2f4034", "#6b2b2b", "#4a3322", "#23344a", "#e3dccb", "#3b3b3f"];
 
-export function NewAlbumDialog({ onCreated }: { onCreated: (albumId: string) => Promise<void> }) {
+/** `defaultCategoryIds` pre-checks the category the sidebar has selected, so "+ Add album" while viewing "Sørensen" files it there. */
+export function NewAlbumDialog({
+  defaultCategoryIds,
+  onCreated,
+}: {
+  defaultCategoryIds: string[];
+  onCreated: (albumId: string) => Promise<void>;
+}) {
   const { t } = useTranslation();
   return (
     <FormDialog trigger={<Button>{t("album.addAlbum")}</Button>} title={t("album.newAlbum")}>
       {(close) => (
         <NewAlbumForm
+          defaultCategoryIds={defaultCategoryIds}
           onDone={async (albumId) => {
             close();
             await onCreated(albumId);
@@ -32,7 +41,13 @@ export function NewAlbumDialog({ onCreated }: { onCreated: (albumId: string) => 
   );
 }
 
-function NewAlbumForm({ onDone }: { onDone: (albumId: string) => Promise<void> }) {
+function NewAlbumForm({
+  defaultCategoryIds,
+  onDone,
+}: {
+  defaultCategoryIds: string[];
+  onDone: (albumId: string) => Promise<void>;
+}) {
   const { t } = useTranslation();
   const createAlbumMutation = useMutation({ mutationFn: createImmichAlbum });
 
@@ -46,6 +61,7 @@ function NewAlbumForm({ onDone }: { onDone: (albumId: string) => Promise<void> }
       found: "",
       scanned: "",
       photosPerPage: 4,
+      categoryIds: defaultCategoryIds,
     },
     onSubmit: async ({ value }) => {
       const description = value.description.trim();
@@ -56,6 +72,7 @@ function NewAlbumForm({ onDone }: { onDone: (albumId: string) => Promise<void> }
           albumName: value.albumName.trim(),
           kind: value.kind,
           photosPerPage: value.photosPerPage,
+          categoryIds: value.categoryIds,
           ...(description ? { description } : {}),
           ...(value.kind === "physical"
             ? { cover: { color: value.coverColor, style: value.coverStyle } }
@@ -116,6 +133,14 @@ function NewAlbumForm({ onDone }: { onDone: (albumId: string) => Promise<void> }
           />
         )}
       </form.Field>
+
+      <LabeledField label={t("albumCategories.pickerLabel")} asDiv>
+        <form.Field name="categoryIds">
+          {(field) => (
+            <AlbumCategoryPicker value={field.state.value} onChange={field.handleChange} />
+          )}
+        </form.Field>
+      </LabeledField>
 
       {kind === "physical" && (
         <>

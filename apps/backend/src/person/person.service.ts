@@ -33,7 +33,6 @@ import {
   descendantsOf,
   inGraphTransaction,
   parentsOf,
-  parentsOfMany,
   personEvents,
   personNames,
   persons,
@@ -147,8 +146,6 @@ export interface ListPersonsResult {
   items: (PersonWithVitals & {
     /** `hasRelations` mirrors the guard in `remove` — lets the list hide the delete action per row without a `relatives()` round trip each. */
     hasRelations: boolean;
-    /** Birth parents only, for the list's "Parents" column — up to however many are recorded. */
-    parents: { id: string; given: string; surname: string }[];
     citationCount: number;
     /** The single highest-ranked confidence among this person's citations (by `configurableOptions.sortOrder`), null when uncited. */
     topConfidence: string | null;
@@ -212,7 +209,7 @@ export class PersonService {
       .where(where);
 
     const ids = items.map((item) => item.id);
-    const [relatedIds, unionRows, parentsByChild, citationRollup] = await Promise.all([
+    const [relatedIds, unionRows, citationRollup] = await Promise.all([
       personsWithRelations(this.pool, ids),
       ids.length > 0
         ? this.db
@@ -220,36 +217,15 @@ export class PersonService {
             .from(unions)
             .where(or(inArray(unions.personAId, ids), inArray(unions.personBId, ids)))
         : [],
-      parentsOfMany(this.pool, ids),
       this.citationRollup(ids),
     ]);
     const unionPersonIds = new Set(unionRows.flatMap((row) => [row.personAId, row.personBId]));
 
-    const allParentIds = [
-      ...new Set([...parentsByChild.values()].flat().map((edge) => edge.personId)),
-    ];
-    const parentPersonRows =
-      allParentIds.length > 0
-        ? await this.db
-            .select({ id: persons.id, given: persons.given, surname: persons.surname })
-            .from(persons)
-            .where(inArray(persons.id, allParentIds))
-        : [];
-    const parentPersonById = new Map(parentPersonRows.map((row) => [row.id, row]));
-
     return {
       items: items.map((item) => {
-        const parentEdges = parentsByChild.get(item.id) ?? [];
-        const parents = parentEdges
-          .filter((edge) => edge.parentage === "birth")
-          .flatMap((edge) => {
-            const row = parentPersonById.get(edge.personId);
-            return row ? [{ id: row.id, given: row.given, surname: row.surname }] : [];
-          });
         const rollup = citationRollup.get(item.id);
         return Object.assign(item, {
           hasRelations: relatedIds.has(item.id) || unionPersonIds.has(item.id),
-          parents,
           citationCount: rollup?.count ?? 0,
           topConfidence: rollup?.topConfidence ?? null,
         });

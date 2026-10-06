@@ -68,11 +68,11 @@ interface Family {
  * Builds a GEDCOM 5.5.1 export of the whole tree in one pass — read-only, no
  * queue needed (unlike `BackupService`'s `pg_dump`, this is plain text, not a
  * large binary, so it's comfortably synchronous at this app's scale). See
- * "GEDCOM import and export" in TECH_STACK.md for the deliberate scope cuts
- * (no `OBJE` — photos aren't portable outside this app; no research/user
- * notes — not part of GEDCOM's model) and for which of this app's own
- * fields travel as underscore tags (`_STAT`, `_DETAIL`, ...) that other
- * programs ignore but `GedcomImportService` reads back.
+ * "GEDCOM export" in TECH_STACK.md for the deliberate scope cuts (no `OBJE` —
+ * photos aren't portable outside this app; no user notes — not part of
+ * GEDCOM's model) and for which of this app's own fields travel as
+ * underscore tags (`_STAT`, `_DETAIL`, `_TODO`, ...) that other programs
+ * ignore but `GedcomImportService` reads back.
  */
 @Injectable()
 export class GedcomService {

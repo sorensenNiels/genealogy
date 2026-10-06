@@ -47,10 +47,9 @@ const envSchema = z.object({
   IMMICH_URL: z.string().trim().min(1).optional(),
   /**
    * Generated once by hand in Immich's own web UI (Settings > API keys);
-   * this app never creates one. Must carry write scopes
-   * (`asset.upload`, `album.create`, `album.update`, `album.assetCreate`,
-   * `person.create`, `face.update`) as of the album/upload/face-tagging
-   * feature — a read-only key 403s on every one of those calls.
+   * this app never creates one. Must carry write scopes, not just read —
+   * the full list is under "Photos & albums" in TECH_STACK.md; a read-only
+   * key 403s on every upload, album edit, delete and face tag.
    */
   IMMICH_API_KEY: z.string().trim().min(1).optional(),
   /** Disk-streamed cap for photos uploaded through this app into Immich — same disk-not-memory reasoning as `BackupService`'s own `pg_dump` streaming. */

@@ -6,14 +6,15 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { publicBackendUrl } from "../../lib/env";
-import { avatarColorClass, initials } from "../../lib/person-display";
+import { avatarColorClass, GenderIcon, genderLabel, initials } from "../../lib/person-display";
 import type { listPersons } from "../../server/functions/person.functions";
 
 type PersonListItem = Awaited<ReturnType<typeof listPersons>>["items"][number];
 
 /**
  * The photo-forward alternative to the People table: one large tap target
- * per person (avatar, name, lifespan, place, status), no secondary actions.
+ * per person (avatar with gender badge, name, lifespan, place, status), no
+ * secondary actions.
  * Aimed at browsing rather than research — the table stays the dense,
  * filterable view for that.
  */
@@ -46,12 +47,21 @@ function PersonCard({ person }: { person: PersonListItem }) {
       className="block rounded-xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
       <Card className="h-full items-center gap-3 py-6 text-center transition-shadow hover:shadow-md">
-        <Avatar className="size-24">
-          {photoUrl && <AvatarImage src={photoUrl} alt="" />}
-          <AvatarFallback className={`text-2xl ${avatarColorClass(person.gender)}`}>
-            {initials(person)}
-          </AvatarFallback>
-        </Avatar>
+        {/* The gender badge sits on the avatar's edge, outside `Avatar` itself
+            (which clips its children): it keeps the centered name balanced,
+            and still says the gender once a photo hides the initials' color. */}
+        <div className="relative">
+          <Avatar className="size-24">
+            {photoUrl && <AvatarImage src={photoUrl} alt="" />}
+            <AvatarFallback className={`text-2xl ${avatarColorClass(person.gender)}`}>
+              {initials(person)}
+            </AvatarFallback>
+          </Avatar>
+          <span className="absolute right-0 bottom-0 flex size-7 items-center justify-center rounded-full border bg-card shadow-sm">
+            <GenderIcon gender={person.gender} className="size-4" />
+            <span className="sr-only">{genderLabel(person.gender, t)}</span>
+          </span>
+        </div>
         <CardContent className="flex w-full flex-col items-center gap-1 px-4">
           <p className="text-base font-semibold">{formatPersonName(person)}</p>
           {lifespan && <p className="text-sm text-muted-foreground">{lifespan}</p>}

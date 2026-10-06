@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 import type { INestApplication } from "@nestjs/common";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 
+import { AlbumCategoryRouter } from "../album-category/album-category.router.js";
 import { AssociationRouter } from "../association/association.router.js";
 import { AUTH, type Auth } from "../auth/auth.module.js";
 import { BackupRouter } from "../backup/backup.router.js";
@@ -37,6 +38,7 @@ export class TrpcRouter {
     private readonly gedcom: GedcomRouter,
     private readonly integrity: IntegrityRouter,
     private readonly association: AssociationRouter,
+    private readonly albumCategory: AlbumCategoryRouter,
     @Inject(AUTH) private readonly auth: Auth,
   ) {}
 
@@ -59,6 +61,7 @@ export class TrpcRouter {
       gedcom: this.gedcom.build(),
       integrity: this.integrity.build(),
       association: this.association.build(),
+      albumCategory: this.albumCategory.build(),
     });
   }
 

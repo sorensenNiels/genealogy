@@ -14,14 +14,19 @@ is installed on your machine.
 
 1. Open the repository in VS Code.
 2. Choose **Reopen in Container**.
-3. Run `make db-up` and `make db-migrate`.
-4. Run `pnpm dev`.
+3. Run `docker compose up -d --wait` (Postgres, Redis and Immich), then
+   `make db-migrate`.
+4. Copy `apps/backend/.env.example` to `apps/backend/.env` and fill in the
+   values it can't default — see "Environment variables" in
+   [DEVELOPMENT_ENVIRONMENT.md](DEVELOPMENT_ENVIRONMENT.md).
+5. Run `pnpm dev`.
 
 |          |                                                            |
 | -------- | ---------------------------------------------------------- |
 | Web      | <http://localhost:5173>                                    |
 | Backend  | <http://localhost:3000/trpc>                               |
 | Database | `localhost:5432` (`genealogy` / `genealogy` / `genealogy`) |
+| Immich   | <http://localhost:2283>                                    |
 
 You only ever open the Web URL — its server side proxies both data and auth
 calls to the backend, so the backend URL above is for API inspection, not
@@ -48,8 +53,8 @@ pnpm test         # Vitest across the workspace
 pnpm db:migrate   # apply pending migrations
 ```
 
-`make help` lists the same commands as make targets. Use `make db-down` when
-database-backed development is finished.
+`make help` lists the same commands as make targets. `docker compose stop`
+stops the services when you're done.
 
 ## Documentation
 
@@ -57,4 +62,6 @@ database-backed development is finished.
   working in the dev container, tooling, troubleshooting.
 - [TECH_STACK.md](TECH_STACK.md) — what the stack is and why each piece was
   chosen.
+- [FEATURES.md](FEATURES.md) — what's built.
+- [IDEAS.md](IDEAS.md) — what's planned, and ideas not yet decided.
 - [CLAUDE.md](CLAUDE.md) — working agreements for Claude Code in this repository.

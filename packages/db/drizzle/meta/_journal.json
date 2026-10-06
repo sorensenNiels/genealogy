@@ -239,6 +239,13 @@
       "when": 1791309787634,
       "tag": "0033_places_postgis",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791318207746,
+      "tag": "0034_album_categories",
+      "breakpoints": true
     }
   ]
 }

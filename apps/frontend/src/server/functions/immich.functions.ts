@@ -60,10 +60,6 @@ export const listImmichAlbums = createServerFn({ method: "GET" })
   .validator(listAlbumsInputSchema.optional())
   .handler(({ data }) => trpcProxy.immich.listAlbums.query(data));
 
-export const listImmichAlbumTags = createServerFn({ method: "GET" }).handler(() =>
-  trpcProxy.immich.albumTags.query(),
-);
-
 export const listAlbumAssets = createServerFn({ method: "GET" })
   .validator(z.object({ albumId: z.string().min(1) }))
   .handler(({ data }) => trpcProxy.immich.albumAssets.query(data));

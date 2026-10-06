@@ -52,10 +52,9 @@ through `host.docker.internal` (`devcontainer.json` sets `DATABASE_URL`,
 container is the dev container itself, not the host).
 Those commands work from either side: the dev container has the
 `docker-outside-of-docker` feature, so its `docker` CLI talks to the host's
-Docker daemon and sees the same containers you'd see on the host. (It used to
-be `docker-in-docker`, which runs a separate, empty daemon inside the dev
-container — `docker` in there could never reach the real `db` container.)
-Because the host daemon resolves bind-mount paths on the host,
+Docker daemon and sees the same containers you'd see on the host (not
+`docker-in-docker`, whose separate, empty daemon could never reach the real
+`db` container). Because the host daemon resolves bind-mount paths on the host,
 `docker-compose.yml` mounts `${LOCAL_WORKSPACE_FOLDER:-.}/postgres` rather
 than `./postgres`; `devcontainer.json` sets `LOCAL_WORKSPACE_FOLDER` to the
 workspace's host path.
@@ -76,14 +75,12 @@ volume is first created. It enables the `age` extension, creates the
 `search_path` to `public, ag_catalog`.
 
 Because it only runs on a fresh volume, changing that file has no effect on an
-existing database. To pick up a change, recreate the volume:
-
-```bash
-make db-reset
-make db-migrate
-```
-
-This destroys all local data. `make db-reset` does the same thing.
+existing database. Prefer a migration that makes the same change idempotently
+(`0033_places_postgis.sql` runs `CREATE EXTENSION IF NOT EXISTS postgis` for
+exactly this reason). The blunt alternative is `make db-reset`, which rebuilds
+the database from scratch and re-runs migrations — but it uses
+`docker compose down -v`, so it **destroys every compose volume, Immich's photo
+library (`immich-uploads`) and database included**, not just Postgres.
 
 ### Environment variables
 
@@ -99,6 +96,12 @@ container. Three don't, and the app refuses to boot without them:
   `${BETTER_AUTH_URL}/api/auth/callback/google`. There's no way to provision
   these programmatically. Email/password sign-in works without them being real
   — only "Continue with Google" needs valid credentials.
+
+Optional, but needed for the photo library: `IMMICH_API_KEY`. Create a user in
+Immich's web UI (<http://localhost:2283>) on first start, then generate a key
+under Account Settings → API Keys — there's no headless way to do it. The key
+needs write permissions; see "Photos & albums" in TECH_STACK.md for the list.
+Without it the app runs normally and the Photos pages show a setup message.
 
 ## Day-to-day commands
 

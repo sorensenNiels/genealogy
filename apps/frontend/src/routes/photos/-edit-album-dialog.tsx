@@ -14,21 +14,20 @@ import { HistoricalDateInput } from "@genealogy/ui/components/historical-date-in
 import { Input } from "@genealogy/ui/components/input";
 import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { SaveButton } from "@genealogy/ui/components/save-button";
-import { TagInput } from "@genealogy/ui/components/tag-input";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { useForm, useStore } from "@tanstack/react-form";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { PencilIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { historicalDateFieldPreview } from "../../lib/format-date";
 import {
-  listImmichAlbumTags,
   type listImmichAlbums,
   updateImmichAlbum,
   updateImmichAlbumMetadata,
 } from "../../server/functions/immich.functions";
+import { AlbumCategoryPicker } from "./-album-categories";
 
 export type AlbumWithMetadata = Awaited<ReturnType<typeof listImmichAlbums>>[number];
 
@@ -84,10 +83,6 @@ function EditAlbumForm({
   const isPhysical = album.kind === "physical";
   const updateAlbumMutation = useMutation({ mutationFn: updateImmichAlbum });
   const updateMetadataMutation = useMutation({ mutationFn: updateImmichAlbumMetadata });
-  const tagsQuery = useQuery({
-    queryKey: ["immich", "albumTags"],
-    queryFn: () => listImmichAlbumTags(),
-  });
 
   const dateSplit = splitHistoricalDateText(album.date?.original ?? "", language);
 
@@ -99,12 +94,12 @@ function EditAlbumForm({
       dateValue: dateSplit.value,
       dateEndValue: dateSplit.endValue,
       place: album.place ?? "",
-      tags: album.tags,
       coverColor: album.cover?.color ?? COVER_COLORS[0]!,
       coverStyle: (album.cover?.style ?? "label") as AlbumCoverStyle,
       found: album.found ?? "",
       scanned: album.scanned ?? "",
       photosPerPage: album.photosPerPage,
+      categoryIds: album.categoryIds,
     },
     onSubmit: async ({ value }) => {
       const dateOriginal = joinHistoricalDateText(
@@ -133,7 +128,7 @@ function EditAlbumForm({
                 ? null
                 : { original: dateOriginal, ...parseHistoricalDate(dateOriginal, language) },
             place: value.place.trim() === "" ? null : value.place.trim(),
-            tags: value.tags,
+            categoryIds: value.categoryIds,
             ...(isPhysical
               ? {
                   cover: { color: value.coverColor, style: value.coverStyle },
@@ -211,15 +206,14 @@ function EditAlbumForm({
           />
         )}
       </form.Field>
-      <form.Field name="tags">
-        {(field) => (
-          <TagInput
-            value={field.state.value}
-            onChange={field.handleChange}
-            suggestions={tagsQuery.data ?? []}
-          />
-        )}
-      </form.Field>
+
+      <LabeledField label={t("albumCategories.pickerLabel")} asDiv>
+        <form.Field name="categoryIds">
+          {(field) => (
+            <AlbumCategoryPicker value={field.state.value} onChange={field.handleChange} />
+          )}
+        </form.Field>
+      </LabeledField>
 
       {isPhysical && (
         <>

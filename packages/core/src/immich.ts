@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { albumCategoryIdSchema } from "./album-category.js";
 import { historicalDateSchema } from "./person.js";
 
 /**
@@ -53,6 +54,7 @@ export const createAlbumWithMetadataInputSchema = createAlbumInputSchema.extend(
   found: z.string().trim().max(200).optional(),
   scanned: z.string().trim().max(200).optional(),
   photosPerPage: z.number().int().min(1).max(20).optional(),
+  categoryIds: z.array(albumCategoryIdSchema).max(50).optional(),
 });
 export type CreateAlbumWithMetadataInput = z.infer<typeof createAlbumWithMetadataInputSchema>;
 
@@ -108,34 +110,34 @@ export const tagFaceInputSchema = z.object({
 });
 export type TagFaceInput = z.infer<typeof tagFaceInputSchema>;
 
-/** Local metadata layered on an Immich album — see `albumMetadata` in `@genealogy/db`'s schema. */
+/** One tag name — used for Immich's own per-photo tags (`setAssetTagsInputSchema`). */
 export const albumTagSchema = z.string().trim().min(1).max(50);
 
 /**
  * `kind` is deliberately absent here — it's creation-only
  * (`createAlbumWithMetadataInputSchema`) and immutable after, so the edit
  * path has no way to even express changing it.
+ *
+ * `categoryIds` is the one field where leaving it out means "leave as is"
+ * rather than "clear" (see `ImmichService.upsertAlbumMetadata`): it's the
+ * complete new set when present, but a caller that doesn't deal in
+ * categories shouldn't silently uncategorize the album.
  */
 export const updateAlbumMetadataInputSchema = z.object({
   albumId: immichAlbumIdSchema,
   date: historicalDateSchema.nullable().optional(),
   place: z.string().trim().max(200).nullable().optional(),
-  tags: z.array(albumTagSchema).max(50).optional(),
   cover: albumCoverSchema.nullable().optional(),
   found: z.string().trim().max(200).nullable().optional(),
   scanned: z.string().trim().max(200).nullable().optional(),
   photosPerPage: z.number().int().min(1).max(20).optional(),
+  categoryIds: z.array(albumCategoryIdSchema).max(50).optional(),
 });
 export type UpdateAlbumMetadataInput = z.infer<typeof updateAlbumMetadataInputSchema>;
 
-/**
- * All filters are optional and combine with AND, except `tags` which matches
- * ANY of the given tags (OR) — narrowing by tag is meant to broaden a search
- * across sources/themes independently, not require every tag at once.
- */
+/** All filters are optional and combine with AND. */
 export const listAlbumsInputSchema = z.object({
   search: z.string().trim().optional(),
-  tags: z.array(albumTagSchema).optional(),
   place: z.string().trim().optional(),
   dateFrom: z.iso.date().optional(),
   dateTo: z.iso.date().optional(),
