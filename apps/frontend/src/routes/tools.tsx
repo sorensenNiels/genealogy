@@ -1,15 +1,21 @@
-import { formatPersonName } from "@genealogy/core";
+import {
+  GEDCOM_IMPORT_MAX_CHARS,
+  decodeGedcomBytes,
+  formatPersonName,
+  type GedcomImportInput,
+} from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
 import { FileDropZone } from "@genealogy/ui/components/file-drop-zone";
 import { Input } from "@genealogy/ui/components/input";
 import { SectionCard } from "@genealogy/ui/components/section-card";
 import { cn } from "@genealogy/ui/lib/utils";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import {
   DatabaseBackupIcon,
   FileDownIcon,
+  FileUpIcon,
   ScanFaceIcon,
   SearchCheckIcon,
   UploadIcon,
@@ -18,7 +24,11 @@ import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { createBackup } from "../server/functions/backup.functions";
-import { exportGedcom } from "../server/functions/gedcom.functions";
+import {
+  exportGedcom,
+  importGedcom,
+  previewGedcomImport,
+} from "../server/functions/gedcom.functions";
 import {
   enqueueAllAlbumsZip,
   isImmichConfigured,
@@ -31,6 +41,7 @@ const TOOLS = [
   "restore",
   "immich-faces",
   "gedcom-export",
+  "gedcom-import",
   "data-integrity",
   "graph-consistency",
 ] as const;
@@ -42,6 +53,7 @@ function toolLabels(t: TFunction): Record<Tool, string> {
     restore: t("tools.tool.restore"),
     "immich-faces": t("tools.tool.immich-faces"),
     "gedcom-export": t("tools.tool.gedcom-export"),
+    "gedcom-import": t("tools.tool.gedcom-import"),
     "data-integrity": t("tools.tool.data-integrity"),
     "graph-consistency": t("tools.tool.graph-consistency"),
   };
@@ -94,6 +106,7 @@ function ToolsRoute() {
         {tool === "restore" && <RestorePanel />}
         {tool === "immich-faces" && immichConfigured.data && <FaceRescanPanel />}
         {tool === "gedcom-export" && <GedcomExportPanel />}
+        {tool === "gedcom-import" && <GedcomImportPanel />}
         {tool === "data-integrity" && <DataIntegrityPanel />}
         {tool === "graph-consistency" && <GraphConsistencyPanel />}
       </div>
@@ -292,7 +305,241 @@ function GedcomExportPanel() {
   );
 }
 
-/** A person link shared by both report panels below — every finding here points back at a person page for the admin to actually look at and judge. */
+/** Which of the preview's counts to show, in display order. */
+const GEDCOM_IMPORT_COUNTS = [
+  "persons",
+  "names",
+  "events",
+  "parentLinks",
+  "spouseLinks",
+  "unions",
+  "sources",
+  "citations",
+  "associations",
+  "researchNotes",
+  "places",
+] as const;
+
+function GedcomImportPanel() {
+  // Two steps on purpose: preview (parse + report, writes nothing), then an
+  // explicit import of exactly the file that was previewed. Everything is
+  // added as new people — likely duplicates of people already in the tree
+  // are listed, not merged — see "GEDCOM import" in TECH_STACK.md.
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [file, setFile] = useState<{ name: string; input: GedcomImportInput } | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
+  const previewMutation = useMutation({
+    mutationFn: (input: GedcomImportInput) => previewGedcomImport({ data: input }),
+  });
+  const importMutation = useMutation({
+    mutationFn: (input: GedcomImportInput) => importGedcom({ data: input }),
+    // Hundreds of new people touch nearly every cached list in the app.
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
+  const preview = previewMutation.data;
+
+  const selectFile = async (selected: File | undefined): Promise<void> => {
+    setFile(null);
+    setReadError(null);
+    previewMutation.reset();
+    importMutation.reset();
+    if (!selected) return;
+    // Decoded here, not on the server: the browser has the raw bytes, and
+    // what travels onward is plain text in a JSON body.
+    const { text, encoding } = decodeGedcomBytes(new Uint8Array(await selected.arrayBuffer()));
+    if (text.length > GEDCOM_IMPORT_MAX_CHARS) {
+      setReadError(t("tools.gedcomImport.tooLarge"));
+      return;
+    }
+    const input = { text, encoding };
+    setFile({ name: selected.name, input });
+    previewMutation.mutate(input);
+  };
+
+  return (
+    <SectionCard title={toolLabels(t)["gedcom-import"]}>
+      <p className="text-sm text-muted-foreground">{t("tools.gedcomImport.description")}</p>
+      <p className="mt-2 text-sm text-muted-foreground">{t("tools.gedcomImport.backupHint")}</p>
+
+      <div className="mt-4 space-y-4">
+        <FileDropZone
+          allowsMultiple={false}
+          acceptedFileTypes={[".ged", ".gedcom"]}
+          isDisabled={importMutation.isPending}
+          label={t("tools.gedcomImport.dropFile")}
+          onFilesSelected={([selected]) => void selectFile(selected)}
+        />
+        {file && <p className="text-sm">{t("tools.selected", { name: file.name })}</p>}
+        {readError && <p className="text-sm text-destructive">{readError}</p>}
+        {previewMutation.isPending && (
+          <p className="text-sm text-muted-foreground">{t("tools.gedcomImport.reading")}</p>
+        )}
+        {previewMutation.isError && (
+          <p className="text-sm text-destructive">
+            {previewMutation.error instanceof Error
+              ? previewMutation.error.message
+              : t("tools.gedcomImport.previewFailed")}
+          </p>
+        )}
+
+        {preview && file && !importMutation.isSuccess && (
+          <div className="space-y-6">
+            {preview.header.sourceSystem && (
+              <p className="text-sm text-muted-foreground">
+                {t("tools.gedcomImport.exportedBy", {
+                  system: preview.header.sourceSystem,
+                  version: preview.header.version ?? "?",
+                })}
+              </p>
+            )}
+
+            <div>
+              <h3 className="text-sm font-medium">{t("tools.gedcomImport.willAdd")}</h3>
+              <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
+                {GEDCOM_IMPORT_COUNTS.map((key) => (
+                  <div key={key}>
+                    <dt className="text-muted-foreground">
+                      {t(`tools.gedcomImport.count.${key}`)}
+                    </dt>
+                    <dd className="font-medium tabular-nums">{preview.counts[key]}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+
+            {preview.warnings.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium">{t("tools.gedcomImport.warnings")}</h3>
+                <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
+                  {preview.warnings.map((warning) => (
+                    <li key={warning.code}>
+                      {t(`tools.gedcomImport.warning.${warning.code}`, { count: warning.count })}
+                      {warning.examples.length > 0 && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          — {warning.examples.join(", ")}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {preview.unmappedEventTypes.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium">{t("tools.gedcomImport.unmappedTitle")}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {t("tools.gedcomImport.unmappedHint")}
+                </p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                  {preview.unmappedEventTypes.map((type) => (
+                    <li key={`${type.tag}|${type.label}`}>
+                      {t("tools.gedcomImport.unmappedEntry", {
+                        label: type.label,
+                        count: type.count,
+                      })}
+                      {type.suggestedKey && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          — {t("tools.gedcomImport.unmappedSuggestion")}{" "}
+                          <code className="rounded bg-muted px-1">{type.suggestedKey}</code>
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  {/* A new tab, so the selected file and this preview survive
+                      the trip to Settings and back. */}
+                  <Link
+                    to="/settings"
+                    search={{ topic: "event_type" }}
+                    target="_blank"
+                    className="text-sm text-primary hover:underline"
+                  >
+                    {t("tools.gedcomImport.openEventTypeSettings")}
+                  </Link>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    isDisabled={previewMutation.isPending}
+                    onPress={() => previewMutation.mutate(file.input)}
+                  >
+                    {t("tools.gedcomImport.checkAgain")}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <ReportSection
+              title={t("tools.gedcomImport.possibleDuplicates", {
+                count: preview.possibleDuplicateCount,
+              })}
+              isEmpty={preview.possibleDuplicateCount === 0}
+            >
+              {preview.possibleDuplicates.map((duplicate) => (
+                <li key={duplicate.incoming.ref}>
+                  {formatPersonName(duplicate.incoming) || t("tools.unnamed")}
+                  {duplicate.incoming.birth && ` (${duplicate.incoming.birth})`}
+                  {" ↔ "}
+                  {duplicate.existing.map((person, existingIndex) => (
+                    <span key={person.id}>
+                      {existingIndex > 0 && ", "}
+                      <PersonLink personId={person.id} name={formatPersonName(person)} />
+                      {person.birth && ` (${person.birth})`}
+                    </span>
+                  ))}
+                </li>
+              ))}
+            </ReportSection>
+            {preview.possibleDuplicateCount > preview.possibleDuplicates.length && (
+              <p className="text-sm text-muted-foreground">
+                {t("tools.gedcomImport.moreDuplicates", {
+                  count: preview.possibleDuplicateCount - preview.possibleDuplicates.length,
+                })}
+              </p>
+            )}
+            {preview.possibleDuplicateCount > 0 && (
+              <p className="text-sm text-muted-foreground">
+                {t("tools.gedcomImport.duplicatesHint")}
+              </p>
+            )}
+
+            <Button
+              isDisabled={preview.counts.persons === 0 || importMutation.isPending}
+              onPress={() => importMutation.mutate(file.input)}
+            >
+              <FileUpIcon className="size-4" aria-hidden="true" />
+              {importMutation.isPending
+                ? t("tools.gedcomImport.importing")
+                : t("tools.gedcomImport.importPeople", { count: preview.counts.persons })}
+            </Button>
+            {importMutation.isError && (
+              <p className="text-sm text-destructive">
+                {importMutation.error instanceof Error
+                  ? importMutation.error.message
+                  : t("tools.gedcomImport.importFailed")}
+              </p>
+            )}
+          </div>
+        )}
+
+        {importMutation.isSuccess && (
+          <p className="text-sm">
+            {t("tools.gedcomImport.imported", { count: importMutation.data.persons })}{" "}
+            <Link to="/people" className="text-primary hover:underline">
+              {t("tools.gedcomImport.viewPeople")}
+            </Link>
+          </p>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
+/** A person link shared by the report panels on this page — every finding here points back at a person page for the admin to actually look at and judge. */
 function PersonLink({ personId, name }: { personId: string; name: string }) {
   const { t } = useTranslation();
   return (

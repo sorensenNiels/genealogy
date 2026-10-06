@@ -22,6 +22,7 @@ import {
   addParentOf,
   addSpouseOf,
   ancestorsOf,
+  associations,
   birthEvents,
   childrenOf,
   citations,
@@ -663,6 +664,17 @@ export class PersonService {
 
     await inGraphTransaction(this.pool, async (client) => {
       const tx = createDatabase(client);
+      // Roles this person holds on *other* people's records (godparent,
+      // witness) cascade away with them — and those rows' citations belong
+      // to the other person, so the cascade from `persons` doesn't reach
+      // them. Cleared here, since `citations.factId` isn't a real FK.
+      const heldRoles = tx
+        .select({ id: associations.id })
+        .from(associations)
+        .where(eq(associations.associatePersonId, id));
+      await tx
+        .delete(citations)
+        .where(and(eq(citations.factType, "association"), inArray(citations.factId, heldRoles)));
       await tx.delete(persons).where(eq(persons.id, id));
       await deletePersonNode(this.pool, id, { client });
     });

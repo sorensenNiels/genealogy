@@ -15,6 +15,7 @@ export const configurableTopicSchema = z.enum([
   "union_status",
   "parentage",
   "research_note_type",
+  "association_role",
 ]);
 export type ConfigurableTopic = z.infer<typeof configurableTopicSchema>;
 
@@ -25,6 +26,7 @@ export const TOPIC_LABELS: Record<ConfigurableTopic, string> = {
   union_status: "Spouse union statuses",
   parentage: "Parent relationship types",
   research_note_type: "Research note types",
+  association_role: "Witness and godparent roles",
 };
 
 export const configurableOptionIdSchema = z.uuid();

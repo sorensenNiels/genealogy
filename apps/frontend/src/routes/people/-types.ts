@@ -18,3 +18,5 @@ export type SourceRow = RouterOutputs["source"]["listSources"][number];
 export type CitationRow = RouterOutputs["source"]["listCitations"][number];
 export type ResearchNoteRow = RouterOutputs["researchNote"]["listNotes"][number];
 export type ConfigurableOptionRow = RouterOutputs["settings"]["listOptions"][number];
+export type AssociationRow = RouterOutputs["association"]["list"]["own"][number];
+export type AssociationAppearanceRow = RouterOutputs["association"]["list"]["appearances"][number];

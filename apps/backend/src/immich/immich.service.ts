@@ -1,7 +1,11 @@
 import { readFile } from "node:fs/promises";
 
 import type {
+  AlbumCover,
+  AlbumKind,
   CreateAlbumInput,
+  CreateAlbumWithMetadataInput,
+  EligibleVirtualAssetsInput,
   HistoricalDate,
   ListAlbumsInput,
   SearchAssetsInput,
@@ -16,6 +20,7 @@ import {
   immichAlbumAssetOrder,
   personImmichLinks,
   persons,
+  type AlbumMetadataRow,
   type Database,
   type PersonImmichLinkRow,
 } from "@genealogy/db";
@@ -87,11 +92,56 @@ export interface AlbumMetadata {
   date: HistoricalDate | null;
   place: string | null;
   tags: string[];
+  kind: AlbumKind;
+  cover: AlbumCover | null;
+  found: string | null;
+  scanned: string | null;
+  photosPerPage: number;
 }
 
 export type AlbumWithMetadata = ImmichAlbum & AlbumMetadata;
 
-const emptyAlbumMetadata: AlbumMetadata = { date: null, place: null, tags: [] };
+/**
+ * One candidate for a virtual album's picker, grouped by the physical
+ * album(s) it's already a member of — see
+ * `ImmichService.physicalAlbumAssetMembership`.
+ */
+export interface EligibleVirtualAlbumAsset {
+  asset: ImmichAsset;
+  sourceAlbums: AssetSourceAlbum[];
+}
+
+/** Where a virtual album's photo actually lives — its source physical album, and the book-view page it falls on there (computed from that album's own `photosPerPage`, not stored anywhere). */
+export interface AssetSourceAlbum {
+  albumId: string;
+  albumName: string;
+  page: number;
+}
+
+const emptyAlbumMetadata: AlbumMetadata = {
+  date: null,
+  place: null,
+  tags: [],
+  kind: "physical",
+  cover: null,
+  found: null,
+  scanned: null,
+  photosPerPage: 4,
+};
+
+/** `kind` is stored as plain `text` (see the column's own doc comment in `@genealogy/db`'s schema), so it's narrowed to `AlbumKind` here at the one place a row becomes this app's typed shape. */
+function rowToAlbumMetadata(row: AlbumMetadataRow): AlbumMetadata {
+  return {
+    date: row.date,
+    place: row.place,
+    tags: row.tags,
+    kind: row.kind as AlbumKind,
+    cover: row.cover,
+    found: row.found,
+    scanned: row.scanned,
+    photosPerPage: row.photosPerPage,
+  };
+}
 
 /** Same re-derivation `person.service.ts`'s own `resolveDate` does — never trust a client-sent `earliest`/`latest`, only `original`. */
 function resolveDate(date: HistoricalDate | null | undefined): HistoricalDate | null | undefined {
@@ -354,9 +404,7 @@ export class ImmichService {
 
   private async metadataByAlbumId(): Promise<Map<string, AlbumMetadata>> {
     const rows = await this.db.select().from(albumMetadata);
-    return new Map(
-      rows.map((row) => [row.albumId, { date: row.date, place: row.place, tags: row.tags }]),
-    );
+    return new Map(rows.map((row) => [row.albumId, rowToAlbumMetadata(row)]));
   }
 
   /**
@@ -404,6 +452,9 @@ export class ImmichService {
         (album) => album.date == null && album.place == null && album.tags.length === 0,
       );
     }
+    if (filter?.kind) {
+      merged = merged.filter((album) => album.kind === filter.kind);
+    }
 
     if (filter?.sort === "name") {
       merged = merged.toSorted((a, b) => a.albumName.localeCompare(b.albumName));
@@ -432,21 +483,63 @@ export class ImmichService {
       .from(albumMetadata)
       .where(eq(albumMetadata.albumId, albumId))
       .limit(1);
-    return row ? { date: row.date, place: row.place, tags: row.tags } : emptyAlbumMetadata;
+    return row ? rowToAlbumMetadata(row) : emptyAlbumMetadata;
   }
 
-  async upsertAlbumMetadata(input: UpdateAlbumMetadataInput): Promise<AlbumMetadata> {
+  /**
+   * Writes the *complete* desired local metadata for an album — like
+   * `setAssetTags`, callers always send the whole current state (an edit
+   * dialog pre-filled from `getAlbum`), never a partial patch, so a field
+   * left out here means "clear it", not "leave it alone".
+   *
+   * `kind` is the one exception: it isn't part of `UpdateAlbumMetadataInput`
+   * at all (creation-only), and is never included in the `onConflictDoUpdate`
+   * `set` below, so a normal edit can never change it. `options.kind` is for
+   * `createAlbumWithMetadata`'s first-ever insert only; if a row already
+   * exists with a *different* stored kind, that's an unexpected id collision
+   * or a stale double-submit, not something to silently ignore.
+   */
+  async upsertAlbumMetadata(
+    input: UpdateAlbumMetadataInput,
+    options?: { kind?: AlbumKind },
+  ): Promise<AlbumMetadata> {
     const date = resolveDate(input.date ?? null) ?? null;
     const place = input.place ?? null;
     const tags = input.tags ?? [];
+    const cover = input.cover ?? null;
+    const found = input.found ?? null;
+    const scanned = input.scanned ?? null;
+    const photosPerPage = input.photosPerPage ?? 4;
+
+    const [existing] = await this.db
+      .select({ kind: albumMetadata.kind })
+      .from(albumMetadata)
+      .where(eq(albumMetadata.albumId, input.albumId))
+      .limit(1);
+    if (existing && options?.kind && options.kind !== existing.kind) {
+      throw new BadRequestException("Album kind cannot be changed after creation");
+    }
+    const kind: AlbumKind =
+      (existing?.kind as AlbumKind | undefined) ?? options?.kind ?? "physical";
+
     await this.db
       .insert(albumMetadata)
-      .values({ albumId: input.albumId, date, place, tags })
+      .values({
+        albumId: input.albumId,
+        date,
+        place,
+        tags,
+        kind,
+        cover,
+        found,
+        scanned,
+        photosPerPage,
+      })
       .onConflictDoUpdate({
         target: albumMetadata.albumId,
-        set: { date, place, tags, updatedAt: new Date() },
+        set: { date, place, tags, cover, found, scanned, photosPerPage, updatedAt: new Date() },
       });
-    return { date, place, tags };
+    return { date, place, tags, kind, cover, found, scanned, photosPerPage };
   }
 
   /** Every tag in use, for the tag-input's autocomplete suggestions. */
@@ -467,6 +560,23 @@ export class ImmichService {
     });
   }
 
+  /**
+   * Creates the Immich album, then immediately writes its local metadata
+   * (kind/cover/found/scanned/photosPerPage) in the same server-side
+   * sequence — a client only ever makes one call, so the album can't end up
+   * created but stuck with default metadata because a second, separate
+   * request failed.
+   */
+  async createAlbumWithMetadata(input: CreateAlbumWithMetadataInput): Promise<AlbumWithMetadata> {
+    const { kind, cover, found, scanned, photosPerPage, ...createInput } = input;
+    const album = await this.createAlbum(createInput);
+    const metadata = await this.upsertAlbumMetadata(
+      { albumId: album.id, cover, found, scanned, photosPerPage },
+      { kind },
+    );
+    return { ...album, ...metadata };
+  }
+
   async updateAlbum(
     albumId: string,
     patch: Omit<UpdateAlbumInput, "albumId">,
@@ -478,12 +588,130 @@ export class ImmichService {
     });
   }
 
-  async addAssetsToAlbum(albumId: string, assetIds: string[]): Promise<void> {
+  private async getAlbumKind(albumId: string): Promise<AlbumKind> {
+    const [row] = await this.db
+      .select({ kind: albumMetadata.kind })
+      .from(albumMetadata)
+      .where(eq(albumMetadata.albumId, albumId))
+      .limit(1);
+    return (row?.kind as AlbumKind | undefined) ?? "physical";
+  }
+
+  /**
+   * Every asset that's a member of at least one `kind: 'physical'` album,
+   * unioned and deduped across all of them, with the source album(s) + this
+   * app's own recorded position in each attached — everything the
+   * virtual-album picker needs to group candidates by source album (mirrors
+   * the mockup's own grouped picker) without a second query, and everything
+   * `addAssetsToAlbum` needs to validate a virtual album's additions.
+   *
+   * `immichAlbumAssetOrder` alone can't answer "which albums is this asset
+   * in" — it only records a manual position for assets that have been
+   * reordered at least once, never raw membership — so this instead reuses
+   * `orderedAlbumAssets` (already the source of truth for "assets in this
+   * album, in order") once per physical album. That's one `/search/metadata`
+   * call per physical album; acceptable at the "a few thousand albums" scale
+   * `listAlbums`'s own comment already assumes for this single-user app —
+   * re-check this cost if that assumption stops holding.
+   */
+  private async physicalAlbumAssetMembership(): Promise<Map<string, EligibleVirtualAlbumAsset>> {
+    const physicalAlbums = await this.listAlbums({ kind: "physical" });
+    const perAlbum = await Promise.all(
+      physicalAlbums.map(async (album) => ({
+        album,
+        assets: await this.orderedAlbumAssets(album.id),
+      })),
+    );
+
+    const byAssetId = new Map<string, EligibleVirtualAlbumAsset>();
+    for (const { album, assets } of perAlbum) {
+      assets.forEach((asset, position) => {
+        const sourceAlbum: AssetSourceAlbum = {
+          albumId: album.id,
+          albumName: album.albumName,
+          page: Math.floor(position / album.photosPerPage) + 1,
+        };
+        const existingEntry = byAssetId.get(asset.id);
+        if (existingEntry) {
+          existingEntry.sourceAlbums.push(sourceAlbum);
+        } else {
+          byAssetId.set(asset.id, { asset, sourceAlbums: [sourceAlbum] });
+        }
+      });
+    }
+    return byAssetId;
+  }
+
+  /**
+   * Which physical album(s) a *specific* set of assets belong to — used to
+   * caption a virtual album's own photos with their source, without the
+   * virtual-album picker's pagination (there are only ever as many assets to
+   * look up as the virtual album itself has).
+   */
+  async sourceAlbumsForAssets(assetIds: string[]): Promise<Record<string, AssetSourceAlbum[]>> {
+    const membership = await this.physicalAlbumAssetMembership();
+    const wanted = new Set(assetIds);
+    const result: Record<string, AssetSourceAlbum[]> = {};
+    for (const [assetId, entry] of membership) {
+      if (wanted.has(assetId)) result[assetId] = entry.sourceAlbums;
+    }
+    return result;
+  }
+
+  /**
+   * Cursor-paginated view of `physicalAlbumAssetMembership` for the
+   * virtual-album picker. The cursor is a plain numeric offset into this
+   * locally computed, deduped list — not one of Immich's own opaque cursors,
+   * since there's no single Immich endpoint this list corresponds to.
+   */
+  async eligibleVirtualAlbumAssets(
+    input: EligibleVirtualAssetsInput,
+  ): Promise<{ assets: EligibleVirtualAlbumAsset[]; nextCursor: string | null }> {
+    const membership = await this.physicalAlbumAssetMembership();
+    const all = [...membership.values()];
+    const offset = input.cursor ? Number.parseInt(input.cursor, 10) : 0;
+    const page = all.slice(offset, offset + input.size);
+    const nextOffset = offset + page.length;
+    return { assets: page, nextCursor: nextOffset < all.length ? String(nextOffset) : null };
+  }
+
+  /**
+   * The raw Immich call, with no kind checks — `uploadAsset` uses this
+   * directly (a brand-new asset can't already be "eligible" for anything,
+   * and physical albums are exactly where uploads are supposed to land), and
+   * `addAssetsToAlbum` below calls it too, once it has validated the
+   * virtual-album rules. Kept private so every other caller goes through one
+   * of those two, not straight to Immich.
+   */
+  private async attachAssetsToAlbum(albumId: string, assetIds: string[]): Promise<void> {
     await this.request(`/albums/${albumId}/assets`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ids: assetIds }),
     });
+  }
+
+  /**
+   * The router-facing "add existing photos" mutation — enforces the
+   * physical/virtual add-photo split: a physical album only ever grows via
+   * upload (`uploadAsset` has the mirror-image guard), never by referencing
+   * an existing asset here; a virtual album only ever references assets that
+   * already belong to at least one physical album
+   * (`physicalAlbumAssetMembership`) — never a fresh upload directly into it.
+   */
+  async addAssetsToAlbum(albumId: string, assetIds: string[]): Promise<void> {
+    const kind = await this.getAlbumKind(albumId);
+    if (kind === "physical") {
+      throw new BadRequestException("Physical albums only accept new photos by uploading scans");
+    }
+    const membership = await this.physicalAlbumAssetMembership();
+    const ineligible = assetIds.filter((assetId) => !membership.has(assetId));
+    if (ineligible.length > 0) {
+      throw new BadRequestException(
+        "These photos don't belong to any physical album yet, so they can't be referenced by a virtual album",
+      );
+    }
+    await this.attachAssetsToAlbum(albumId, assetIds);
   }
 
   /** Unlinks assets from this album — the assets themselves stay in Immich's library, in every other album they're also in. */
@@ -927,7 +1155,18 @@ export class ImmichService {
     const isDuplicate = result.status === "duplicate";
 
     if (albumId) {
-      await this.addAssetsToAlbum(albumId, [result.id]);
+      // Mirror-image guard to `addAssetsToAlbum`'s: a virtual album never
+      // receives a fresh upload, only references to assets already sitting
+      // in a physical album — those come in through `addAssetsToAlbum`
+      // instead. A brand-new asset can't already be "eligible" for one, so
+      // there's no membership check to run here, just the kind check.
+      const kind = await this.getAlbumKind(albumId);
+      if (kind === "virtual") {
+        throw new BadRequestException(
+          'Virtual albums only accept photos already in a physical album — use "Add photos" instead of uploading',
+        );
+      }
+      await this.attachAssetsToAlbum(albumId, [result.id]);
     }
 
     return { assetId: result.id, isDuplicate };

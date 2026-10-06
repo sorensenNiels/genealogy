@@ -16,14 +16,16 @@ sync.
 2. Accept **Reopen in Container** when prompted, or run
    _Dev Containers: Reopen in Container_ from the command palette.
 3. Wait for the first build. `post-create.sh` installs dependencies.
-4. Run `make db-up`, `make redis-up` and `make db-migrate` when
-   database-backed development is needed.
+4. Run `docker compose up -d --wait` (Postgres, Redis and Immich) and
+   `make db-migrate` when database-backed development is needed.
+   `make db-up` / `make redis-up` start just one service.
 5. Run `pnpm dev`.
 
 The app (`apps/frontend`) is on <http://localhost:5173> — open this and nothing
 else; its server side proxies data and auth calls to the backend for you. The
 backend is on <http://localhost:3000/trpc> for API inspection, Postgres on
-`localhost:5432`, and Redis on `localhost:6379`. All are forwarded to the
+`localhost:5432`, Redis on `localhost:6379`, and Immich's web UI on
+<http://localhost:2283>. All are forwarded to the
 host, so host-side tools such as DBeaver can reach the database directly with
 user/password/database all set to `genealogy`.
 
@@ -37,21 +39,34 @@ user/password/database all set to `genealogy`.
 | PostgreSQL                      | 18                                                           | Apache AGE 1.8.0 and PostGIS 3                                                                  |
 | Apache AGE                      | 1.8.0                                                        | graph extension, compiled into the image above                                                  |
 | `psql`, `pg_isready`, `pg_dump` | 18 (via the PGDG apt repo — Debian's own repo only ships 17) | version pinned to match the server; `pg_dump` refuses to run against a newer server than itself |
-| Redis (Valkey)                  | 9                                                            | backs apps/backend's BullMQ queues; shared with Immich when enabled                             |
+| Redis (Valkey)                  | 9                                                            | backs apps/backend's BullMQ queues; shared with Immich                                          |
 
 The dev container builds straight from `.devcontainer/Dockerfile` — that's where
 you and VS Code live, with the repository bind-mounted at `/workspaces/genealogy`.
 
-PostgreSQL and Redis are defined separately in the root `docker-compose.yml`.
-Start them with `make db-up` and `make redis-up`; they publish ports `5432`
-and `6379`, and the workspace connects through `host.docker.internal`.
+PostgreSQL, Redis and Immich are defined separately in the root
+`docker-compose.yml`, and a plain `docker compose up -d` starts all of them.
+They publish ports `5432`, `6379` and `2283`, and the workspace connects
+through `host.docker.internal` (`devcontainer.json` sets `DATABASE_URL`,
+`REDIS_URL` and `IMMICH_URL` accordingly — `localhost` inside the dev
+container is the dev container itself, not the host).
+Those commands work from either side: the dev container has the
+`docker-outside-of-docker` feature, so its `docker` CLI talks to the host's
+Docker daemon and sees the same containers you'd see on the host. (It used to
+be `docker-in-docker`, which runs a separate, empty daemon inside the dev
+container — `docker` in there could never reach the real `db` container.)
+Because the host daemon resolves bind-mount paths on the host,
+`docker-compose.yml` mounts `${LOCAL_WORKSPACE_FOLDER:-.}/postgres` rather
+than `./postgres`; `devcontainer.json` sets `LOCAL_WORKSPACE_FOLDER` to the
+workspace's host path.
 PostgreSQL's data lives on the named volume `postgres-data`, so it survives
 container rebuilds — Redis holds only in-flight queue jobs, so it doesn't
 need one. Redis is core infrastructure here (it backs apps/backend's BullMQ
 queues — see "Long-running work: BullMQ + a shared Redis" in TECH_STACK.md),
-not something bundled just for Immich: when Immich's own `profiles: [immich]`
-services are enabled, they connect to this same instance rather than running
-a second Redis.
+not something bundled just for Immich: Immich's services connect to this
+same instance rather than running a second Redis. Immich's own data lives on
+the named volumes `immich-db-data`, `immich-uploads` and
+`immich-model-cache`.
 
 ### Database initialisation
 

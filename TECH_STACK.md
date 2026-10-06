@@ -894,12 +894,15 @@ that's a research problem, not a CRUD feature, and Immich already solves it
 well. This app never stores photo bytes or face data of its own; it links
 to what Immich already has.
 
-**Immich runs in `docker-compose.yml`, but behind a `profiles: ["immich"]`
-gate**, not in the default `docker compose up`. It's a 3-container stack of
-its own (Postgres w/ pgvecto.rs, the app server, a machine-learning service
-for face detection) at maybe 6-8GB of RAM for the ML container alone — a
-cost nobody should pay just to run this app's own tests or work on an
-unrelated page. `docker compose --profile immich up -d` opts in. Versions
+**Immich runs in `docker-compose.yml` as part of the default `docker compose
+up`.** It's a 3-container stack of its own (Postgres w/ pgvecto.rs, the app
+server, a machine-learning service for face detection) at maybe 6-8GB of RAM
+for the ML container alone. It originally sat behind a `profiles: ["immich"]`
+gate so that cost was opt-in; that gate was removed (2026-10-06) because the
+photo library is a core dependency of this app, and one command should bring
+up everything it needs. The app itself still tolerates Immich being absent
+(`ImmichService.isConfigured`), so a self-hosted deployment can leave it out.
+Versions
 are pinned to the exact v3.2.2 image digests from Immich's own release, not
 `:release`, for the same reason the rest of this repo pins versions in the
 catalog rather than a floating range. Because the compose file already runs
@@ -1312,7 +1315,7 @@ message it sends is translated _in the frontend layer_.
   are now keyed by a `language: Language = "en"` parameter threaded through
   every exported function, with parallel `EN`/`DA` `DateLanguage` tables
   (`LANGUAGES: Record<Language, DateLanguage>`). GEDCOM (`packages/core/src/
-gedcom.ts`) deliberately stays English-only regardless of UI language — its
+  gedcom.ts`) deliberately stays English-only regardless of UI language — its
   own date grammar is fixed by the GEDCOM 5.5.1 spec, not this app's locale,
   and it has its own separate `GEDCOM_MONTHS` table untouched by this change.
 - **Format-date helpers stay plain functions with a `language` parameter, not
@@ -1355,7 +1358,7 @@ These are open, and nothing in the code presumes an answer:
   relative to each other (same host/reverse proxy vs. genuinely separate
   services) and revisit `trustedOrigins`/cookie attributes accordingly if
   they end up on different domains.
-- **GEDCOM export exists (Tools page); import doesn't yet.** The domain
+- **GEDCOM import and export (Tools page).** The domain
   model was already shaped for this — `HistoricalDate` keeps the source's
   own wording, and `gender` uses the GEDCOM vocabulary — and export
   (`apps/backend/src/gedcom/gedcom.service.ts`) builds on both directly.
@@ -1379,23 +1382,47 @@ These are open, and nothing in the code presumes an answer:
     to the original wording verbatim rather than dropping it.
   - **A real bug caught by live-testing against the real environment, not
     just typechecking**: a GEDCOM pointer used as a line's _value_ (`1 HUSB
-@I7@`) needs `@...@` wrapping distinct from `GedcomWriter.line`'s own
+    @I7@`) needs `@...@` wrapping distinct from `GedcomWriter.line`'s own
     `xref` parameter, which is only for a record's _own_ declaration line
     (`0 @I1@ INDI`) — conflating the two produced a bare `1 HUSB I7`
     (invalid GEDCOM) instead of a real pointer. Fixed with a dedicated
     `gedcomPointer(xref)` helper, used everywhere a `HUSB`/`WIFE`/`CHIL`/
     citation-`SOUR` line references another record.
   - **GEDCOM 5.5.1's `FAM` record has only `HUSB`/`WIFE` slots**, no third
-    "parent" tag — assigned by `gender` (M/F, this app's own vocabulary)
-    when known, by a stable id order when not; two `U`/same-gender parents
-    can't be represented more precisely in 5.5.1, noted directly in
-    `writeFamily`'s comment rather than silently guessed at.
-  - **Two parents who divorced and remarried each other collapse to one
-    `FAM` record.** Children are linked to a parent _pair_ via `PARENT_OF`
-    edges, not to a specific `unions` row, so there is no correct way to
-    attribute a child to one marriage instance over another — the first
-    `unions` row found for the pair (preferring a non-terminal `status`)
-    supplies the `MARR` detail.
+    "parent" tag — assigned by `gender` where it decides (a lone mother
+    goes in `WIFE`), by a stable id order when it doesn't; two
+    `U`/same-gender parents can't be represented more precisely in 5.5.1.
+    (Until 2026-10-06 the code only ever used id order, despite this note
+    saying gender — see `assignParentSlots`.) A child with more than two
+    parents (birth _and_ adoptive) is split into one FAM per parentage pair.
+  - **Each `unions` row is its own FAM.** Children are linked to a parent
+    _pair_ via `PARENT_OF` edges, not to a specific union, so a couple who
+    divorced and remarried gets their children on the earliest union's FAM
+    and a second, childless FAM for the later marriage — both marriages'
+    dates survive instead of collapsing into one. A `SPOUSE_OF` edge with
+    no union and no shared children still gets a bare `HUSB`/`WIFE` FAM.
+  - **Interoperability fixes (2026-10-06):** the header now has the
+    `DATE`, `SUBM` record (the exporting user's name) and `GEDC.FORM
+    LINEAGE-LINKED` that 5.5.1 requires; every INDI carries `FAMC`/`FAMS`
+    back-links; events use their own tag where GEDCOM has one
+    (`gedcomEventTag` in core — the reverse of the importer's table, so
+    the two can't disagree) and `EVEN` + `TYPE <option label>` otherwise;
+    parentage goes on `INDI.FAMC.PEDI` when both parents share one of
+    5.5.1's four values, and as Ancestry/FTM's per-parent `_FREL`/`_MREL`
+    under `CHIL` otherwise (it used to be a non-standard `CHIL.PEDI`,
+    with one value for both parents); confidence is `QUAY` 0–3 for the
+    four seeded levels; repositories are real `REPO` records.
+  - **This app's own fields with no 5.5.1 home travel as underscore
+    tags**, which other programs ignore and the importer reads back — so
+    export → import is lossless for everything GEDCOM is meant to carry:
+    `_STAT` (union status beyond married/divorced/annulled), `_END` (a
+    union ending that isn't a divorce/annulment), `_DETAIL` + `TYPE`
+    (event details without a standard sub-tag; occupation/employer/
+    address/cause of death use `OCCU`'s value/`AGNC`/`ADDR`/`CAUS`),
+    `NAME._DATE` (name-variant "since"), `_VOLUME`/`_ENTRY`/`_CERT`
+    (citation fields), and `SOUR._TYPE` (source type). Verified live by
+    importing a file exercising each of these, exporting it, and diffing
+    the re-parsed plan against the original: no differences.
   - **A family (or `HUSB`/`WIFE`/`CHIL` reference) that resolves to a person
     id with no matching `persons` row is dropped, not emitted as a
     malformed pointer.** This surfaced real graph/Postgres drift in the
@@ -1406,10 +1433,180 @@ These are open, and nothing in the code presumes an answer:
   - Deliberately out of scope: no `OBJE` (photo) records (Immich-hosted
     photos aren't portable outside this app, and `persons.photoPath` local
     uploads have no externally resolvable URL); no `researchNotes`/
-    `userNotes` (app-specific, not part of GEDCOM's model); no import (a
-    materially bigger, riskier problem — validating an arbitrary external
-    file and deciding whether an incoming person matches someone already in
-    the tree — deferred to a future pass).
+    `userNotes` (app-specific, not part of GEDCOM's model). Notes are
+    exported as their raw markdown — readable as plain text, but other
+    programs show the `**`/`#` markup literally.
+  - **A second real bug caught only by exporting live data, and it wasn't
+    in the exporter**: `cypher()` (`packages/db/src/age.ts`) spliced its
+    result columns into `AS (childId ag_catalog.agtype, ...)` unquoted, and
+    Postgres folds an unquoted identifier to lower case — so every
+    camelCase column (`allParentOfEdges`' `parentId`/`childId`,
+    `parentsOfMany`'s `childId`) came back keyed `childid` and decoded as
+    `null`. The export silently wrote no `FAM` records at all, and the
+    People list's Parents column got nothing to group by. Fixed at the root
+    by double-quoting each column (safe — `assertIdentifier` already limits
+    them to `[A-Za-z0-9_]`), with a regression test in `age.test.ts`.
+    Single-word lower-case columns (`p`, `id`, `count`) were never
+    affected, which is why most graph reads looked fine.
+  - A third export bug the import round trip exposed: a non-vital event's
+    `DATE`/`PLAC`/`NOTE`/`SOUR` were written at level 3, nested under
+    `2 TYPE` instead of beside it under `1 EVEN` — other programs read that
+    as an undated event. Now level 2.
+- **GEDCOM import: preview, then add everyone as new people.** The
+  decision that shaped it: **no person matching.** Deciding whether an
+  incoming "Peder Sørensen b. 1801" is the "Peder Sørensen" already in the
+  tree, and then merging names/events/relationships/citations, is a much
+  bigger problem than reading the file — so import never attempts it.
+  Every INDI becomes a new person; the preview step lists incoming people
+  whose normalized given+surname matches an existing person (the same rule
+  `IntegrityService`'s possible-duplicates check uses, so the two agree),
+  and resolving them is left to the user — today by hand, later via the
+  planned duplicate-detection/merge feature in FEATURES.md.
+  - **Split by layer.** `packages/core/src/gedcom-import.ts` is pure:
+    `decodeGedcomBytes` (bytes → text), `parseGedcom` (text → level-nested
+    node tree, CONC/CONT folded in — the mirror of `GedcomWriter.line`),
+    and `buildGedcomImportPlan` (tree → plain rows keyed by the file's own
+    xrefs, plus warnings). Every mapping decision is unit-tested there
+    without a database. `apps/backend/src/gedcom/gedcom-import.service.ts`
+    only turns a plan into inserts. No parser library: GEDCOM's line
+    grammar is a dozen lines of regex-and-stack, and the exporter already
+    hand-rolls its writer — a dependency would add maintenance risk
+    (CLAUDE.md's library check) for little gain.
+  - **Decoded in the browser.** The file's bytes never leave it — the
+    Tools page decodes them with `decodeGedcomBytes` and sends plain text
+    in a JSON body through ordinary `createServerFn`s (`previewGedcomImport`/
+    `importGedcom`), not a raw multipart API route like photo/backup
+    uploads: a GEDCOM file is a few MB of text, not a large binary.
+    UTF-8 (BOM or not) and UTF-16 are recognized; anything that isn't
+    valid UTF-8 falls back to Windows-1252 with a warning. ANSEL (GEDCOM
+    5.5's own legacy charset) has no `TextDecoder` and isn't decoded — a
+    file that declares it and contains non-ASCII gets a warning instead.
+  - **Stateless preview → import.** Both are tRPC mutations taking the same
+    text (`gedcomImportInputSchema`, capped at `GEDCOM_IMPORT_MAX_CHARS`);
+    `import` re-parses rather than the server holding a parsed plan
+    between requests — parsing is milliseconds.
+  - **Mapping onto configurable options.** The backend loads the live
+    `configurableOptions` and the plan only ever emits a key that exists:
+    each GEDCOM event tag has a list of candidate `event_type` keys
+    (`CHR` → `christening`/`baptism`, `CONF` → `confirmation`, ...) and
+    falls back to `"other"` with the English tag name as its label;
+    `EVEN`/`FACT` match their `TYPE` against option keys _and_ labels (this
+    app's exporter writes the key there). `NAME.TYPE`, `PEDI`/`_FREL`/
+    `_MREL`, `QUAY` and family status map the same way. No `PEDI` at all
+    means `birth` — how most programs write an ordinary biological child.
+  - **Families.** A FAM with two partners is a `SPOUSE_OF` edge regardless;
+    a `unions` row only when the FAM carries a marriage/engagement/divorce/
+    annulment event, a note or a citation. Each `CHIL` gets a `PARENT_OF`
+    edge from each partner present. Family-level data on a FAM with only
+    one partner has nowhere to go and is dropped with a warning.
+  - **`isLiving`.** GEDCOM has no living flag. A `DEAT`/`BURI`/`CREM`/
+    `PROB` record means deceased — a bare `1 DEAT` (what this app's
+    exporter writes for "known dead, no details") sets the flag without an
+    empty event. Otherwise, someone born or christened over 110 years ago
+    is marked deceased and the preview says how many — leaving them
+    "living" would matter once living-person redaction exists.
+  - **Losses, all reported in the preview rather than silent**: unreadable
+    lines, unparsed dates (wording kept, bounds null — `@#DJULIAN@` and
+    other calendar escapes land here), pointers to missing records, a
+    second birth/death (kept as an `"other"` event), inline source
+    citations (each becomes a source), source `NOTE`/`TEXT` (`sources` has
+    no column for it), and every tag the importer doesn't read, tallied by
+    `PARENT.CHILD` path (`INDI.OBJE`, `PLAC.MAP`, `REPO.WWW`, ...).
+    **That tally covers nested structures too** — PLAC, ADDR, a citation's
+    DATA, FAMC, CHIL, REPO/NOTE records — because the first version only
+    checked each record's and event's direct children, so place
+    coordinates, structured addresses, citation dates, repository details
+    and `FAMC.STAT` all vanished without a trace (found 2026-10-06 by
+    reviewing the importer against the 5.5.1 spec, not by a bug report).
+    Only change stamps, record ids and submitter links are skipped without
+    a warning; `_FSFTID` (FamilySearch person id) was on that list by
+    mistake and is now reported.
+  - **What the preview made un-silent, it also partly recovers:**
+    structured ADDR lines (ADR1…CTRY) are joined when ADDR's own value is
+    empty; a citation's `DATA.DATE` becomes a "Recorded: …" line in its
+    note; family events beyond a union's one start and one end (an ENGA
+    before the MARR, banns, a second MARR from another source) and any
+    TYPE/ADDR/AGE/AGNC/CAUS on the start/end become lines in the union's
+    notes; a `FAMC.STAT disproven` link is not created (the file asserts
+    the opposite), a `challenged` one is created and flagged. Still
+    reported-only, pending data-model decisions: external ids
+    (`_FSFTID`, `REFN`, `_APID`), repository contact details and call
+    numbers, media.
+  - **Built 2026-10-06** — the data the importer used to only report,
+    each a data-model decision made up front:
+    - `ASSO` → the **`associations` table** (`AssociationService`,
+      "Witnesses & godparents" card on the person page): someone named in
+      a role on a person's record, tied to one of their events
+      (`eventId`), one of their marriages (`unionId` — Danish marriage
+      witnesses, forlovere, belong to the union, not to either spouse's
+      events), or neither. The associate is a person in the tree **or just
+      a name as written** — church books name far more godparents than
+      will ever be added as people; a CHECK constraint enforces exactly
+      one. Roles are a configurable topic (`association_role`, seeded
+      godparent/witness/informant/officiant/other) and associations can
+      be cited (`citations.factType = "association"`). Relational, not a
+      graph edge, same "edges stay thin" rule as `unions`. Import maps
+      5.5.1 `RELA` text and GEDCOM 7 `ROLE` codes, Danish words included
+      (gudfar/fadder → godparent, forlover → witness); `ASSO` under an
+      event (GEDCOM 7/Gramps/RootsMagic style) ties the role to that
+      event. Export writes event-tied roles under the event, union-tied
+      under `MARR`, the rest under INDI, and name-only associates as this
+      app's own `_ASSO <name>` (5.5.1's ASSO must point at a record).
+      Deleting a person cascades the roles they _held_ on others'
+      records; `PersonService.remove` clears those roles' citations, which
+      the cascade can't reach (`factId` isn't an FK), and the integrity
+      check now reports dangling association citations too.
+    - `RESN` → nullable **`persons.restriction`** (privacy/confidential/
+      locked; `personRestrictionSchema`, plus a CHECK constraint). Edited
+      in the living-status card, shown as a header badge, exported as
+      RESN; not yet enforced — that's the living-person redaction feature.
+      A GEDCOM 7 file listing several values keeps the most restrictive.
+    - `_TODO` → **research notes** (no schema change): inline or a pointer
+      to a `0 @T1@ _TODO` record; description from the value/DESC/TEXT/
+      NOTE, date/category/priority/place/status as lines in the body,
+      resolved when a status says done or a completion date is present.
+      Exported back as `_TODO` + `TYPE <noteType>` (+ `_STAT DONE`), so
+      research notes now round-trip — they used to be out of export's
+      scope entirely.
+    - `PLAC.MAP` → the **`places` table**: one row per place text, a
+      PostGIS `geometry(Point, 4326)` with a GiST index, so spatial
+      queries work when a map view arrives. Coordinates belong to the
+      place, not the event — a conflict within a file keeps the first and
+      warns, and an import never overwrites coordinates already stored.
+      Exported back as `MAP`/`LATI`/`LONG`. No UI yet.
+    - **Two migrations, PostGIS deliberately last.** `0032` (associations,
+      restriction, role seeds) needs nothing special; `0033` runs `CREATE
+      EXTENSION IF NOT EXISTS postgis` itself — `postgres/01-init-age.sql`
+      only runs on a fresh data volume, so a database initialized before
+      PostGIS was added to the image never got it — and fails on a server
+      without the PostGIS packages without holding back `0032`. Export
+      checks `to_regclass('public.places')` so it keeps working on such a
+      database, and import only touches `places` when a file has
+      coordinates. Drizzle-kit drops the SRID from a `geometry` column
+      (`geometry(point)`), so `0033` is hand-edited to `geometry(point,
+      4326)`; `0032`'s enum change is `ADD VALUE IF NOT EXISTS` since an
+      enum value can't be removed once added.
+  - **Event types with no matching option** are listed in the preview
+    (`plan.unmappedEventTypes`, most-used first) with the key the importer
+    would match — a GEDCOM tag's preferred key (`CENS` → `census`), or a
+    slug of an `EVEN`'s TYPE text with æ/ø/å transliterated
+    (`folketaelling`) — plus a Settings link (new tab, so the selected file
+    survives) and a "check again" button. A tag also matches an option by
+    its English label, so a Danish-keyed `konfirmation` labelled
+    "Confirmation" catches `CONF`. Matters especially for Danish trees,
+    where census and confirmation are among the most common records and
+    neither is a seeded option.
+  - **One transaction, bulk writes.** Ids are minted in JS so each table is
+    a few multi-row inserts, then the graph half is three bulk Cypher calls
+    in the same `inGraphTransaction`: `createPersonNodes` (returns each
+    node's AGE vertex id), then `addParentOfMany`/`addSpouseOfMany`
+    matching endpoints by **vertex id, not the `id` property**. AGE has no
+    index on vertex properties, so `MATCH (p:Person {id: ...})` per edge is
+    a label scan — measured ~25 s for 5,000 edges, against ~50 ms by
+    `id(p) = ...`, which hits the label table's primary key. A synthetic
+    5,000-person / 2,499-family file imports in well under a second, so
+    this stays a synchronous request, not a BullMQ job. A `publicId`
+    collision retries the whole transaction, same as `PersonService.create`.
   - `resolveDate` in `PersonService` unconditionally recomputes
     `earliest`/`latest` from `original` on every write (person birth/death,
     event dates, union start/end dates) as an idempotent backstop, since the
@@ -1453,13 +1650,13 @@ These are open, and nothing in the code presumes an answer:
   installs an event trigger that refuses _any_ plain DDL against its own
   internal label tables (`family_tree._ag_label_vertex`/`_ag_label_edge`) —
   even `DROP TABLE IF EXISTS` — with `ERROR: table "_ag_label_vertex" is
-for label "_ag_label_vertex"`. A `--clean` dump of the whole database
+  for label "_ag_label_vertex"`. A `--clean` dump of the whole database
   replays fine for every ordinary table, then fails outright the moment it
   reaches the graph's own tables, partway through a restore.
   - The fix: `BackupService.dumpTo` now runs **two** `pg_dump` invocations,
     concatenated into one gzip stream (`{ end: false }` on the first's
     stdout pipe keeps the gzip stream open for the second) — `--schema=public
---clean --if-exists` for ordinary relational tables (safe to drop and
+    --clean --if-exists` for ordinary relational tables (safe to drop and
     recreate), and `--schema=family_tree --data-only` for the graph's own
     tables (data only, **no DDL at all**, since none is replayable).
     `ag_catalog` (AGE's own extension schema — which graphs/labels exist,
@@ -1470,14 +1667,14 @@ for label "_ag_label_vertex"`. A `--clean` dump of the whole database
   - `RestoreService.restore` mirrors the split: the relational half applies
     straight from the dump (its own `--clean` handles it); the graph half
     needs a manual `TRUNCATE family_tree._ag_label_vertex,
-_ag_label_edge` first (confirmed live — unlike `DROP`/`CREATE`,
+    _ag_label_edge` first (confirmed live — unlike `DROP`/`CREATE`,
     `TRUNCATE` is one of the few operations AGE actually permits directly
     against its label tables), then the data-only dump's `COPY` statements
     repopulate them. Verified round-trip against the sandbox: insert a
     person + graph node, back up, delete both, restore, confirm both come
     back — including the graph node's own internal AGE id, unchanged.
   - `DbOperationLockService`: a small dedicated Redis mutex (`SET ... NX
-PX`, not reusing BullMQ's own connection) so a backup and a restore (or
+    PX`, not reusing BullMQ's own connection) so a backup and a restore (or
     two of either) can't run at once against the same live database —
     there's no other such mechanism in this app, and `pg_dump`/`psql` both
     bypass the shared connection pool entirely (`spawn`, not `PG_POOL`), so

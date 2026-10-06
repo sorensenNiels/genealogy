@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 import type { INestApplication } from "@nestjs/common";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 
+import { AssociationRouter } from "../association/association.router.js";
 import { AUTH, type Auth } from "../auth/auth.module.js";
 import { BackupRouter } from "../backup/backup.router.js";
 import { GedcomRouter } from "../gedcom/gedcom.router.js";
@@ -35,6 +36,7 @@ export class TrpcRouter {
     private readonly backup: BackupRouter,
     private readonly gedcom: GedcomRouter,
     private readonly integrity: IntegrityRouter,
+    private readonly association: AssociationRouter,
     @Inject(AUTH) private readonly auth: Auth,
   ) {}
 
@@ -56,6 +58,7 @@ export class TrpcRouter {
       backup: this.backup.build(),
       gedcom: this.gedcom.build(),
       integrity: this.integrity.build(),
+      association: this.association.build(),
     });
   }
 

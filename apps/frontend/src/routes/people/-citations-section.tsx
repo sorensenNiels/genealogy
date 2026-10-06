@@ -16,6 +16,7 @@ import {
 } from "@genealogy/ui/components/select";
 import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
 import { useMutation } from "@tanstack/react-query";
+import type { TFunction } from "i18next";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,6 +24,7 @@ import { useTranslation } from "react-i18next";
 import { labelFor, optionsFor } from "../../lib/person-display";
 import { addCitation, createSource, removeCitation } from "../../server/functions/source.functions";
 import type {
+  AssociationRow,
   CitationRow,
   ConfigurableOptionRow,
   NameVariantRow,
@@ -30,6 +32,22 @@ import type {
   SourceRow,
   UnionRow,
 } from "./-types";
+
+/** "Godparent: Niels Nabo" — what an association citation is evidence for. */
+function associationFactLabel(
+  association: AssociationRow,
+  options: ConfigurableOptionRow[],
+  t: TFunction,
+): string {
+  const role =
+    association.role === "other" && association.label
+      ? association.label
+      : labelFor(options, "association_role", association.role);
+  const who = association.associatePersonId
+    ? [association.associateGiven, association.associateSurname].filter(Boolean).join(" ")
+    : (association.associateName ?? "");
+  return t("person.citations.associationLabel", { role, name: who });
+}
 
 export type FactOption = {
   key: string;
@@ -45,6 +63,7 @@ export function CitationsSection({
   names,
   events,
   unions,
+  associations = EMPTY_FACT_ROWS,
   options,
   onChanged,
 }: {
@@ -54,6 +73,7 @@ export function CitationsSection({
   names: NameVariantRow[];
   events: PersonEventRow[];
   unions: UnionRow[];
+  associations?: AssociationRow[];
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
@@ -93,6 +113,12 @@ export function CitationsSection({
             })
           : t("person.citations.unionFallback");
       }
+      case "association": {
+        const association = associations.find((candidate) => candidate.id === citation.factId);
+        return association
+          ? associationFactLabel(association, options, t)
+          : t("person.citations.associationFallback");
+      }
     }
   };
 
@@ -120,6 +146,7 @@ export function CitationsSection({
               names={names}
               events={events}
               unions={unions}
+              associations={associations}
               options={options}
               onDone={async () => {
                 close();
@@ -160,7 +187,7 @@ export function CitationsSection({
   );
 }
 
-// Stable reference for the "names"/"events"/"unions" defaults below — an
+// Stable reference for the "names"/"events"/"unions"/"associations" defaults — an
 // inline `[]` would be a fresh array every render, which oxlint's
 // `no-object-type-as-default-prop` flags (a new default defeats memoization
 // downstream, though nothing here currently memoizes on it).
@@ -172,6 +199,7 @@ export function CitationForm({
   names = EMPTY_FACT_ROWS,
   events = EMPTY_FACT_ROWS,
   unions = EMPTY_FACT_ROWS,
+  associations = EMPTY_FACT_ROWS,
   options,
   fixedFact,
   embedded = false,
@@ -182,6 +210,7 @@ export function CitationForm({
   names?: NameVariantRow[];
   events?: PersonEventRow[];
   unions?: UnionRow[];
+  associations?: AssociationRow[];
   options: ConfigurableOptionRow[];
   /**
    * Pins "what this cites" to a specific fact and hides the picker — used
@@ -244,6 +273,12 @@ export function CitationForm({
           label: t("person.citations.unionWithStatus", {
             status: labelFor(options, "union_status", union.status),
           }),
+        })),
+        ...associations.map((association) => ({
+          key: `association|${association.id}`,
+          factType: "association" as const,
+          factId: association.id,
+          label: associationFactLabel(association, options, t),
         })),
       ];
 

@@ -109,7 +109,11 @@ export async function cypher<T = Record<string, unknown>>(
     throw new Error("Cypher query may not contain '$$' — it terminates the SQL dollar quote");
   }
 
-  const columnList = columns.map((column) => `${column} ag_catalog.agtype`).join(", ");
+  // Quoted, or Postgres folds an unquoted identifier to lower case: a
+  // `childId` column would come back keyed `childid`, and `row[column]` below
+  // would silently read `undefined` → null for every row. Safe to quote —
+  // `assertIdentifier` above already restricts each name to [A-Za-z0-9_].
+  const columnList = columns.map((column) => `"${column}" ag_catalog.agtype`).join(", ");
   const sql = `SELECT * FROM ag_catalog.cypher('${graph}', $$${query}$$, $1) AS (${columnList})`;
   const values = [JSON.stringify(options.params ?? {})];
 

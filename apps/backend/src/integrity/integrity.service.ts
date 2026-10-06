@@ -1,5 +1,6 @@
 import {
   allPersonNodeIds,
+  associations,
   citations,
   personEvents,
   personNames,
@@ -108,33 +109,43 @@ export class IntegrityService {
       personSurname: persons.surname,
       sourceTitle: sources.title,
     };
-    const [danglingNames, danglingEvents, danglingUnions] = await Promise.all([
-      this.db
-        .select(selection)
-        .from(citations)
-        .innerJoin(sources, eq(citations.sourceId, sources.id))
-        .innerJoin(persons, eq(citations.personId, persons.id))
-        .leftJoin(personNames, eq(citations.factId, personNames.id))
-        .where(and(eq(citations.factType, "name"), isNull(personNames.id))),
-      this.db
-        .select(selection)
-        .from(citations)
-        .innerJoin(sources, eq(citations.sourceId, sources.id))
-        .innerJoin(persons, eq(citations.personId, persons.id))
-        .leftJoin(personEvents, eq(citations.factId, personEvents.id))
-        .where(and(eq(citations.factType, "event"), isNull(personEvents.id))),
-      this.db
-        .select(selection)
-        .from(citations)
-        .innerJoin(sources, eq(citations.sourceId, sources.id))
-        .innerJoin(persons, eq(citations.personId, persons.id))
-        .leftJoin(unions, eq(citations.factId, unions.id))
-        .where(and(eq(citations.factType, "union"), isNull(unions.id))),
-    ]);
+    const [danglingNames, danglingEvents, danglingUnions, danglingAssociations] = await Promise.all(
+      [
+        this.db
+          .select(selection)
+          .from(citations)
+          .innerJoin(sources, eq(citations.sourceId, sources.id))
+          .innerJoin(persons, eq(citations.personId, persons.id))
+          .leftJoin(personNames, eq(citations.factId, personNames.id))
+          .where(and(eq(citations.factType, "name"), isNull(personNames.id))),
+        this.db
+          .select(selection)
+          .from(citations)
+          .innerJoin(sources, eq(citations.sourceId, sources.id))
+          .innerJoin(persons, eq(citations.personId, persons.id))
+          .leftJoin(personEvents, eq(citations.factId, personEvents.id))
+          .where(and(eq(citations.factType, "event"), isNull(personEvents.id))),
+        this.db
+          .select(selection)
+          .from(citations)
+          .innerJoin(sources, eq(citations.sourceId, sources.id))
+          .innerJoin(persons, eq(citations.personId, persons.id))
+          .leftJoin(unions, eq(citations.factId, unions.id))
+          .where(and(eq(citations.factType, "union"), isNull(unions.id))),
+        this.db
+          .select(selection)
+          .from(citations)
+          .innerJoin(sources, eq(citations.sourceId, sources.id))
+          .innerJoin(persons, eq(citations.personId, persons.id))
+          .leftJoin(associations, eq(citations.factId, associations.id))
+          .where(and(eq(citations.factType, "association"), isNull(associations.id))),
+      ],
+    );
     return [
       ...danglingNames.map((row) => Object.assign(row, { factType: "name" })),
       ...danglingEvents.map((row) => Object.assign(row, { factType: "event" })),
       ...danglingUnions.map((row) => Object.assign(row, { factType: "union" })),
+      ...danglingAssociations.map((row) => Object.assign(row, { factType: "association" })),
     ];
   }
 

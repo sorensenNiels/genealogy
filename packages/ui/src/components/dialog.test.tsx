@@ -80,7 +80,12 @@ describe("Dialog", () => {
     const openButton = screen.getByRole("button", { name: "Open dialog" });
 
     await userEvent.click(openButton);
-    expect(screen.getByText("Example dialog")).toBeVisible();
+    // `waitFor`, not a synchronous check — Motion's enter animation commits
+    // `opacity: 1` via `requestAnimationFrame`, a tick after the click's own
+    // state update, so a bare assertion here is a real race (intermittently
+    // failing depending on exactly when that frame lands relative to this
+    // line), not a stable synchronous guarantee.
+    await waitFor(() => expect(screen.getByText("Example dialog")).toBeVisible());
 
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByText("Example dialog")).not.toBeInTheDocument());
@@ -131,7 +136,10 @@ describe("ControlledDialogContent", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Open from elsewhere" }));
     const dialog = await screen.findByRole("dialog");
-    expect(screen.getByText("Headless dialog")).toBeVisible();
+    // Same race as the other file's equivalent check — `findByRole` only
+    // waits for the dialog element to exist, not for Motion's enter
+    // animation to finish committing `opacity: 1` on it.
+    await waitFor(() => expect(screen.getByText("Headless dialog")).toBeVisible());
 
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(dialog).not.toBeInTheDocument());

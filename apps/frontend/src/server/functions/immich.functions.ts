@@ -1,9 +1,10 @@
 import {
   albumAssetsInputSchema,
   assetDetailsInputSchema,
-  createAlbumInputSchema,
+  createAlbumWithMetadataInputSchema,
   deleteAlbumInputSchema,
   deleteAssetsInputSchema,
+  eligibleVirtualAssetsInputSchema,
   immichAlbumIdSchema,
   immichAssetIdSchema,
   listAlbumsInputSchema,
@@ -72,7 +73,7 @@ export const getImmichAlbum = createServerFn({ method: "GET" })
   .handler(({ data }) => trpcProxy.immich.album.query(data));
 
 export const createImmichAlbum = createServerFn({ method: "POST" })
-  .validator(createAlbumInputSchema)
+  .validator(createAlbumWithMetadataInputSchema)
   .handler(({ data }) => trpcProxy.immich.createAlbum.mutate(data));
 
 export const updateImmichAlbum = createServerFn({ method: "POST" })
@@ -106,6 +107,16 @@ export const reorderImmichAlbumAssets = createServerFn({ method: "POST" })
 export const searchImmichAssets = createServerFn({ method: "GET" })
   .validator(searchAssetsInputSchema)
   .handler(({ data }) => trpcProxy.immich.searchAssets.query(data));
+
+/** Candidate photos for a virtual album's picker — only assets already belonging to a physical album. */
+export const getEligibleVirtualAlbumAssets = createServerFn({ method: "GET" })
+  .validator(eligibleVirtualAssetsInputSchema)
+  .handler(({ data }) => trpcProxy.immich.eligibleVirtualAlbumAssets.query(data));
+
+/** A virtual album's own photos, captioned with their source physical album + page. */
+export const getSourceAlbumsForAssets = createServerFn({ method: "GET" })
+  .validator(assetDetailsInputSchema)
+  .handler(({ data }) => trpcProxy.immich.sourceAlbumsForAssets.query(data));
 
 export const listImmichAssetFaces = createServerFn({ method: "GET" })
   .validator(z.object({ assetId: immichAssetIdSchema }))

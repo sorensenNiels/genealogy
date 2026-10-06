@@ -1,7 +1,9 @@
 import {
   joinHistoricalDateText,
   parseHistoricalDate,
+  personRestrictionSchema,
   splitHistoricalDateText,
+  type PersonRestriction,
 } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
@@ -10,6 +12,13 @@ import { Input } from "@genealogy/ui/components/input";
 import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@genealogy/ui/components/select";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation } from "@tanstack/react-query";
@@ -37,6 +46,8 @@ export function LivingStatusDeathCard({
   const form = useForm({
     defaultValues: {
       isLiving: person.isLiving,
+      // "none" rather than null: a Select needs a key for "no restriction".
+      restriction: (person.restriction ?? "none") as PersonRestriction | "none",
       deathQuality: deathSplit.quality,
       deathValue: deathSplit.value,
       deathEndValue: deathSplit.endValue,
@@ -68,6 +79,7 @@ export function LivingStatusDeathCard({
         data: {
           id: person.id,
           isLiving: value.isLiving,
+          restriction: value.restriction === "none" ? null : value.restriction,
           death:
             deathOriginal === null
               ? null
@@ -136,6 +148,33 @@ export function LivingStatusDeathCard({
             )}
           </form.Field>
         </div>
+        <form.Field name="restriction">
+          {(field) => (
+            <LabeledField label={t("person.restriction.label")} className="sm:col-span-2">
+              <Select
+                aria-label={t("person.restriction.label")}
+                value={field.state.value}
+                onChange={(value) => {
+                  const parsed = personRestrictionSchema.safeParse(value);
+                  field.handleChange(parsed.success ? parsed.data : "none");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem id="none">{t("person.restriction.none")}</SelectItem>
+                  {personRestrictionSchema.options.map((restriction) => (
+                    <SelectItem key={restriction} id={restriction}>
+                      {t(`person.restriction.${restriction}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">{t("person.restriction.description")}</p>
+            </LabeledField>
+          )}
+        </form.Field>
         {!isLiving && (
           <>
             <LabeledField label={t("person.livingStatusDeath.dateOfDeath")}>

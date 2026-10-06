@@ -9,6 +9,8 @@
     "PGUSER",
     "PGPASSWORD",
     "PGDATABASE",
+    "REDIS_URL",
+    "IMMICH_URL",
     "PORT",
     "BACKEND_URL"
   ],

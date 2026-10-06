@@ -36,8 +36,12 @@ update:
 typecheck: ## Typecheck every package
 	pnpm typecheck
 
-db-up: ## Start PostgreSQL and wait until it accepts connections
-	$(COMPOSE) up -d $(DB_SERVICE)
+# `--build` so an edit to postgres/Dockerfile always lands: without it compose
+# reuses any existing genealogy/postgres-age-postgis tag, however stale. The
+# layer cache makes it near-free when nothing changed, and a changed image
+# recreates the container on the same named volume, so data is kept.
+db-up: ## (Re)build the PostgreSQL image, start it and wait until it accepts connections
+	$(COMPOSE) up -d --build $(DB_SERVICE)
 	@until $(COMPOSE) exec -T $(DB_SERVICE) pg_isready -U genealogy -d genealogy >/dev/null 2>&1; do sleep 1; done
 	@echo "PostgreSQL is ready"
 
@@ -61,7 +65,7 @@ db-studio: ## Open Drizzle Studio
 
 db-reset: ## Destroy the local database and rebuild it from scratch
 	$(COMPOSE) down -v
-	$(COMPOSE) up -d db
+	$(COMPOSE) up -d --build db
 	@until $(COMPOSE) exec -T db pg_isready -U genealogy -d genealogy >/dev/null 2>&1; do sleep 1; done
 	pnpm db:migrate
 

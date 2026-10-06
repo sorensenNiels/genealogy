@@ -2,6 +2,8 @@ import type { EventDetails, HistoricalDate } from "@genealogy/core";
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
+  geometry,
   index,
   integer,
   jsonb,
@@ -60,6 +62,11 @@ export const persons = pgTable(
     // A deliberate flag rather than an inference from `death` — see the
     // matching comment on Person in packages/core/src/person.ts.
     isLiving: boolean("is_living").notNull().default(true),
+
+    // GEDCOM's RESN — privacy/confidential/locked, or null for none. Plain
+    // text validated by `personRestrictionSchema` (plus a CHECK constraint in
+    // the migration), not a pgEnum: structural, but not worth an enum type.
+    restriction: text("restriction"),
 
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -178,6 +185,80 @@ export const unions = pgTable(
   ],
 );
 
+/**
+ * Coordinates for a place, keyed by its text exactly as events and unions
+ * store it ("Brande, Ribe, Danmark") — coordinates belong to the place, not
+ * to each event at it, so one row serves every event there. Places stay
+ * plain text everywhere else; this is a lookup beside them, not a foreign
+ * key target (see "GEDCOM import" in TECH_STACK.md for why).
+ *
+ * `location` is a PostGIS point (SRID 4326, x = longitude, y = latitude) so
+ * spatial queries ("everyone born within 20 km of here") work directly when
+ * a map view arrives. PostGIS is created by this table's migration, which is
+ * deliberately the last in its batch — a server without the PostGIS
+ * packages fails there without holding back the migrations before it.
+ */
+export const places = pgTable(
+  "places",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull().unique(),
+    location: geometry("location", { type: "point", mode: "xy", srid: 4326 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("places_location_idx").using("gist", table.location)],
+);
+
+/**
+ * Someone named in a role on a person's record — a godparent at a baptism, a
+ * witness at a marriage (GEDCOM's `ASSO`); see `associationSchema` in
+ * packages/core. Relational rather than a graph edge, for the same reason
+ * `unions` is: edges stay thin, and this carries a role, notes and
+ * citations (`citations.factType = "association"`).
+ *
+ * `eventId`/`unionId` are `set null` on delete: losing the baptism record
+ * doesn't make someone stop having been the godparent, it just unties the
+ * role from that event. `associatePersonId` cascades — the row means nothing without the
+ * associate — and `PersonService.remove` clears the citations that pointed
+ * at rows removed that way, since `citations.factId` isn't a real FK.
+ */
+export const associations = pgTable(
+  "associations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => persons.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => personEvents.id, { onDelete: "set null" }),
+    // A marriage witness belongs to the marriage, which is a `unions` row,
+    // not one of the person's events. At most one of eventId/unionId is set;
+    // neither means the role isn't tied to a specific record.
+    unionId: uuid("union_id").references(() => unions.id, { onDelete: "set null" }),
+    associatePersonId: uuid("associate_person_id").references(() => persons.id, {
+      onDelete: "cascade",
+    }),
+    // The associate as written, when they aren't (and may never be) a person
+    // in the tree — exactly one of this and `associatePersonId` is set.
+    associateName: text("associate_name"),
+    // Plain text, not an enum: user-configurable (topic "association_role").
+    role: text("role").notNull(),
+    // Required for role "other", like an "other" event's label.
+    label: text("label"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("associations_person_idx").on(table.personId),
+    index("associations_associate_idx").on(table.associatePersonId),
+    check("associations_one_context", sql`${table.eventId} is null or ${table.unionId} is null`),
+    check(
+      "associations_one_associate",
+      sql`(${table.associatePersonId} is null) <> (${table.associateName} is null)`,
+    ),
+  ],
+);
+
 /** A record a claim can be cited from: a parish register, a census, a headstone. */
 export const sources = pgTable("sources", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -197,6 +278,7 @@ export const citationFactTypeEnum = pgEnum("citation_fact_type", [
   "name",
   "event",
   "union",
+  "association",
 ]);
 
 /**
@@ -402,6 +484,28 @@ export const immichAlbumAssetOrder = pgTable(
  * normalized many-to-many would be solving a scale problem that doesn't exist
  * here. `date` reuses `HistoricalDate`, the same approximate/range date type
  * `personEvents.date` uses, so album dates get the same "circa 1950" handling.
+ *
+ * `kind` distinguishes a "physical" album (mirrors a real scanned album,
+ * grows only via upload) from a "virtual" one (a curated collection that only
+ * ever references assets already living in a physical album, never uploaded
+ * to directly) — see `ImmichService.addAssetsToAlbum`/`createAlbumWithMetadata`
+ * for where that distinction is enforced. Plain `text` with a default, not a
+ * `pgEnum`, for the same migration-cost reason CLAUDE.md gives for avoiding
+ * enums elsewhere: adding a third kind later would need its own `ALTER TYPE`
+ * migration, whereas a default-and-validate-at-the-zod-boundary column just
+ * needs a new accepted string. It's still a structural, code-branching field
+ * (not a `configurableOptions` topic) — see `packages/core`'s `albumKindSchema`.
+ * `kind` is set once at album creation and is immutable after — `upsertAlbumMetadata`
+ * refuses to change an existing row's stored value.
+ *
+ * `cover`/`found`/`scanned`/`photosPerPage` are physical-album-only by
+ * convention, not by a DB constraint (same relaxed-nullable pattern `place`
+ * already uses): `cover` is the shelf-spine/book-cover color+style chosen at
+ * creation; `found`/`scanned` are free-text provenance notes ("Brande, attic" /
+ * "600 dpi, 2019"); `photosPerPage` drives the book-view reading mode's
+ * auto-pagination over the album's existing flat asset order — deliberately
+ * not a per-photo page number, since one "N per page" setting is enough and
+ * needs no new per-asset storage.
  */
 export const albumMetadata = pgTable("album_metadata", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -412,6 +516,11 @@ export const albumMetadata = pgTable("album_metadata", {
     .array()
     .notNull()
     .default(sql`ARRAY[]::text[]`),
+  kind: text("kind").notNull().default("physical"),
+  cover: jsonb("cover").$type<{ color: string; style: "foil" | "label" | "tooled" } | null>(),
+  found: text("found"),
+  scanned: text("scanned"),
+  photosPerPage: integer("photos_per_page").notNull().default(4),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -538,6 +647,8 @@ export const schema = {
   personNames,
   personEvents,
   unions,
+  associations,
+  places,
   sources,
   citations,
   configurableOptions,
@@ -562,6 +673,8 @@ export type NewPersonRow = typeof persons.$inferInsert;
 export type PersonNameRow = typeof personNames.$inferSelect;
 export type PersonEventRow = typeof personEvents.$inferSelect;
 export type UnionRow = typeof unions.$inferSelect;
+export type AssociationRow = typeof associations.$inferSelect;
+export type PlaceRow = typeof places.$inferSelect;
 export type SourceRow = typeof sources.$inferSelect;
 export type CitationRow = typeof citations.$inferSelect;
 export type ConfigurableOptionRow = typeof configurableOptions.$inferSelect;

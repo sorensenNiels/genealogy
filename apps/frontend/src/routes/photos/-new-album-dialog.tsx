@@ -1,7 +1,11 @@
+import type { AlbumCoverStyle, AlbumKind } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
+import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
+import { ColorSwatchPicker } from "@genealogy/ui/components/color-swatch-picker";
 import { DialogFooter } from "@genealogy/ui/components/dialog";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import { Input } from "@genealogy/ui/components/input";
+import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { useForm, useStore } from "@tanstack/react-form";
@@ -9,6 +13,8 @@ import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 import { createImmichAlbum } from "../../server/functions/immich.functions";
+
+const COVER_COLORS = ["#2f4034", "#6b2b2b", "#4a3322", "#23344a", "#e3dccb", "#3b3b3f"];
 
 export function NewAlbumDialog({ onCreated }: { onCreated: (albumId: string) => Promise<void> }) {
   const { t } = useTranslation();
@@ -31,11 +37,32 @@ function NewAlbumForm({ onDone }: { onDone: (albumId: string) => Promise<void> }
   const createAlbumMutation = useMutation({ mutationFn: createImmichAlbum });
 
   const form = useForm({
-    defaultValues: { albumName: "", description: "" },
+    defaultValues: {
+      albumName: "",
+      description: "",
+      kind: "physical" as AlbumKind,
+      coverColor: COVER_COLORS[0]!,
+      coverStyle: "label" as AlbumCoverStyle,
+      found: "",
+      scanned: "",
+      photosPerPage: 4,
+    },
     onSubmit: async ({ value }) => {
       const description = value.description.trim();
+      const found = value.found.trim();
+      const scanned = value.scanned.trim();
       const album = await createAlbumMutation.mutateAsync({
-        data: { albumName: value.albumName.trim(), ...(description ? { description } : {}) },
+        data: {
+          albumName: value.albumName.trim(),
+          kind: value.kind,
+          photosPerPage: value.photosPerPage,
+          ...(description ? { description } : {}),
+          ...(value.kind === "physical"
+            ? { cover: { color: value.coverColor, style: value.coverStyle } }
+            : {}),
+          ...(value.kind === "physical" && found ? { found } : {}),
+          ...(value.kind === "physical" && scanned ? { scanned } : {}),
+        },
       });
       await onDone(album.id);
     },
@@ -43,6 +70,9 @@ function NewAlbumForm({ onDone }: { onDone: (albumId: string) => Promise<void> }
 
   const { isDirty, isSubmitting } = useFormDirtyPending(form);
   const albumName = useStore(form.store, (state) => state.values.albumName);
+  const kind = useStore(form.store, (state) => state.values.kind);
+  const coverColor = useStore(form.store, (state) => state.values.coverColor);
+  const coverStyle = useStore(form.store, (state) => state.values.coverStyle);
 
   return (
     <form
@@ -52,6 +82,22 @@ function NewAlbumForm({ onDone }: { onDone: (albumId: string) => Promise<void> }
         void form.handleSubmit();
       }}
     >
+      <LabeledField label={t("album.kindLabel")} asDiv>
+        <ButtonRadioGroup
+          value={kind}
+          onChange={(value) => form.setFieldValue("kind", value)}
+          options={[
+            { value: "physical", label: t("album.kindPhysical") },
+            { value: "virtual", label: t("album.kindVirtual") },
+          ]}
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          {kind === "physical"
+            ? t("album.kindPhysicalDescription")
+            : t("album.kindVirtualDescription")}
+        </p>
+      </LabeledField>
+
       <form.Field name="albumName">
         {(field) => (
           <Input
@@ -70,6 +116,64 @@ function NewAlbumForm({ onDone }: { onDone: (albumId: string) => Promise<void> }
           />
         )}
       </form.Field>
+
+      {kind === "physical" && (
+        <>
+          <LabeledField label={t("album.coverColor")} asDiv>
+            <ColorSwatchPicker
+              aria-label={t("album.coverColor")}
+              value={coverColor}
+              onChange={(value) => form.setFieldValue("coverColor", value)}
+              colors={COVER_COLORS}
+            />
+          </LabeledField>
+
+          <LabeledField label={t("album.coverStyle")} asDiv>
+            <ButtonRadioGroup
+              value={coverStyle}
+              onChange={(value) => form.setFieldValue("coverStyle", value)}
+              options={[
+                { value: "foil", label: t("album.coverStyleFoil") },
+                { value: "label", label: t("album.coverStyleLabel") },
+                { value: "tooled", label: t("album.coverStyleTooled") },
+              ]}
+            />
+          </LabeledField>
+
+          <form.Field name="found">
+            {(field) => (
+              <Input
+                placeholder={t("album.foundPlaceholder")}
+                value={field.state.value}
+                onChange={(event) => field.handleChange(event.target.value)}
+              />
+            )}
+          </form.Field>
+          <form.Field name="scanned">
+            {(field) => (
+              <Input
+                placeholder={t("album.scannedPlaceholder")}
+                value={field.state.value}
+                onChange={(event) => field.handleChange(event.target.value)}
+              />
+            )}
+          </form.Field>
+          <LabeledField label={t("album.photosPerPage")} asDiv>
+            <form.Field name="photosPerPage">
+              {(field) => (
+                <Input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={field.state.value}
+                  onChange={(event) => field.handleChange(Number(event.target.value) || 1)}
+                />
+              )}
+            </form.Field>
+          </LabeledField>
+        </>
+      )}
+
       {createAlbumMutation.isError && (
         <p className="text-sm text-destructive">{createAlbumMutation.error.message}</p>
       )}

@@ -296,6 +296,108 @@ export async function allParentOfEdges(
 }
 
 /**
+ * Every `SPOUSE_OF` edge, once per pair (`addSpouseOf` only ever writes one
+ * directed edge) — the GEDCOM exporter needs these on top of `unions` rows,
+ * since a couple can be linked as spouses with no union recorded at all.
+ */
+export async function allSpouseOfEdges(
+  pool: Pool,
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<{ aId: string; bId: string }[]> {
+  return cypher<{ aId: string; bId: string }>(
+    pool,
+    `MATCH (a:Person)-[:SPOUSE_OF]->(b:Person)
+     RETURN a.id AS aId, b.id AS bId`,
+    ["aId", "bId"],
+    options,
+  );
+}
+
+/** How many rows one bulk Cypher call carries — keeps the single JSON params blob to a modest size. */
+const BULK_CHUNK_SIZE = 2000;
+
+/**
+ * Creates one `Person` node per id — for a bulk import of brand-new people,
+ * so `CREATE`, not `upsertPersonNode`'s `MERGE`. Returns each node's AGE
+ * vertex id (a graphid, well inside `Number.MAX_SAFE_INTEGER`), which is what
+ * `addParentOfMany`/`addSpouseOfMany` need to match on instead of the `id`
+ * property: AGE has no index on vertex properties, so matching endpoints by
+ * `{id: ...}` is a label scan per edge — measured at ~25 s for 5,000 edges
+ * against ~50 ms by vertex id, which hits the label table's primary key.
+ */
+export async function createPersonNodes(
+  pool: Pool,
+  personIds: readonly string[],
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<Map<string, number>> {
+  const vertexIds = new Map<string, number>();
+  for (const ids of chunks(personIds, BULK_CHUNK_SIZE)) {
+    // Chunks share one transaction's connection — sequential by necessity.
+    // eslint-disable-next-line no-await-in-loop
+    const rows = await cypher<{ personId: string; vertexId: number }>(
+      pool,
+      `UNWIND $ids AS pid
+       CREATE (p:Person {id: pid})
+       RETURN pid AS personId, id(p) AS vertexId`,
+      ["personId", "vertexId"],
+      { ...options, params: { ids } },
+    );
+    for (const row of rows) vertexIds.set(row.personId, row.vertexId);
+  }
+  return vertexIds;
+}
+
+/** Bulk `PARENT_OF` creation by vertex id — see `createPersonNodes` for why not by `id` property. Assumes the edges don't exist yet. */
+export async function addParentOfMany(
+  pool: Pool,
+  edges: readonly { parent: number; child: number; parentage: Parentage }[],
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<void> {
+  for (const chunk of chunks(edges, BULK_CHUNK_SIZE)) {
+    // eslint-disable-next-line no-await-in-loop
+    await cypher(
+      pool,
+      `UNWIND $edges AS e
+       MATCH (parent:Person), (child:Person)
+       WHERE id(parent) = e.parent AND id(child) = e.child
+       CREATE (parent)-[r:PARENT_OF {parentage: e.parentage}]->(child)
+       RETURN count(r) AS created`,
+      ["created"],
+      { ...options, params: { edges: chunk } },
+    );
+  }
+}
+
+/** Bulk `SPOUSE_OF` creation by vertex id, one directed edge per pair like `addSpouseOf`. Assumes the edges don't exist yet. */
+export async function addSpouseOfMany(
+  pool: Pool,
+  pairs: readonly { a: number; b: number }[],
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<void> {
+  for (const chunk of chunks(pairs, BULK_CHUNK_SIZE)) {
+    // eslint-disable-next-line no-await-in-loop
+    await cypher(
+      pool,
+      `UNWIND $pairs AS s
+       MATCH (a:Person), (b:Person)
+       WHERE id(a) = s.a AND id(b) = s.b
+       CREATE (a)-[r:SPOUSE_OF]->(b)
+       RETURN count(r) AS created`,
+      ["created"],
+      { ...options, params: { pairs: chunk } },
+    );
+  }
+}
+
+function chunks<T>(items: readonly T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let start = 0; start < items.length; start += size) {
+    result.push(items.slice(start, start + size));
+  }
+  return result;
+}
+
+/**
  * Walks up the tree. `maxGenerations` is capped rather than optional because a
  * badly-sourced tree can contain a cycle (a person recorded as their own
  * ancestor), and an unbounded variable-length match would never return.

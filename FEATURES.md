@@ -33,7 +33,10 @@ A living backlog for the genealogy app. Status markers: ✅ done, 🚧 planned, 
 ## Import / export
 
 - ✅ GEDCOM export (every person, name, event, family, source, and citation) from the Tools page.
-- 🚧 GEDCOM import — deferred past export; matching an incoming person against someone already in the tree is a materially harder problem than writing the file out.
+- ✅ GEDCOM import from the Tools page: pick a file, see a preview (what will be added, anything that can't be imported, and incoming people who share a name with someone already in the tree), then import. Everyone is added as a new person — likely duplicates are reported, not merged. See "GEDCOM import" in TECH_STACK.md.
+- ✅ Witnesses, godparents and other roles on a person's records (a "Witnesses & godparents" card; tied to an event, a marriage, or neither; the person can be someone in the tree or just a name), privacy restrictions on people (badge; not yet enforced), other programs' research to-dos imported as research notes, and place coordinates (PostGIS, no map UI yet) — all imported from and exported back to GEDCOM.
+- 🚧 Store external IDs (FamilySearch, Ancestry, REFN) and repository details/call numbers from GEDCOM; decide whether to import media.
+- 🚧 Merge an imported person into an existing one (depends on duplicate person detection, below).
 
 ## Sharing & collaboration
 
@@ -46,7 +49,7 @@ A living backlog for the genealogy app. Status markers: ✅ done, 🚧 planned, 
 An admin utility page (`/tools`).
 
 - ✅ Backup the database (background job, notified when ready) and restore from a backup file (locked against overlap, typed confirmation). Alongside it, "Download all albums" queues a zip of every photo in every album the same way — one notification per file if the library needs more than one archive.
-- ✅ Re-scan for faces (Immich), GEDCOM export.
+- ✅ Re-scan for faces (Immich), GEDCOM export and import.
 - ✅ Data integrity checks (dangling citations, possible duplicate people, dangling Immich links) and a two-store consistency check (Postgres vs. the Apache AGE graph).
 
 ## Platform

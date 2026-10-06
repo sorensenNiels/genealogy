@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
+import { listAssociations } from "../../server/functions/association.functions";
 import {
   getPersonById,
   getRelatives,
@@ -13,6 +14,7 @@ import {
 import { listNotes } from "../../server/functions/research-note.functions";
 import { listOptions } from "../../server/functions/settings.functions";
 import { listCitations, listSources } from "../../server/functions/source.functions";
+import { AssociationsCard } from "./-associations-card";
 import { BirthCard } from "./-birth-card";
 import { CitationsSection } from "./-citations-section";
 import { FamilyCard } from "./-family-card";
@@ -74,6 +76,10 @@ function PersonDetailRoute() {
     queryKey: ["researchNote", "listNotes", personId],
     queryFn: () => listNotes({ data: { personId } }),
   });
+  const associationsList = useQuery({
+    queryKey: ["association", "list", personId],
+    queryFn: () => listAssociations({ data: { personId } }),
+  });
   const options = useQuery({ queryKey: ["settings", "listOptions"], queryFn: () => listOptions() });
 
   const refresh = async () => {
@@ -89,6 +95,7 @@ function PersonDetailRoute() {
       queryClient.invalidateQueries({ queryKey: ["source", "listSources"] }),
       queryClient.invalidateQueries({ queryKey: ["source", "listCitations", personId] }),
       queryClient.invalidateQueries({ queryKey: ["researchNote", "listNotes", personId] }),
+      queryClient.invalidateQueries({ queryKey: ["association", "list", personId] }),
     ]);
   };
 
@@ -187,6 +194,17 @@ function PersonDetailRoute() {
             names={names.data ?? []}
             events={events.data ?? []}
             unions={unions.data ?? []}
+            associations={associationsList.data?.own ?? []}
+            options={options.data ?? []}
+            onChanged={refresh}
+          />
+          <AssociationsCard
+            personId={personId}
+            own={associationsList.data?.own ?? []}
+            appearances={associationsList.data?.appearances ?? []}
+            events={events.data ?? []}
+            unions={unions.data ?? []}
+            spouses={spouses}
             options={options.data ?? []}
             onChanged={refresh}
           />

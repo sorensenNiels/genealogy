@@ -218,6 +218,27 @@
       "when": 1790699107632,
       "tag": "0030_supreme_luke_cage",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790784317278,
+      "tag": "0031_mute_sunfire",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791309786999,
+      "tag": "0032_gedcom_associations_restriction",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791309787634,
+      "tag": "0033_places_postgis",
+      "breakpoints": true
     }
   ]
 }

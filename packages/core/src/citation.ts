@@ -17,12 +17,14 @@ export type Confidence = z.infer<typeof confidenceSchema>;
  * used to be their own fact types here (they lived directly on `persons`);
  * now that they're ordinary `personEvents` rows (see "Birth and death are
  * events" in TECH_STACK.md), citing one is just `factType: "event"` with
- * that row's id, like any other event.
+ * that row's id, like any other event. "association" cites an
+ * `associations` row — the record that names someone as a godparent or
+ * witness is evidence for that role, not for the person as a whole.
  */
-export const citationFactTypeSchema = z.enum(["person", "name", "event", "union"]);
+export const citationFactTypeSchema = z.enum(["person", "name", "event", "union", "association"]);
 export type CitationFactType = z.infer<typeof citationFactTypeSchema>;
 
-const FACT_TYPES_NEEDING_ID = new Set<CitationFactType>(["name", "event", "union"]);
+const FACT_TYPES_NEEDING_ID = new Set<CitationFactType>(["name", "event", "union", "association"]);
 
 export const citationIdSchema = z.uuid();
 export type CitationId = z.infer<typeof citationIdSchema>;

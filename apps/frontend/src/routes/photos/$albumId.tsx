@@ -1,4 +1,6 @@
+import { paginate } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
+import { PhotoBook, type PhotoBookPage } from "@genealogy/ui/components/photo-book";
 import { PhotoGrid, type Selection } from "@genealogy/ui/components/photo-grid";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { Switch } from "@genealogy/ui/components/switch";
@@ -15,12 +17,15 @@ import {
   enqueueAlbumZip,
   getImmichAlbum,
   getImmichAssetDetails,
+  getSourceAlbumsForAssets,
   listAlbumAssets,
   removeImmichAlbumAssets,
   reorderImmichAlbumAssets,
   updateImmichAlbum,
 } from "../../server/functions/immich.functions";
 import { AddAssetsDialog } from "./-add-assets-dialog";
+import { AlbumCover } from "./-album-cover";
+import { albumActionsForKind } from "./-album-kind";
 import { AssetViewer } from "./-asset-viewer";
 import { UploadDialog } from "./-upload-dialog";
 
@@ -39,6 +44,7 @@ function AlbumRoute() {
   const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set());
   const [checkCaptions, setCheckCaptions] = useState(false);
   const [missingCaptionOnly, setMissingCaptionOnly] = useState(false);
+  const [bookOpen, setBookOpen] = useState(false);
   // Optimistic overrides so captioning a photo drops it out of the "missing
   // caption" set immediately, without waiting on/triggering a batch refetch
   // (a batch check is an explicit, opt-in action — see the toggle below).
@@ -69,6 +75,34 @@ function AlbumRoute() {
 
   const captionFor = (assetId: string): string =>
     captionOverrides[assetId] ?? detailsQuery.data?.[assetId]?.description ?? "";
+
+  const isVirtual = album.data?.kind === "virtual";
+  const actions = albumActionsForKind(album.data?.kind ?? "physical");
+  // Only fetched for a virtual album, and only once the book is actually
+  // opened — a physical album's photos always come from itself, so there's
+  // nothing to look up.
+  const sourceAlbumsQuery = useQuery({
+    queryKey: ["immich", "sourceAlbumsForAssets", albumId],
+    queryFn: () => getSourceAlbumsForAssets({ data: { assetIds } }),
+    enabled: bookOpen && isVirtual && assetIds.length > 0,
+  });
+  const bookPages: PhotoBookPage[] = album.data
+    ? paginate(assets.data ?? [], album.data.photosPerPage).map((group, pageIndex) => ({
+        id: `page-${pageIndex}`,
+        photos: group.map((asset) => {
+          const sources = sourceAlbumsQuery.data?.[asset.id];
+          const sourceLabel = sources?.length
+            ? sources.map((source) => `${source.albumName}, p. ${source.page}`).join(" · ")
+            : undefined;
+          return {
+            id: asset.id,
+            src: `/api/immich/assets/${asset.id}/thumbnail`,
+            alt: asset.originalFileName,
+            ...(sourceLabel ? { sourceLabel } : {}),
+          };
+        }),
+      }))
+    : [];
   const missingCaptionIds =
     checkCaptions && detailsQuery.data
       ? new Set(assetIds.filter((id) => captionFor(id).trim() === ""))
@@ -158,12 +192,22 @@ function AlbumRoute() {
       </div>
 
       <div className="flex items-center gap-2">
-        <UploadDialog
-          albumId={albumId}
-          trigger={<Button variant="outline">{t("albumPage.uploadToAlbum")}</Button>}
-          onUploaded={refresh}
-        />
-        <AddAssetsDialog albumId={albumId} onAdded={refresh} />
+        {actions.canUpload && (
+          <UploadDialog
+            albumId={albumId}
+            trigger={<Button variant="outline">{t("albumPage.uploadToAlbum")}</Button>}
+            onUploaded={refresh}
+          />
+        )}
+        {actions.canAddExisting && <AddAssetsDialog albumId={albumId} onAdded={refresh} />}
+        <Button
+          type="button"
+          variant="outline"
+          isDisabled={!assets.data || assets.data.length === 0}
+          onPress={() => setBookOpen(true)}
+        >
+          {t("albumPage.openAsBook")}
+        </Button>
         <Button
           type="button"
           variant="outline"
@@ -185,6 +229,10 @@ function AlbumRoute() {
           onConfirm={() => void deleteAlbum()}
         />
       </div>
+
+      {isVirtual && (
+        <p className="text-sm text-muted-foreground">{t("albumPage.virtualAlbumNote")}</p>
+      )}
 
       {downloadAlbumMutation.isError && (
         <p className="text-sm text-destructive">
@@ -344,6 +392,22 @@ function AlbumRoute() {
             }}
           />
         </>
+      )}
+
+      {album.data && (
+        <PhotoBook
+          isOpen={bookOpen}
+          onOpenChange={setBookOpen}
+          title={album.data.albumName}
+          coverNode={<AlbumCover album={album.data} variant="spine" />}
+          insideCoverNode={<AlbumCover album={album.data} variant="inside" />}
+          pages={bookPages}
+          // A dedicated per-album "paper" appearance isn't its own stored
+          // field — physical albums use one consistent dark paper, virtual
+          // albums the plainer "modern" style, matching the cover/collage
+          // distinction `AlbumCover` already draws between the two kinds.
+          paperStyle={isVirtual ? "modern" : "black"}
+        />
       )}
     </div>
   );

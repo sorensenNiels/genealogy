@@ -14,7 +14,12 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./postgres:/docker-entrypoint-initdb.d:ro
+      # The host's path, not `./postgres`, when compose runs inside the dev
+      # container: its `docker` drives the host daemon (docker-outside-of-
+      # docker), which resolves bind mounts on the host, where
+      # /workspaces/genealogy doesn't exist. Run on the host itself, the
+      # variable is unset and this falls back to `.`.
+      - ${LOCAL_WORKSPACE_FOLDER:-.}/postgres:/docker-entrypoint-initdb.d:ro
     ports:
       - "5432:5432"
     healthcheck:
@@ -25,9 +30,9 @@ services:
       start_period: 10s
 
   # Backs apps/backend's BullMQ queues (see "Long-running work: BullMQ + a
-  # shared Redis" in TECH_STACK.md) — a core, always-on service, not gated
-  # behind a profile like the rest of this file's Immich services below.
-  # Immich, when its own profile is enabled, points at this same instance
+  # shared Redis" in TECH_STACK.md) — a core, always-on service, like every
+  # other service in this file.
+  # Immich points at this same instance
   # (`REDIS_HOSTNAME: redis` on immich-server) rather than running a second
   # Redis of its own, so there's exactly one Redis in this stack either way.
   # Published on the host, like `db` above, so the devcontainer (a separate
@@ -51,15 +56,15 @@ services:
   # extension that can't share this app's AGE-enabled instance, the same
   # reason this app's own Postgres isn't shared with anything else) and a
   # machine-learning container for face detection, ~6-8GB RAM recommended by
-  # Immich's own docs. `profiles: [immich]` keeps these out of a plain
-  # `docker compose up` — opt in with `docker compose --profile immich up -d`.
+  # Immich's own docs. Deliberately *not* behind a compose profile: the photo
+  # library is a core dependency of this app, so a plain `docker compose up`
+  # starts it alongside `db` and `redis` — one command for the whole stack.
   # Versions pinned to the exact release this integration was built and
   # tested against (v3.2.2, 2026-09); bump deliberately, matching this repo's
   # version-pinning convention.
   immich-db:
     container_name: genealogy-immich-db
     image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
-    profiles: ["immich"]
     restart: unless-stopped
     environment:
       POSTGRES_USER: immich
@@ -79,7 +84,6 @@ services:
   immich-machine-learning:
     container_name: genealogy-immich-ml
     image: ghcr.io/immich-app/immich-machine-learning:v3.2.2
-    profiles: ["immich"]
     restart: unless-stopped
     volumes:
       - immich-model-cache:/cache
@@ -87,7 +91,6 @@ services:
   immich-server:
     container_name: genealogy-immich-server
     image: ghcr.io/immich-app/immich-server:v3.2.2
-    profiles: ["immich"]
     restart: unless-stopped
     environment:
       DB_HOSTNAME: immich-db

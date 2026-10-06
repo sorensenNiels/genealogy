@@ -11,18 +11,29 @@
   // started with `make db-up`), reached from here over the host gateway.
   "runArgs": ["--add-host=host.docker.internal:host-gateway"],
   "containerEnv": {
+    // docker-outside-of-docker (below) means `docker` in here drives the HOST's
+    // daemon, which resolves bind-mount paths on the host — so docker-compose.yml
+    // needs the host path of this workspace, not /workspaces/genealogy.
+    "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}",
     "DATABASE_URL": "postgres://genealogy:genealogy@host.docker.internal:5432/genealogy",
     "PGHOST": "host.docker.internal",
     "PGUSER": "genealogy",
     "PGPASSWORD": "genealogy",
     "PGDATABASE": "genealogy",
-    "REDIS_URL": "redis://host.docker.internal:6379"
+    "REDIS_URL": "redis://host.docker.internal:6379",
+    // Immich's server, also published on the host by docker-compose.yml.
+    // `localhost` only reached it under the old docker-in-docker setup, where
+    // compose's published ports landed inside this container.
+    "IMMICH_URL": "http://host.docker.internal:2283"
   },
 
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/anthropics/devcontainer-features/claude-code:1": {},
-    "ghcr.io/devcontainers/features/docker-in-docker:3": { "moby": false },
+    // Outside-of-docker, not in-docker: `docker`/`docker compose`/`make db-up`
+    // here must manage the same containers as on the host (the `db` service
+    // the app actually uses), not a separate daemon inside this container.
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": { "moby": false },
     "ghcr.io/jungaretti/features/make:1": {}
   },
 

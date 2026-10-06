@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { describe, expect, it } from "vitest";
 
 import { cypher, parseAgtype } from "./age.js";
@@ -59,5 +59,20 @@ describe("cypher", () => {
     await expect(cypher(noPool, "MATCH (p) RETURN p", [])).rejects.toThrow(
       /at least one return column/,
     );
+  });
+
+  it("keeps a camelCase result column's case", async () => {
+    // Regression: unquoted, Postgres lower-cases the column alias, so the row
+    // came back keyed `childid` and every `childId` decoded as null.
+    let sql = "";
+    const client = {
+      query: (text: string) => {
+        sql = text;
+        return Promise.resolve({ rows: [{ childId: '"abc"' }] });
+      },
+    } as unknown as PoolClient;
+    const rows = await cypher(noPool, "MATCH (c) RETURN c.id AS childId", ["childId"], { client });
+    expect(sql).toContain('AS ("childId" ag_catalog.agtype)');
+    expect(rows).toEqual([{ childId: "abc" }]);
   });
 });

@@ -23,6 +23,16 @@ are operating from the host, shell into it:
 devcontainer exec --workspace-folder . bash -lc "<command>"
 ```
 
+**`docker` inside the dev container drives the host's Docker** (the
+`docker-outside-of-docker` feature), so `docker compose ...` and `make db-up`
+from in here manage the same containers as on the host — including the `db`
+service holding the real dev data. Treat Docker commands accordingly: `docker
+compose down -v` or `make db-reset` destroys that data. Bind mounts in
+`docker-compose.yml` are resolved on the host, so they use
+`${LOCAL_WORKSPACE_FOLDER:-.}` (set in `devcontainer.json`) rather than a bare
+`./` path. Inside the container, Postgres is reached at `host.docker.internal`
+(`DATABASE_URL`/`PGHOST` already point there).
+
 See [DEVELOPMENT_ENVIRONMENT.md](DEVELOPMENT_ENVIRONMENT.md) for the full setup.
 
 ## Commands
@@ -228,14 +238,14 @@ prompted it.
   Fetch options for the UI via the `listOptions` server function
   (`apps/frontend/src/server/functions/settings.functions.ts`) and look up display
   labels with `labelFor`/`optionsFor` from `apps/frontend/src/lib/
-person-display.tsx`, rather than a hardcoded `Record<Type, string>` label
+  person-display.tsx`, rather than a hardcoded `Record<Type, string>` label
   map. The only exception is a field that's genuinely structural — code
   branches on the exact value in a way a runtime-editable list can't safely
   support (`citationFactType`, `gender`) — and even then, prefer tying it to the
   database if there's any real doubt; ask rather than assume it's structural.
 - **A Save/Add button that submits a form: always `SaveButton`**
   (`@genealogy/ui/components/save-button`), never a bare `Button
-type="submit"`. It shows a small red dot once the form is dirty, and swaps
+  type="submit"`. It shows a small red dot once the form is dirty, and swaps
   the dot for a spinner (and disables the button) while the save is in
   flight — one look everywhere, first built for the person-details Save
   button. Pass `isDirty`/`isPending` from the TanStack Form instance driving

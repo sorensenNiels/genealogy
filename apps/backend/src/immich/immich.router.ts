@@ -1,9 +1,10 @@
 import {
   albumAssetsInputSchema,
   assetDetailsInputSchema,
-  createAlbumInputSchema,
+  createAlbumWithMetadataInputSchema,
   deleteAlbumInputSchema,
   deleteAssetsInputSchema,
+  eligibleVirtualAssetsInputSchema,
   immichAlbumIdSchema,
   immichAssetIdSchema,
   listAlbumsInputSchema,
@@ -77,8 +78,8 @@ export class ImmichRouter {
         .query(({ input }) => this.immich.getAlbum(input.albumId)),
 
       createAlbum: protectedProcedure
-        .input(createAlbumInputSchema)
-        .mutation(({ input }) => this.immich.createAlbum(input)),
+        .input(createAlbumWithMetadataInputSchema)
+        .mutation(({ input }) => this.immich.createAlbumWithMetadata(input)),
 
       updateAlbum: protectedProcedure.input(updateAlbumInputSchema).mutation(({ input }) => {
         const { albumId, ...patch } = input;
@@ -118,6 +119,14 @@ export class ImmichRouter {
       albumAssets: protectedProcedure
         .input(z.object({ albumId: immichAlbumIdSchema }))
         .query(({ input }) => this.immich.orderedAlbumAssets(input.albumId)),
+
+      eligibleVirtualAlbumAssets: protectedProcedure
+        .input(eligibleVirtualAssetsInputSchema)
+        .query(({ input }) => this.immich.eligibleVirtualAlbumAssets(input)),
+
+      sourceAlbumsForAssets: protectedProcedure
+        .input(assetDetailsInputSchema)
+        .query(({ input }) => this.immich.sourceAlbumsForAssets(input.assetIds)),
 
       reorderAlbumAssets: protectedProcedure
         .input(reorderAlbumAssetsInputSchema)

@@ -107,6 +107,11 @@ export function PersonHeaderCard({
                 <CopyableText value={person.publicId} className="font-mono text-foreground" />
               </Badge>
               <Badge variant="outline">{genderLabel(person.gender, t)}</Badge>
+              {person.restriction && (
+                <Badge className="border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400">
+                  {t(`person.restriction.${person.restriction}`)}
+                </Badge>
+              )}
               {person.relationshipToRoot && (
                 <Badge className="border-transparent bg-primary/10 text-primary">
                   {relationshipToRootLabel(person.relationshipToRoot, t)}

@@ -170,7 +170,13 @@ function isFullWidthPath(pathname: string): boolean {
     pathname === "/tools" ||
     pathname === "/tree" ||
     pathname === "/photos" ||
-    /^\/people\/[^/]+$/.test(pathname)
+    /^\/people\/[^/]+$/.test(pathname) ||
+    // An album's own page (toolbar + photo grid/book) is the same "wide
+    // content" shape as /photos itself — missing this meant `<main>` flipped
+    // from full-width to the narrow centered `max-w-5xl` column for one
+    // frame while navigating from the album list into an album, visible as
+    // a layout-shift flicker mid-navigation.
+    /^\/photos\/[^/]+$/.test(pathname)
   );
 }
 

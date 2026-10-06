@@ -8,6 +8,17 @@ export const genderSchema = z.enum(["M", "F", "U"]);
 export type Gender = z.infer<typeof genderSchema>;
 
 export const personIdSchema = z.uuid();
+
+/**
+ * A record-level access restriction, as GEDCOM's `RESN` defines it:
+ * `privacy` (details withheld from others), `confidential` (the whole record
+ * withheld), `locked` (not to be edited). A closed enum rather than a
+ * configurable-options topic on purpose — code will branch on the exact
+ * value once living-person redaction exists, the structural exception
+ * CLAUDE.md allows. Stored as plain `text` (validated here), not a pgEnum.
+ */
+export const personRestrictionSchema = z.enum(["privacy", "confidential", "locked"]);
+export type PersonRestriction = z.infer<typeof personRestrictionSchema>;
 export type PersonId = z.infer<typeof personIdSchema>;
 
 /**
@@ -77,6 +88,7 @@ export const personSchema = personNameSchema.extend({
    * (redacting details for living people) aren't a retrofit.
    */
   isLiving: z.boolean(),
+  restriction: personRestrictionSchema.nullable(),
 });
 export type Person = z.infer<typeof personSchema>;
 
@@ -97,6 +109,7 @@ export const createPersonSchema = z.object({
   burialPlace: z.string().nullable().default(null),
   notes: z.string().nullable().default(null),
   isLiving: z.boolean().default(true),
+  restriction: personRestrictionSchema.nullable().default(null),
 });
 export type CreatePerson = z.infer<typeof createPersonSchema>;
 
@@ -117,6 +130,7 @@ export const updatePersonSchema = z.object({
   burialPlace: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   isLiving: z.boolean().optional(),
+  restriction: personRestrictionSchema.nullable().optional(),
 });
 export type UpdatePerson = z.infer<typeof updatePersonSchema>;
 

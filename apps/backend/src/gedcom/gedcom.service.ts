@@ -1,34 +1,66 @@
-import { GedcomWriter, gedcomPointer, toGedcomDate } from "@genealogy/core";
+import {
+  GEDCOM_EVENT_DETAIL_TAGS,
+  GEDCOM_PEDIGREE_VALUES,
+  GedcomWriter,
+  gedcomEventTag,
+  gedcomNameType,
+  gedcomPointer,
+  gedcomQuay,
+  toGedcomDate,
+  type Gender,
+} from "@genealogy/core";
 import {
   allParentOfEdges,
+  allSpouseOfEdges,
+  associations,
   citations,
+  configurableOptions,
   personEvents,
   personNames,
   persons,
+  places,
+  researchNotes,
   sources,
   unions,
+  type AssociationRow,
   type CitationRow,
   type Database,
   type PersonEventRow,
   type PersonNameRow,
   type PersonRow,
+  type ResearchNoteRow,
   type SourceRow,
   type UnionRow,
 } from "@genealogy/db";
 import { Inject, Injectable } from "@nestjs/common";
+import { eq, sql } from "drizzle-orm";
 import type { Pool } from "pg";
 
 import { DRIZZLE, PG_POOL } from "../database/database.module.js";
 
-const GEDCOM_VITAL_EVENT_TAGS: Record<string, string> = {
-  birth: "BIRT",
-  death: "DEAT",
-  burial: "BURI",
-};
+/** Every whole-tree lookup the per-record writers need, built once per export. */
+interface ExportLookups {
+  personXref: Map<string, string>;
+  sourceXref: Map<string, string>;
+  citationsByKey: Map<string, CitationRow[]>;
+  eventTypeLabels: Map<string, string>;
+  roleLabels: Map<string, string>;
+  /** Associations by their context: an event id, a union id, or (no context) the owner's person id. */
+  associationsByEvent: Map<string, AssociationRow[]>;
+  associationsByUnion: Map<string, AssociationRow[]>;
+  associationsByPerson: Map<string, AssociationRow[]>;
+  researchNotesByPerson: Map<string, ResearchNoteRow[]>;
+  /** Place text → coordinates, from the `places` table. */
+  placeCoordinates: Map<string, { x: number; y: number }>;
+}
 
 interface Family {
-  parentIds: string[];
-  childIds: { id: string; parentage: string }[];
+  xref: string;
+  /** GEDCOM 5.5.1's two parent slots — see `assignParentSlots`. */
+  husbandId: string | null;
+  wifeId: string | null;
+  /** Each child's parentage *per parent*, since a child can be one parent's by birth and the other's by marriage. */
+  children: { id: string; parentage: Map<string, string> }[];
   union: UnionRow | undefined;
 }
 
@@ -36,9 +68,11 @@ interface Family {
  * Builds a GEDCOM 5.5.1 export of the whole tree in one pass — read-only, no
  * queue needed (unlike `BackupService`'s `pg_dump`, this is plain text, not a
  * large binary, so it's comfortably synchronous at this app's scale). See
- * "GEDCOM export" in TECH_STACK.md for the deliberate scope cuts: no `OBJE`
- * (photos aren't portable outside this app), no research/user notes (not
- * part of GEDCOM's model), import is a separate future feature.
+ * "GEDCOM import and export" in TECH_STACK.md for the deliberate scope cuts
+ * (no `OBJE` — photos aren't portable outside this app; no research/user
+ * notes — not part of GEDCOM's model) and for which of this app's own
+ * fields travel as underscore tags (`_STAT`, `_DETAIL`, ...) that other
+ * programs ignore but `GedcomImportService` reads back.
  */
 @Injectable()
 export class GedcomService {
@@ -48,35 +82,70 @@ export class GedcomService {
   ) {}
 
   /**
-   * These seven reads run as separate, unsynchronized queries, not one
-   * consistent snapshot — a person created (with its graph edges) between
-   * two of them could transiently appear in one but not the other, dropped
-   * by the "resolves to nothing" filter below rather than surfaced as a
-   * malformed pointer. Judged an acceptable tradeoff at this app's scale
-   * (a single family, low write concurrency) rather than wrapping the whole
-   * export in one transaction for a vanishingly rare race.
+   * These reads run as separate, unsynchronized queries, not one consistent
+   * snapshot — a person created (with its graph edges) between two of them
+   * could transiently appear in one but not the other, dropped by the
+   * "resolves to nothing" filters below rather than surfaced as a malformed
+   * pointer. Judged an acceptable tradeoff at this app's scale (a single
+   * family, low write concurrency) rather than wrapping the whole export in
+   * one transaction for a vanishingly rare race.
+   *
+   * `submitterName` fills the SUBM record 5.5.1 requires — whoever is
+   * signed in and exporting.
    */
-  async exportAll(): Promise<string> {
-    const [allPersons, allNames, allEvents, allUnions, allSources, allCitations, allEdges] =
-      await Promise.all([
-        this.db.select().from(persons),
-        this.db.select().from(personNames),
-        this.db.select().from(personEvents),
-        this.db.select().from(unions),
-        this.db.select().from(sources),
-        this.db.select().from(citations),
-        allParentOfEdges(this.pool),
-      ]);
+  async exportAll(submitterName: string): Promise<string> {
+    const [
+      allPersons,
+      allNames,
+      allEvents,
+      allUnions,
+      allSources,
+      allCitations,
+      eventTypeOptions,
+      roleOptions,
+      allAssociations,
+      allResearchNotes,
+      allPlaces,
+      allEdges,
+      allSpouseEdges,
+    ] = await Promise.all([
+      this.db.select().from(persons),
+      this.db.select().from(personNames),
+      this.db.select().from(personEvents),
+      this.db.select().from(unions),
+      this.db.select().from(sources),
+      this.db.select().from(citations),
+      this.db
+        .select({ key: configurableOptions.key, label: configurableOptions.label })
+        .from(configurableOptions)
+        .where(eq(configurableOptions.topic, "event_type")),
+      this.db
+        .select({ key: configurableOptions.key, label: configurableOptions.label })
+        .from(configurableOptions)
+        .where(eq(configurableOptions.topic, "association_role")),
+      this.db.select().from(associations),
+      this.db.select().from(researchNotes),
+      this.loadPlaces(),
+      allParentOfEdges(this.pool),
+      allSpouseOfEdges(this.pool),
+    ]);
 
     const writer = new GedcomWriter();
     writer.line(0, "HEAD");
     writer.line(1, "SOUR", "genealogy-app");
+    const today = new Date().toISOString().slice(0, 10);
+    writer.line(1, "DATE", toGedcomDate({ original: today, earliest: today, latest: today }));
+    writer.line(1, "SUBM", gedcomPointer("U1"));
     writer.line(1, "GEDC");
     writer.line(2, "VERS", "5.5.1");
+    writer.line(2, "FORM", "LINEAGE-LINKED");
     writer.line(1, "CHAR", "UTF-8");
+    writer.line(0, "SUBM", undefined, "U1");
+    writer.line(1, "NAME", submitterName || "Unknown");
 
     const personXref = new Map<string, string>();
     allPersons.forEach((person, index) => personXref.set(person.id, `I${index + 1}`));
+    const genderById = new Map(allPersons.map((person) => [person.id, person.gender]));
 
     const namesByPerson = groupBy(allNames, (name) => name.personId);
     const eventsByPerson = groupBy(allEvents, (event) => event.personId);
@@ -93,50 +162,161 @@ export class GedcomService {
 
     const sourceXref = new Map<string, string>();
     allSources.forEach((source, index) => sourceXref.set(source.id, `S${index + 1}`));
+    // One REPO record per distinct repository name — `sources.repository` is
+    // free text, so "the same repository" can only mean "the same text".
+    const repoXref = new Map<string, string>();
+    for (const source of allSources) {
+      const name = source.repository?.trim();
+      if (name && !repoXref.has(name)) repoXref.set(name, `R${repoXref.size + 1}`);
+    }
 
+    const families = this.buildFamilies(
+      allEdges,
+      allUnions,
+      allSpouseEdges,
+      genderById,
+      personXref,
+    );
+    const familiesAsChild = new Map<string, Family[]>();
+    const familiesAsSpouse = new Map<string, Family[]>();
+    for (const family of families) {
+      for (const child of family.children) push(familiesAsChild, child.id, family);
+      for (const id of [family.husbandId, family.wifeId])
+        if (id) push(familiesAsSpouse, id, family);
+    }
+
+    const lookups: ExportLookups = {
+      personXref,
+      sourceXref,
+      citationsByKey,
+      eventTypeLabels: new Map(eventTypeOptions.map((option) => [option.key, option.label])),
+      roleLabels: new Map(roleOptions.map((option) => [option.key, option.label])),
+      associationsByEvent: groupBy(
+        allAssociations.filter((row) => row.eventId),
+        (row) => row.eventId!,
+      ),
+      associationsByUnion: groupBy(
+        allAssociations.filter((row) => row.unionId),
+        (row) => row.unionId!,
+      ),
+      associationsByPerson: groupBy(
+        allAssociations.filter((row) => !row.eventId && !row.unionId),
+        (row) => row.personId,
+      ),
+      researchNotesByPerson: groupBy(allResearchNotes, (row) => row.personId),
+      placeCoordinates: new Map(allPlaces.map((place) => [place.name, place.location])),
+    };
     for (const person of allPersons) {
       this.writeIndividual(
         writer,
         person,
-        personXref,
-        namesByPerson.get(person.id) ?? [],
-        eventsByPerson.get(person.id) ?? [],
-        citationsByKey,
-        sourceXref,
+        {
+          names: namesByPerson.get(person.id) ?? [],
+          events: eventsByPerson.get(person.id) ?? [],
+          familiesAsChild: familiesAsChild.get(person.id) ?? [],
+          familiesAsSpouse: familiesAsSpouse.get(person.id) ?? [],
+        },
+        lookups,
       );
     }
 
-    // Drop a family that resolves to nothing at all (every parent/child id
-    // is graph/Postgres drift with no matching `persons` row) rather than
-    // emit a vestigial `FAM` record with no HUSB/WIFE/CHIL/MARR in it.
-    const families = this.buildFamilies(allEdges, allUnions).filter(
-      (family) =>
-        family.parentIds.some((id) => personXref.has(id)) ||
-        family.childIds.some((child) => personXref.has(child.id)),
-    );
-    families.forEach((family, index) => {
-      this.writeFamily(writer, family, `F${index + 1}`, personXref, citationsByKey, sourceXref);
-    });
+    for (const family of families) {
+      this.writeFamily(writer, family, lookups);
+    }
 
     for (const source of allSources) {
-      this.writeSource(writer, source, sourceXref.get(source.id)!);
+      this.writeSource(writer, source, sourceXref.get(source.id)!, repoXref);
+    }
+    for (const [name, xref] of repoXref) {
+      writer.line(0, "REPO", undefined, xref);
+      writer.line(1, "NAME", name);
     }
 
     writer.line(0, "TRLR");
     return writer.toString();
   }
 
+  /**
+   * Every row of `places`, or none if the table doesn't exist yet — it's
+   * created by the PostGIS migration, which fails on a server without the
+   * PostGIS packages (see 0033_places_postgis.sql). Export worked before
+   * places existed and must keep working on such a database.
+   */
+  private async loadPlaces(): Promise<{ name: string; location: { x: number; y: number } }[]> {
+    const exists = await this.db.execute<{ table: string | null }>(
+      sql`select to_regclass('public.places')::text as table`,
+    );
+    if (!exists.rows[0]?.table) return [];
+    return this.db.select({ name: places.name, location: places.location }).from(places);
+  }
+
+  /** `3 MAP / 4 LATI N55.94 / 4 LONG E9.13` under a PLAC at `level`, when the place has coordinates. */
+  private writeCoordinates(
+    writer: GedcomWriter,
+    level: number,
+    place: string,
+    lookups: ExportLookups,
+  ): void {
+    const location = lookups.placeCoordinates.get(place);
+    if (!location) return;
+    writer.line(level + 1, "MAP");
+    writer.line(level + 2, "LATI", gedcomCoordinate(location.y, "N", "S"));
+    writer.line(level + 2, "LONG", gedcomCoordinate(location.x, "E", "W"));
+  }
+
+  /**
+   * GEDCOM `ASSO` for someone in the tree; this app's own `_ASSO <name>`
+   * for a name-only associate (5.5.1's ASSO must point at a record). RELA
+   * carries the role's label — or an "other" role's own label — which the
+   * importer matches back on key or label.
+   */
+  private writeAssociations(
+    writer: GedcomWriter,
+    level: number,
+    rows: AssociationRow[] | undefined,
+    lookups: ExportLookups,
+  ): void {
+    for (const row of rows ?? []) {
+      if (row.associatePersonId) {
+        const xref = lookups.personXref.get(row.associatePersonId);
+        if (!xref) continue;
+        writer.line(level, "ASSO", gedcomPointer(xref));
+      } else if (row.associateName) {
+        writer.line(level, "_ASSO", row.associateName);
+      } else {
+        continue;
+      }
+      writer.line(
+        level + 1,
+        "RELA",
+        row.role === "other"
+          ? (row.label ?? "Other")
+          : (lookups.roleLabels.get(row.role) ?? row.role),
+      );
+      if (row.notes) writer.line(level + 1, "NOTE", row.notes);
+      this.writeCitations(
+        writer,
+        level + 1,
+        lookups.citationsByKey.get(`association:${row.id}`),
+        lookups.sourceXref,
+      );
+    }
+  }
+
   private writeIndividual(
     writer: GedcomWriter,
     person: PersonRow,
-    personXref: Map<string, string>,
-    names: PersonNameRow[],
-    events: PersonEventRow[],
-    citationsByKey: Map<string, CitationRow[]>,
-    sourceXref: Map<string, string>,
+    context: {
+      names: PersonNameRow[];
+      events: PersonEventRow[];
+      familiesAsChild: Family[];
+      familiesAsSpouse: Family[];
+    },
+    lookups: ExportLookups,
   ): void {
-    const xref = personXref.get(person.id)!;
-    writer.line(0, "INDI", undefined, xref);
+    const { citationsByKey, sourceXref } = lookups;
+    writer.line(0, "INDI", undefined, lookups.personXref.get(person.id)!);
+    if (person.restriction) writer.line(1, "RESN", person.restriction);
     writer.line(1, "NAME", `${person.given} /${person.surname}/`);
     if (person.given) writer.line(2, "GIVN", person.given);
     if (person.surname) writer.line(2, "SURN", person.surname);
@@ -145,27 +325,27 @@ export class GedcomService {
     writer.line(1, "SEX", person.gender);
     this.writeCitations(writer, 2, citationsByKey.get(`person:${person.id}`), sourceXref);
 
-    for (const name of names) {
+    for (const name of context.names) {
       writer.line(1, "NAME", `${name.given} /${name.surname}/`);
-      writer.line(2, "TYPE", name.nameType);
+      if (name.given) writer.line(2, "GIVN", name.given);
+      if (name.surname) writer.line(2, "SURN", name.surname);
+      writer.line(2, "TYPE", gedcomNameType(name.nameType));
+      // 5.5.1's NAME structure has no date; `_DATE` keeps "known by this
+      // name since" for this app's own importer.
+      if (name.since) writer.line(2, "_DATE", toGedcomDate(name.since));
+      if (name.notes) writer.line(2, "NOTE", name.notes);
       this.writeCitations(writer, 2, citationsByKey.get(`name:${name.id}`), sourceXref);
     }
 
     let hasDeathEvent = false;
-    for (const event of events) {
-      const vitalTag = GEDCOM_VITAL_EVENT_TAGS[event.eventType];
+    for (const event of context.events) {
       if (event.eventType === "death") hasDeathEvent = true;
-      if (vitalTag) {
-        writer.line(1, vitalTag);
-      } else {
-        writer.line(1, "EVEN");
-        writer.line(2, "TYPE", event.label ?? event.eventType);
-      }
-      const level = vitalTag ? 2 : 3;
-      if (event.date) writer.line(level, "DATE", toGedcomDate(event.date));
-      if (event.place) writer.line(level, "PLAC", event.place);
-      if (event.notes) writer.line(level, "NOTE", event.notes);
-      this.writeCitations(writer, level, citationsByKey.get(`event:${event.id}`), sourceXref);
+      this.writeEvent(writer, event, lookups);
+      this.writeCitations(writer, 2, citationsByKey.get(`event:${event.id}`), sourceXref);
+      // ASSO under an event is GEDCOM 7's form and what Gramps/RootsMagic
+      // write; 5.5.1 only defines it under INDI, which is where roles with
+      // no event go below.
+      this.writeAssociations(writer, 2, lookups.associationsByEvent.get(event.id), lookups);
     }
     // `isLiving: false` with no recorded death event still means "known
     // dead, date unknown" — GEDCOM's own convention for that is a bare
@@ -173,105 +353,230 @@ export class GedcomService {
     // (which GEDCOM readers take as "unknown whether living").
     if (!person.isLiving && !hasDeathEvent) writer.line(1, "DEAT");
 
+    // The INDI → FAM back-links 5.5.1 expects alongside FAM's own
+    // HUSB/WIFE/CHIL — several programs build their family view from these.
+    for (const family of context.familiesAsChild) {
+      writer.line(1, "FAMC", gedcomPointer(family.xref));
+      const pedigree = sharedPedigree(family, person.id);
+      if (pedigree) writer.line(2, "PEDI", pedigree);
+    }
+    for (const family of context.familiesAsSpouse) {
+      writer.line(1, "FAMS", gedcomPointer(family.xref));
+    }
+
+    this.writeAssociations(writer, 1, lookups.associationsByPerson.get(person.id), lookups);
+
+    // Research notes as the `_TODO` Legacy and RootsMagic use for research
+    // tasks — TYPE carries the note type, `_STAT DONE` a resolved one.
+    for (const note of lookups.researchNotesByPerson.get(person.id) ?? []) {
+      writer.line(1, "_TODO", note.body);
+      writer.line(2, "TYPE", note.noteType);
+      if (note.resolved) writer.line(2, "_STAT", "DONE");
+    }
+
     if (person.notes) writer.line(1, "NOTE", person.notes);
   }
 
   /**
-   * Groups `PARENT_OF` edges by each child's full parent set, then folds in
-   * `unions` rows that match a family's parent pair (or, for a childless
-   * union, creates a family from the union alone). Two parents who married,
-   * divorced and remarried each other collapse to one `FAM` record here —
-   * children aren't linked to a specific `unions` row in this data model,
-   * only to a parent pair, so there is no correct way to split them; the
-   * first union found for the pair (preferring a non-terminal `status`) is
-   * the one whose `MARR` detail gets attached.
+   * An event as its own GEDCOM tag where one exists (`CHR`, `OCCU`,
+   * `RESI`, ...), else `EVEN` + `TYPE` with the option's label (or an
+   * "other" event's own label). `details` go out as the standard sub-tag
+   * where GEDCOM has one (`OCCU`'s value, `CAUS`, `ADDR`, `AGNC`) and as
+   * `_DETAIL` otherwise.
+   */
+  private writeEvent(writer: GedcomWriter, event: PersonEventRow, lookups: ExportLookups): void {
+    const mapped = gedcomEventTag(event.eventType);
+    const details = { ...event.details };
+    let value: string | undefined;
+    if (mapped?.valueDetail) {
+      value = details[mapped.valueDetail];
+      delete details[mapped.valueDetail];
+    }
+    writer.line(1, mapped?.tag ?? "EVEN", value);
+    if (!mapped) {
+      writer.line(
+        2,
+        "TYPE",
+        event.eventType === "other"
+          ? (event.label ?? "Other")
+          : (lookups.eventTypeLabels.get(event.eventType) ?? event.eventType),
+      );
+    }
+    if (event.date) writer.line(2, "DATE", toGedcomDate(event.date));
+    if (event.place) {
+      writer.line(2, "PLAC", event.place);
+      this.writeCoordinates(writer, 2, event.place, lookups);
+    }
+    const detailTags = GEDCOM_EVENT_DETAIL_TAGS[event.eventType] ?? {};
+    for (const [key, detailValue] of Object.entries(details)) {
+      if (!detailValue) continue;
+      const tag = detailTags[key];
+      if (tag) {
+        writer.line(2, tag, detailValue);
+      } else {
+        writer.line(2, "_DETAIL", detailValue);
+        writer.line(3, "TYPE", key);
+      }
+    }
+    if (event.notes) writer.line(2, "NOTE", event.notes);
+  }
+
+  /**
+   * Turns `PARENT_OF` edges, `unions` rows and `SPOUSE_OF` edges into FAM
+   * records:
+   *
+   * - A child's parents (up to two) form one family, each parent's
+   *   parentage kept separately. A child with more than two parents (birth
+   *   *and* adoptive parents, say) can't fit 5.5.1's two slots, so their
+   *   parents are split by parentage into one family per pair.
+   * - Each `unions` row is a family: the first (by start date) for a pair
+   *   joins the family their shared children are in, any later one — a
+   *   couple who divorced and remarried — becomes its own childless FAM, so
+   *   both marriages' details survive. Children aren't linked to a specific
+   *   union in this data model, so they stay with the first.
+   * - A `SPOUSE_OF` edge with no union and no shared children still gets a
+   *   (bare HUSB/WIFE) family, or the couple would vanish from the export.
+   *
+   * Ids with no `persons` row (graph/Postgres drift — see the two-store
+   * consistency checker) are left out, and a family left with nobody in it
+   * at all is dropped rather than written as an empty record.
    */
   private buildFamilies(
     edges: { parentId: string; childId: string; parentage: string }[],
     unionRows: UnionRow[],
-  ): Family[] {
-    const childrenByParentSet = new Map<string, Family>();
-    const edgesByChild = groupBy(edges, (edge) => edge.childId);
-    for (const [childId, childEdges] of edgesByChild) {
-      const parentIds = [...new Set(childEdges.map((edge) => edge.parentId))].toSorted();
-      const key = parentIds.join(",");
-      const family = childrenByParentSet.get(key);
-      const parentage = childEdges[0]?.parentage ?? "unknown";
-      if (family) {
-        family.childIds.push({ id: childId, parentage });
-      } else {
-        childrenByParentSet.set(key, {
-          parentIds,
-          childIds: [{ id: childId, parentage }],
-          union: undefined,
-        });
-      }
-    }
-
-    for (const union of unionRows) {
-      const key = [union.personAId, union.personBId].toSorted().join(",");
-      const family = childrenByParentSet.get(key);
-      if (family) {
-        if (!family.union || (family.union.status !== "married" && union.status === "married")) {
-          family.union = union;
-        }
-      } else {
-        childrenByParentSet.set(key, {
-          parentIds: [union.personAId, union.personBId],
-          childIds: [],
-          union,
-        });
-      }
-    }
-
-    return [...childrenByParentSet.values()];
-  }
-
-  private writeFamily(
-    writer: GedcomWriter,
-    family: Family,
-    xref: string,
+    spouseEdges: { aId: string; bId: string }[],
+    genderById: Map<string, Gender>,
     personXref: Map<string, string>,
-    citationsByKey: Map<string, CitationRow[]>,
-    sourceXref: Map<string, string>,
-  ): void {
-    writer.line(0, "FAM", undefined, xref);
-    // GEDCOM 5.5.1's `FAM` record only has HUSB/WIFE slots, no third "parent"
-    // tag — assigned by gender when known (M/F, this app's own vocabulary),
-    // and by a stable id order when not, since two `U`/same-gender parents
-    // can't be represented more precisely in 5.5.1.
-    const [firstId, secondId] = family.parentIds;
-    const firstXref = firstId ? personXref.get(firstId) : undefined;
-    const secondXref = secondId ? personXref.get(secondId) : undefined;
-    if (firstXref) writer.line(1, "HUSB", gedcomPointer(firstXref));
-    if (secondXref) writer.line(1, "WIFE", gedcomPointer(secondXref));
-    for (const { id, parentage } of family.childIds) {
-      // A child id with no matching `persons` row is graph/Postgres drift
-      // (see the two-store consistency checker) — skip rather than emit a
-      // malformed pointer to a record that doesn't exist in this export.
-      const childXref = personXref.get(id);
-      if (!childXref) continue;
-      writer.line(1, "CHIL", gedcomPointer(childXref));
-      writer.line(2, "PEDI", parentage);
+  ): Family[] {
+    const known = (id: string): boolean => personXref.has(id);
+    const byParents = new Map<
+      string,
+      Omit<Family, "xref" | "husbandId" | "wifeId"> & { parentIds: string[] }
+    >();
+    const extra: (Omit<Family, "xref" | "husbandId" | "wifeId"> & { parentIds: string[] })[] = [];
+    const familyFor = (parentIds: string[]) => {
+      const key = parentIds.toSorted().join(",");
+      let family = byParents.get(key);
+      if (!family) {
+        family = { parentIds: parentIds.toSorted(), children: [], union: undefined };
+        byParents.set(key, family);
+      }
+      return family;
+    };
+
+    for (const [childId, childEdges] of groupBy(edges, (edge) => edge.childId)) {
+      if (!known(childId)) continue;
+      const parentEdges = childEdges.filter((edge) => known(edge.parentId));
+      const groups =
+        parentEdges.length <= 2
+          ? [parentEdges]
+          : [...groupBy(parentEdges, (edge) => edge.parentage).values()].flatMap((group) =>
+              chunk(group, 2),
+            );
+      for (const group of groups) {
+        if (group.length === 0) continue;
+        familyFor(group.map((edge) => edge.parentId)).children.push({
+          id: childId,
+          parentage: new Map(group.map((edge) => [edge.parentId, edge.parentage])),
+        });
+      }
     }
-    if (family.union) {
-      writer.line(1, "MARR");
-      if (family.union.startDate) writer.line(2, "DATE", toGedcomDate(family.union.startDate));
-      if (family.union.startPlace) writer.line(2, "PLAC", family.union.startPlace);
-      if (family.union.notes) writer.line(2, "NOTE", family.union.notes);
-      this.writeCitations(writer, 2, citationsByKey.get(`union:${family.union.id}`), sourceXref);
+
+    const byStart = unionRows.toSorted((a, b) =>
+      (a.startDate?.earliest ?? "9999").localeCompare(b.startDate?.earliest ?? "9999"),
+    );
+    for (const union of byStart) {
+      const pair = [union.personAId, union.personBId].filter(known);
+      if (pair.length === 0) continue;
+      const family = familyFor(pair);
+      if (family.union) extra.push({ parentIds: family.parentIds, children: [], union });
+      else family.union = union;
+    }
+
+    for (const { aId, bId } of spouseEdges) {
+      if (known(aId) && known(bId)) familyFor([aId, bId]);
+    }
+
+    return [...byParents.values(), ...extra].map((family, index) => {
+      const { husbandId, wifeId } = assignParentSlots(family.parentIds, genderById);
+      return {
+        xref: `F${index + 1}`,
+        husbandId,
+        wifeId,
+        children: family.children,
+        union: family.union,
+      };
+    });
+  }
+
+  private writeFamily(writer: GedcomWriter, family: Family, lookups: ExportLookups): void {
+    const { personXref, citationsByKey, sourceXref } = lookups;
+    writer.line(0, "FAM", undefined, family.xref);
+    if (family.husbandId) writer.line(1, "HUSB", gedcomPointer(personXref.get(family.husbandId)!));
+    if (family.wifeId) writer.line(1, "WIFE", gedcomPointer(personXref.get(family.wifeId)!));
+    for (const child of family.children) {
+      writer.line(1, "CHIL", gedcomPointer(personXref.get(child.id)!));
+      // The standard place for parentage is the child's own `FAMC.PEDI`
+      // (see `writeIndividual`), which only fits when both parents share one
+      // of 5.5.1's four values. Otherwise — a stepfather, a parentage this
+      // app's Settings added — each parent's goes here as Ancestry/FTM's
+      // `_FREL`/`_MREL` (HUSB/WIFE slot respectively), which importers
+      // including this app's own already read.
+      if (!sharedPedigree(family, child.id)) {
+        const father = family.husbandId ? child.parentage.get(family.husbandId) : undefined;
+        const mother = family.wifeId ? child.parentage.get(family.wifeId) : undefined;
+        if (father) writer.line(2, "_FREL", father);
+        if (mother) writer.line(2, "_MREL", mother);
+      }
+    }
+
+    const union = family.union;
+    if (!union) return;
+    // Status only as this app's own `_STAT` when the events below don't
+    // already say it — `MARR` alone reads as married, `DIV` as divorced.
+    if (union.status !== "married" && union.status !== "divorced" && union.status !== "annulled") {
+      writer.line(1, "_STAT", union.status);
+    }
+    writer.line(1, "MARR");
+    if (union.startDate) writer.line(2, "DATE", toGedcomDate(union.startDate));
+    if (union.startPlace) {
+      writer.line(2, "PLAC", union.startPlace);
+      this.writeCoordinates(writer, 2, union.startPlace, lookups);
+    }
+    if (union.notes) writer.line(2, "NOTE", union.notes);
+    this.writeCitations(writer, 2, citationsByKey.get(`union:${union.id}`), sourceXref);
+    // Marriage witnesses, under the MARR they witnessed.
+    this.writeAssociations(writer, 2, lookups.associationsByUnion.get(union.id), lookups);
+    const isEnded = union.status === "divorced" || union.status === "annulled";
+    if (isEnded || union.endDate || union.endPlace) {
+      // DIV/ANUL are 5.5.1's; any other ending (a spouse's death,
+      // separation) has no standard tag and goes out as `_END`.
+      const tag =
+        union.status === "annulled" ? "ANUL" : union.status === "divorced" ? "DIV" : "_END";
+      writer.line(1, tag);
+      if (union.endDate) writer.line(2, "DATE", toGedcomDate(union.endDate));
+      if (union.endPlace) {
+        writer.line(2, "PLAC", union.endPlace);
+        this.writeCoordinates(writer, 2, union.endPlace, lookups);
+      }
     }
   }
 
-  private writeSource(writer: GedcomWriter, source: SourceRow, xref: string): void {
+  private writeSource(
+    writer: GedcomWriter,
+    source: SourceRow,
+    xref: string,
+    repoXref: Map<string, string>,
+  ): void {
     writer.line(0, "SOUR", undefined, xref);
     writer.line(1, "TITL", source.title);
     if (source.author) writer.line(1, "AUTH", source.author);
     if (source.publication) writer.line(1, "PUBL", source.publication);
-    // Kept simple deliberately: repository/source-type fold into a note
-    // rather than a separate GEDCOM `REPO` record structure.
-    const extra = [source.repository, source.sourceType].filter(Boolean).join(" — ");
-    if (extra) writer.line(1, "NOTE", extra);
+    const repo = source.repository?.trim();
+    if (repo) writer.line(1, "REPO", gedcomPointer(repoXref.get(repo)!));
+    // Free text ("parish register", "1920 census") — no 5.5.1 field fits;
+    // `REPO.CALN.MEDI` is a fixed media vocabulary and needs a call number.
+    if (source.sourceType) writer.line(1, "_TYPE", source.sourceType);
   }
 
   private writeCitations(
@@ -285,27 +590,81 @@ export class GedcomService {
       if (!xref) continue;
       writer.line(level, "SOUR", gedcomPointer(xref));
       if (citation.page) writer.line(level + 1, "PAGE", citation.page);
-      const detail = [
-        citation.note,
-        citation.confidence ? `confidence: ${citation.confidence}` : null,
-      ]
+      // No 5.5.1 equivalents — this app's own tags, read back on import.
+      if (citation.volume) writer.line(level + 1, "_VOLUME", citation.volume);
+      if (citation.entryId) writer.line(level + 1, "_ENTRY", citation.entryId);
+      if (citation.certificateNumber) {
+        writer.line(level + 1, "_CERT", citation.certificateNumber);
+      }
+      // The four seeded confidence levels are QUAY 0–3; a level added in
+      // Settings has no QUAY equivalent and is folded into the text instead
+      // (the importer reads that suffix back).
+      const quay = gedcomQuay(citation.confidence);
+      const detail = [citation.note, quay ? null : `confidence: ${citation.confidence}`]
         .filter(Boolean)
         .join(" — ");
       if (detail) {
         writer.line(level + 1, "DATA");
         writer.line(level + 2, "TEXT", detail);
       }
+      if (quay) writer.line(level + 1, "QUAY", quay);
     }
   }
 }
 
+/**
+ * GEDCOM 5.5.1's FAM has only HUSB/WIFE slots. Gender decides where it can
+ * (a lone mother goes in WIFE, not HUSB); two `U`/same-gender parents keep
+ * their stable id order, since 5.5.1 can't represent them more precisely.
+ */
+function assignParentSlots(
+  parentIds: string[],
+  genderById: Map<string, Gender>,
+): { husbandId: string | null; wifeId: string | null } {
+  const [first, second] = parentIds;
+  if (!first) return { husbandId: null, wifeId: null };
+  if (!second) {
+    return genderById.get(first) === "F"
+      ? { husbandId: null, wifeId: first }
+      : { husbandId: first, wifeId: null };
+  }
+  const firstGender = genderById.get(first);
+  const secondGender = genderById.get(second);
+  const swap =
+    (firstGender === "F" && secondGender !== "F") || (secondGender === "M" && firstGender !== "M");
+  return swap ? { husbandId: second, wifeId: first } : { husbandId: first, wifeId: second };
+}
+
+/** GEDCOM 5.5.1's coordinate form: hemisphere letter + decimal degrees, at most 6 places (~0.1 m). */
+function gedcomCoordinate(value: number, positive: string, negative: string): string {
+  return `${value < 0 ? negative : positive}${Number(Math.abs(value).toFixed(6))}`;
+}
+
+/** The child's parentage when every parent in this family shares one valid `PEDI` value — else `null`, and `_FREL`/`_MREL` carry it. */
+function sharedPedigree(family: Family, childId: string): string | null {
+  const child = family.children.find((entry) => entry.id === childId);
+  if (!child) return null;
+  const values = new Set(child.parentage.values());
+  const [only] = values;
+  return values.size === 1 && only && GEDCOM_PEDIGREE_VALUES.has(only) ? only : null;
+}
+
 function groupBy<T, K>(items: T[], key: (item: T) => K): Map<K, T[]> {
   const map = new Map<K, T[]>();
-  for (const item of items) {
-    const k = key(item);
-    const existing = map.get(k);
-    if (existing) existing.push(item);
-    else map.set(k, [item]);
-  }
+  for (const item of items) push(map, key(item), item);
   return map;
+}
+
+function push<K, V>(map: Map<K, V[]>, key: K, value: V): void {
+  const existing = map.get(key);
+  if (existing) existing.push(value);
+  else map.set(key, [value]);
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let start = 0; start < items.length; start += size) {
+    result.push(items.slice(start, start + size));
+  }
+  return result;
 }

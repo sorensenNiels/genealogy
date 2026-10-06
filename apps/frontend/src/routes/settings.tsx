@@ -52,6 +52,7 @@ function topicLabels(t: TFunction): Record<ConfigurableTopic, string> {
     union_status: t("settings.topic.union_status"),
     parentage: t("settings.topic.parentage"),
     research_note_type: t("settings.topic.research_note_type"),
+    association_role: t("settings.topic.association_role"),
   };
 }
 

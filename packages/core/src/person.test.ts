@@ -113,6 +113,7 @@ describe("createPersonSchema", () => {
       burialPlace: null,
       notes: null,
       isLiving: true,
+      restriction: null,
     });
   });
 

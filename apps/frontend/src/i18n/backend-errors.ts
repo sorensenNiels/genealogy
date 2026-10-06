@@ -40,6 +40,11 @@ const EXACT: Record<string, string> = {
     "En anden har allerede identificeret sig som denne person",
   "This album has no photos to download": "Dette album har ingen fotos at downloade",
   "There are no photos to download yet": "Der er endnu ingen fotos at downloade",
+  "This GEDCOM file contains no people": "Denne GEDCOM-fil indeholder ingen personer",
+  "That event doesn't belong to this person": "Den begivenhed tilhører ikke denne person",
+  "That marriage doesn't belong to this person": "Det ægteskab tilhører ikke denne person",
+  "Not a GEDCOM file — it doesn't start with a HEAD record":
+    "Ikke en GEDCOM-fil — den starter ikke med en HEAD-post",
 };
 
 const TEMPLATES: { pattern: RegExp; translate: (...groups: string[]) => string }[] = [

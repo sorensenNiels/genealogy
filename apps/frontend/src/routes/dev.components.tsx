@@ -1,5 +1,6 @@
 import {
   joinHistoricalDateText,
+  paginate,
   resolveHistoricalDate,
   splitHistoricalDateText,
 } from "@genealogy/core";
@@ -27,6 +28,7 @@ import {
   CardTitle,
 } from "@genealogy/ui/components/card";
 import { Checkbox } from "@genealogy/ui/components/checkbox";
+import { ColorSwatchPicker } from "@genealogy/ui/components/color-swatch-picker";
 import {
   Combobox,
   ComboboxContent,
@@ -62,6 +64,7 @@ import { Input } from "@genealogy/ui/components/input";
 import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { MarkdownContent } from "@genealogy/ui/components/markdown-content";
 import { MarkdownEditor } from "@genealogy/ui/components/markdown-editor";
+import { PhotoBook, type PhotoBookPage } from "@genealogy/ui/components/photo-book";
 import { PhotoGrid, type Selection } from "@genealogy/ui/components/photo-grid";
 import { Popover, PopoverContent } from "@genealogy/ui/components/popover";
 import { ProgressBar } from "@genealogy/ui/components/progress-bar";
@@ -205,6 +208,18 @@ function ButtonRadioGroupDemo() {
   );
 }
 
+function ColorSwatchPickerDemo() {
+  const [color, setColor] = useState("#2f4034");
+  return (
+    <ColorSwatchPicker
+      aria-label="Cover colour"
+      value={color}
+      onChange={setColor}
+      colors={["#2f4034", "#6b2b2b", "#4a3322", "#23344a", "#e3dccb", "#3b3b3f"]}
+    />
+  );
+}
+
 function ImageViewerDemo() {
   const [isOpen, setIsOpen] = useState(false);
   return (
@@ -268,6 +283,71 @@ function PhotoGridDemo() {
       <p className="text-xs text-muted-foreground">
         Drag the handle to reorder, or use the checkbox to multi-select.
       </p>
+    </div>
+  );
+}
+
+const BOOK_PHOTO_COLORS = ["#f87171", "#fb923c", "#facc15", "#4ade80", "#38bdf8", "#a78bfa"];
+
+function demoCover(label: string, tone: string) {
+  return (
+    <div
+      className="flex size-full items-center justify-center rounded-r-sm"
+      style={{ background: tone }}
+    >
+      <span className="px-4 text-center font-serif text-lg text-white">{label}</span>
+    </div>
+  );
+}
+
+function PhotoBookDemo() {
+  const [physicalOpen, setPhysicalOpen] = useState(false);
+  const [virtualOpen, setVirtualOpen] = useState(false);
+
+  const photoIds = BOOK_PHOTO_COLORS.map((color, index) => ({ id: `book-photo-${index}`, color }));
+  const pages: PhotoBookPage[] = paginate(photoIds, 2).map((group, pageIndex) => ({
+    id: `page-${pageIndex}`,
+    photos: group.map((photo) => ({
+      id: photo.id,
+      src: `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Crect width='100%25' height='100%25' fill='${encodeURIComponent(photo.color)}'/%3E%3C/svg%3E`,
+      alt: "Sample photo",
+      caption: "A sample caption",
+    })),
+  }));
+  const virtualPages: PhotoBookPage[] = pages.map((page) => ({
+    ...page,
+    photos: page.photos.map((photo) => ({
+      ...photo,
+      sourceLabel: "FYS-001 · Sample physical album, p. 2",
+    })),
+  }));
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button variant="outline" onPress={() => setPhysicalOpen(true)}>
+        Open physical-style book
+      </Button>
+      <PhotoBook
+        isOpen={physicalOpen}
+        onOpenChange={setPhysicalOpen}
+        title="Mormor Else's album"
+        coverNode={demoCover("Mormor Else's album", "#2f4034")}
+        insideCoverNode={demoCover("Physical album", "#1d1c1a")}
+        pages={pages}
+        paperStyle="black"
+      />
+      <Button variant="outline" onPress={() => setVirtualOpen(true)}>
+        Open virtual-style book
+      </Button>
+      <PhotoBook
+        isOpen={virtualOpen}
+        onOpenChange={setVirtualOpen}
+        title="Christmas through the years"
+        coverNode={demoCover("Christmas through the years", "#e9ece8")}
+        insideCoverNode={demoCover("Virtual album", "#f4f3ef")}
+        pages={virtualPages}
+        paperStyle="modern"
+      />
     </div>
   );
 }
@@ -473,6 +553,10 @@ function ComponentsShowcase() {
         </Checkbox>
       </Section>
 
+      <Section title="Color Swatch Picker">
+        <ColorSwatchPickerDemo />
+      </Section>
+
       <Section title="Separator">
         <div className="w-56 space-y-2">
           <p className="text-sm">Above</p>
@@ -508,6 +592,10 @@ function ComponentsShowcase() {
 
       <Section title="Photo Grid">
         <PhotoGridDemo />
+      </Section>
+
+      <Section title="Photo Book">
+        <PhotoBookDemo />
       </Section>
 
       <Section title="Tooltip">

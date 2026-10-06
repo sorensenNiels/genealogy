@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 
+import { AssociationModule } from "../association/association.module.js";
 import { BackupModule } from "../backup/backup.module.js";
 import { GedcomModule } from "../gedcom/gedcom.module.js";
 import { ImmichModule } from "../immich/immich.module.js";
@@ -28,6 +29,7 @@ import { TrpcRouter } from "./trpc.router.js";
     BackupModule,
     GedcomModule,
     IntegrityModule,
+    AssociationModule,
   ],
   providers: [TrpcRouter],
   exports: [TrpcRouter],

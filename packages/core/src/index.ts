@@ -1,5 +1,7 @@
+export * from "./association.js";
 export * from "./citation.js";
 export * from "./configurable-options.js";
+export * from "./gedcom-import.js";
 export * from "./gedcom.js";
 export * from "./historical-date.js";
 export * from "./immich.js";
