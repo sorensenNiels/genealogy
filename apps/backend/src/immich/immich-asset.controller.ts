@@ -15,18 +15,17 @@ import {
   Post,
   Req,
   Res,
-  UnauthorizedException,
   UploadedFile,
   UseInterceptors,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { fromNodeHeaders } from "better-auth/node";
 import type { Request, Response } from "express";
 import { diskStorage } from "multer";
 import { z } from "zod";
 
 import { AUTH, type Auth } from "../auth/auth.module.js";
+import { requireRole } from "../auth/require-role.js";
 import { ImmichService, type UploadedImmichFile } from "./immich.service.js";
 
 /**
@@ -57,7 +56,7 @@ export class ImmichAssetController {
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    await this.requireSession(req);
+    await requireRole(this.auth, req, "member");
     const { buffer, contentType } = await this.immich.personThumbnail(id);
     res.setHeader("content-type", contentType);
     res.setHeader("cache-control", "private, max-age=300");
@@ -70,7 +69,7 @@ export class ImmichAssetController {
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    await this.requireSession(req);
+    await requireRole(this.auth, req, "member");
     const { buffer, contentType } = await this.immich.assetThumbnail(id);
     res.setHeader("content-type", contentType);
     res.setHeader("cache-control", "private, max-age=300");
@@ -83,7 +82,7 @@ export class ImmichAssetController {
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    await this.requireSession(req);
+    await requireRole(this.auth, req, "member");
     const { buffer, contentType } = await this.immich.assetImage(id, "preview");
     res.setHeader("content-type", contentType);
     res.setHeader("cache-control", "private, max-age=300");
@@ -96,7 +95,7 @@ export class ImmichAssetController {
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    await this.requireSession(req);
+    await requireRole(this.auth, req, "member");
     const { buffer, contentType } = await this.immich.assetOriginal(id);
     res.setHeader("content-type", contentType);
     res.setHeader("content-disposition", "attachment");
@@ -118,7 +117,7 @@ export class ImmichAssetController {
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    await this.requireSession(req);
+    await requireRole(this.auth, req, "member");
 
     const parsed = z.uuid().safeParse(rawId);
     if (!parsed.success) {
@@ -172,7 +171,13 @@ export class ImmichAssetController {
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    await this.requireSession(req);
+    try {
+      await requireRole(this.auth, req, "editor");
+    } catch (error) {
+      // multer has already written the upload to disk by now.
+      if (file) await rm(file.path, { force: true });
+      throw error;
+    }
     if (!file) {
       throw new BadRequestException("No file uploaded");
     }
@@ -196,13 +201,6 @@ export class ImmichAssetController {
       res.json(result);
     } finally {
       await rm(file.path, { force: true });
-    }
-  }
-
-  private async requireSession(req: Request): Promise<void> {
-    const session = await this.auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
-    if (!session) {
-      throw new UnauthorizedException();
     }
   }
 }

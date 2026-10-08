@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { useReadOnly } from "../lib/read-only";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,6 +32,8 @@ export function RemoveButton({
   /** The confirming action's own label — defaults to "Remove", e.g. "Delete" reads better for a person record. */
   actionLabel?: string;
 }) {
+  const isReadOnly = useReadOnly();
+  if (isReadOnly) return null;
   return (
     <AlertDialog>
       {trigger ?? (

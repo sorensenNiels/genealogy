@@ -8,13 +8,31 @@ import type { Language } from "./profile.js";
  */
 export type DatePrecision = "day" | "month" | "year";
 
+/**
+ * The calendar a date was *written* in. Gregorian is the default; Julian
+ * comes from GEDCOM's `@#DJULIAN@` escape (or GEDCOM 7's `JULIAN` prefix) —
+ * Denmark switched in 1700, England in 1752, Russia in 1918, so old records
+ * are often Julian. Other GEDCOM calendars (Hebrew, French Republican) aren't
+ * parsed: their wording is kept and the date stays `unparsed`.
+ */
+export type DateCalendar = "gregorian" | "julian";
+
 export interface ParsedDatePart {
   precision: DatePrecision;
+  /** The year as written in `calendar` — the later, new-style year when `dualYear` is set. */
   year: number;
   /** null when `precision === "year"`. */
   month: number | null;
   /** null unless `precision === "day"`. */
   day: number | null;
+  calendar: DateCalendar;
+  /**
+   * An old-style/new-style double year exactly as written ("1749/50") — used
+   * where the year began on 25 March, so a date between 1 January and
+   * 24 March belongs to two year numbers. null otherwise.
+   */
+  dualYear: string | null;
+  /** ISO day bounds, always converted to the Gregorian calendar so every date sorts and compares on one timeline. */
   earliest: string;
   latest: string;
 }
@@ -58,6 +76,8 @@ interface DateLanguage {
   andWord: string;
   fromWord: string;
   toWord: string;
+  /** Appended to a Julian date's display text. */
+  julianSuffix: string;
 }
 
 const EN: DateLanguage = {
@@ -101,6 +121,7 @@ const EN: DateLanguage = {
   andWord: "and",
   fromWord: "From",
   toWord: "to",
+  julianSuffix: "(Julian)",
 };
 
 /**
@@ -149,6 +170,7 @@ const DA: DateLanguage = {
   andWord: "og",
   fromWord: "Fra",
   toWord: "til",
+  julianSuffix: "(juliansk)",
 };
 
 const LANGUAGES: Record<Language, DateLanguage> = { en: EN, da: DA };
@@ -156,10 +178,10 @@ const LANGUAGES: Record<Language, DateLanguage> = { en: EN, da: DA };
 /**
  * Reads the free-text wording a source uses for a date ("abt 1854",
  * "12 MAR 1901", "MAR 1901", "1970-11-18", "bef 1920", "BET 1850 AND 1860",
- * "FROM 1900 TO 1905") into a structured, precision-tagged result. This is a
- * first pass covering the wordings this app's own date fields actually
- * produce, not the full GEDCOM date grammar (no double-dating, no calendar
- * escapes yet) — see "GEDCOM export" in TECH_STACK.md.
+ * "FROM 1900 TO 1905") into a structured, precision-tagged result. Also reads
+ * GEDCOM's Julian calendar escape (`@#DJULIAN@ 3 MAR 1699`, or GEDCOM 7's
+ * `JULIAN 3 MAR 1699`) and double years (`11 FEB 1749/50`) — see "GEDCOM
+ * export" in TECH_STACK.md.
  *
  * Deliberately does not guess at ambiguous numeric-only dates like
  * "03/04/1901" (DD/MM vs MM/DD disagree by locale) — those come back
@@ -384,97 +406,185 @@ export function joinHistoricalDateText(
 
 const ISO_YEAR_MONTH_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 const ISO_YEAR_MONTH = /^(\d{4})-(\d{2})$/;
-const DAY_MONTH_YEAR = /^(\d{1,2})\s+([A-Za-z]{3,9})\.?\s+(\d{3,4})$/;
-const MONTH_YEAR = /^([A-Za-z]{3,9})\.?\s+(\d{3,4})$/;
-const YEAR_ONLY = /^(\d{3,4})$/;
+// A year, optionally double-dated: "1749/50" (GEDCOM allows a 1–2 digit suffix).
+const YEAR = String.raw`(\d{3,4})(?:\/(\d{1,2}))?`;
+const DAY_MONTH_YEAR = new RegExp(String.raw`^(\d{1,2})\s+([A-Za-z]{3,9})\.?\s+${YEAR}$`);
+const MONTH_YEAR = new RegExp(String.raw`^([A-Za-z]{3,9})\.?\s+${YEAR}$`);
+const YEAR_ONLY = new RegExp(String.raw`^${YEAR}$`);
+/**
+ * GEDCOM 5.5.1's `@#DJULIAN@`-style escape or GEDCOM 7's bare `JULIAN`
+ * keyword, at the start of one date part (each side of a `BET … AND …` can
+ * carry its own).
+ */
+const CALENDAR_PREFIX = /^(?:@#D([A-Z ]+)@|(GREGORIAN|JULIAN|HEBREW|FRENCH_R)(?=\s))\s*/i;
 
 function parseDatePart(text: string, lang: DateLanguage): ParsedDatePart | null {
-  const isoYearMonthDay = ISO_YEAR_MONTH_DAY.exec(text);
-  if (isoYearMonthDay) {
-    const year = Number(isoYearMonthDay[1]);
-    const month = Number(isoYearMonthDay[2]);
-    const day = Number(isoYearMonthDay[3]);
-    if (month < 1 || month > 12 || day < 1 || day > lastDayOfMonth(year, month)) return null;
-    return dayPart(year, month, day);
+  let calendar: DateCalendar = "gregorian";
+  let rest = text;
+  const prefix = CALENDAR_PREFIX.exec(text);
+  if (prefix) {
+    const name = (prefix[1] ?? prefix[2] ?? "").toUpperCase().replace(" ", "_");
+    if (name === "JULIAN") calendar = "julian";
+    // Hebrew and French Republican dates keep their wording, unparsed.
+    else if (name !== "GREGORIAN") return null;
+    rest = text.slice(prefix[0].length);
   }
 
-  const isoYearMonth = ISO_YEAR_MONTH.exec(text);
-  if (isoYearMonth) {
-    const year = Number(isoYearMonth[1]);
-    const month = Number(isoYearMonth[2]);
-    if (month < 1 || month > 12) return null;
-    return monthPart(year, month);
+  // ISO forms are this app's own input format — always Gregorian, never double-dated.
+  if (calendar === "gregorian") {
+    const isoYearMonthDay = ISO_YEAR_MONTH_DAY.exec(rest);
+    if (isoYearMonthDay) {
+      const year = Number(isoYearMonthDay[1]);
+      const month = Number(isoYearMonthDay[2]);
+      const day = Number(isoYearMonthDay[3]);
+      if (month < 1 || month > 12 || day < 1 || day > lastDayOfMonth(year, month, calendar)) {
+        return null;
+      }
+      return dayPart(year, month, day, calendar, null);
+    }
+
+    const isoYearMonth = ISO_YEAR_MONTH.exec(rest);
+    if (isoYearMonth) {
+      const year = Number(isoYearMonth[1]);
+      const month = Number(isoYearMonth[2]);
+      if (month < 1 || month > 12) return null;
+      return monthPart(year, month, calendar, null);
+    }
   }
 
-  const dayMonthYear = DAY_MONTH_YEAR.exec(text);
+  const dayMonthYear = DAY_MONTH_YEAR.exec(rest);
   if (dayMonthYear) {
     const day = Number(dayMonthYear[1]);
     const month = monthNumber(dayMonthYear[2] ?? "", lang);
-    const year = Number(dayMonthYear[3]);
-    if (month === null || day < 1 || day > lastDayOfMonth(year, month)) return null;
-    return dayPart(year, month, day);
+    const year = readYear(dayMonthYear[3], dayMonthYear[4]);
+    if (month === null || year === null) return null;
+    if (day < 1 || day > lastDayOfMonth(year.year, month, calendar)) return null;
+    return dayPart(year.year, month, day, calendar, year.dualYear);
   }
 
-  const monthYear = MONTH_YEAR.exec(text);
+  const monthYear = MONTH_YEAR.exec(rest);
   if (monthYear) {
     const month = monthNumber(monthYear[1] ?? "", lang);
-    const year = Number(monthYear[2]);
-    if (month === null) return null;
-    return monthPart(year, month);
+    const year = readYear(monthYear[2], monthYear[3]);
+    if (month === null || year === null) return null;
+    return monthPart(year.year, month, calendar, year.dualYear);
   }
 
-  const yearOnly = YEAR_ONLY.exec(text);
+  const yearOnly = YEAR_ONLY.exec(rest);
   if (yearOnly) {
-    const year = Number(yearOnly[1]);
-    return yearPart(year);
+    const year = readYear(yearOnly[1], yearOnly[2]);
+    return year ? yearPart(year.year, calendar, year.dualYear) : null;
   }
 
   return null;
 }
 
-function dayPart(year: number, month: number, day: number): ParsedDatePart {
-  const iso = isoDate(year, month, day);
-  return { precision: "day", year, month, day, earliest: iso, latest: iso };
+/**
+ * A year group, resolving a double year ("1749/50") to the later, new-style
+ * year it means (1750) — the suffix must be that year's last digits, so
+ * "1749/51" is rejected rather than guessed at.
+ */
+function readYear(
+  first: string | undefined,
+  suffix: string | undefined,
+): { year: number; dualYear: string | null } | null {
+  const year = Number(first);
+  if (suffix === undefined) return { year, dualYear: null };
+  const next = year + 1;
+  if (!String(next).endsWith(suffix)) return null;
+  return { year: next, dualYear: `${first}/${suffix}` };
 }
 
-function monthPart(year: number, month: number): ParsedDatePart {
+function dayPart(
+  year: number,
+  month: number,
+  day: number,
+  calendar: DateCalendar,
+  dualYear: string | null,
+): ParsedDatePart {
+  const iso = isoDateIn(calendar, year, month, day);
+  return { precision: "day", year, month, day, calendar, dualYear, earliest: iso, latest: iso };
+}
+
+function monthPart(
+  year: number,
+  month: number,
+  calendar: DateCalendar,
+  dualYear: string | null,
+): ParsedDatePart {
   return {
     precision: "month",
     year,
     month,
     day: null,
-    earliest: isoDate(year, month, 1),
-    latest: isoDate(year, month, lastDayOfMonth(year, month)),
+    calendar,
+    dualYear,
+    earliest: isoDateIn(calendar, year, month, 1),
+    latest: isoDateIn(calendar, year, month, lastDayOfMonth(year, month, calendar)),
   };
 }
 
-function yearPart(year: number): ParsedDatePart {
+function yearPart(year: number, calendar: DateCalendar, dualYear: string | null): ParsedDatePart {
   return {
     precision: "year",
     year,
     month: null,
     day: null,
-    earliest: isoDate(year, 1, 1),
-    latest: isoDate(year, 12, 31),
+    calendar,
+    dualYear,
+    earliest: isoDateIn(calendar, year, 1, 1),
+    latest: isoDateIn(calendar, year, 12, 31),
   };
 }
 
 function formatDatePart(part: ParsedDatePart, lang: DateLanguage): string {
-  if (part.precision === "day" && part.month !== null && part.day !== null) {
-    return `${part.day} ${lang.monthNames[part.month - 1]} ${part.year}`;
-  }
-  if (part.precision === "month" && part.month !== null) {
-    return `${lang.monthNames[part.month - 1]} ${part.year}`;
-  }
-  return `${part.year}`;
+  const year = part.dualYear ?? String(part.year);
+  const text =
+    part.precision === "day" && part.month !== null && part.day !== null
+      ? `${part.day} ${lang.monthNames[part.month - 1]} ${year}`
+      : part.precision === "month" && part.month !== null
+        ? `${lang.monthNames[part.month - 1]} ${year}`
+        : year;
+  return part.calendar === "julian" ? `${text} ${lang.julianSuffix}` : text;
 }
 
 function monthNumber(name: string, lang: DateLanguage): number | null {
   return lang.months[name.slice(0, 3).toLowerCase()] ?? null;
 }
 
-function lastDayOfMonth(year: number, month: number): number {
+function lastDayOfMonth(year: number, month: number, calendar: DateCalendar): number {
+  // The Julian calendar's only difference that matters here: every fourth
+  // year is a leap year, centuries included (1700 had a 29 February).
+  if (calendar === "julian" && month === 2) return year % 4 === 0 ? 29 : 28;
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/** The ISO (Gregorian) day for a date written in `calendar`. */
+function isoDateIn(calendar: DateCalendar, year: number, month: number, day: number): string {
+  if (calendar === "gregorian") return isoDate(year, month, day);
+  return isoDateFromDayNumber(julianDayNumber(year, month, day));
+}
+
+/** Julian Day Number of a Julian-calendar date — the standard integer formula. */
+function julianDayNumber(year: number, month: number, day: number): number {
+  const a = Math.floor((14 - month) / 12);
+  const y = year + 4800 - a;
+  const m = month + 12 * a - 3;
+  return day + Math.floor((153 * m + 2) / 5) + 365 * y + Math.floor(y / 4) - 32083;
+}
+
+/** The Gregorian ISO date for a Julian Day Number. */
+function isoDateFromDayNumber(dayNumber: number): string {
+  const a = dayNumber + 32044;
+  const b = Math.floor((4 * a + 3) / 146097);
+  const c = a - Math.floor((146097 * b) / 4);
+  const d = Math.floor((4 * c + 3) / 1461);
+  const e = c - Math.floor((1461 * d) / 4);
+  const m = Math.floor((5 * e + 2) / 153);
+  const day = e - Math.floor((153 * m + 2) / 5) + 1;
+  const month = m + 3 - 12 * Math.floor(m / 10);
+  const year = 100 * b + d - 4800 + Math.floor(m / 10);
+  return isoDate(year, month, day);
 }
 
 function isoDate(year: number, month: number, day: number): string {

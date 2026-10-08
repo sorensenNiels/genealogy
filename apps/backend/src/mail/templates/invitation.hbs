@@ -1,0 +1,31 @@
+<html>
+  <body style="font-family: sans-serif; color: #1a1a1a;">
+    {{#if danish}}
+      <h1 style="font-size: 18px;">{{inviterName}} har inviteret dig til slægtstræet</h1>
+      <p>Du er inviteret som <strong>{{roleLabel}}</strong>.</p>
+    {{else}}
+      <h1 style="font-size: 18px;">{{inviterName}} invited you to the family tree</h1>
+      <p>You're invited as <strong>{{roleLabel}}</strong>.</p>
+    {{/if}}
+    {{#if message}}
+      <blockquote
+        style="border-left: 3px solid #d1d5db; margin: 0; padding-left: 12px; color: #374151;"
+      >{{message}}</blockquote>
+    {{/if}}
+    <p><a href="{{link}}">{{#if danish}}Opret din konto{{else}}Create your account{{/if}}</a></p>
+    <p style="color: #6b7280; font-size: 12px;">
+      {{#if danish}}
+        Linket virker i
+        {{days}}
+        dage og kun for
+        {{email}}.
+      {{else}}
+        The link works for
+        {{days}}
+        days, and only for
+        {{email}}.
+      {{/if}}
+    </p>
+    <p style="color: #6b7280; font-size: 12px;">— Genealogy</p>
+  </body>
+</html>

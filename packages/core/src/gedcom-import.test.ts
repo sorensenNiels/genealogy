@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   GedcomImportError,
   countGedcomImportPlan,
+  decodeAnsel,
   decodeGedcomBytes,
   gedcomEventTag,
   gedcomNameType,
@@ -87,6 +88,8 @@ describe("parseGedcom", () => {
   });
 });
 
+const ascii = (text: string) => [...new TextEncoder().encode(text)];
+
 describe("decodeGedcomBytes", () => {
   it("strips a UTF-8 BOM", () => {
     const bytes = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode("0 HEAD ø")]);
@@ -97,6 +100,36 @@ describe("decodeGedcomBytes", () => {
     // "Søren" in Latin-1/Windows-1252: ø is a lone 0xF8, invalid as UTF-8.
     const bytes = new Uint8Array([0x53, 0xf8, 0x72, 0x65, 0x6e]);
     expect(decodeGedcomBytes(bytes)).toEqual({ text: "Søren", encoding: "windows-1252" });
+  });
+
+  it("decodes ANSEL when the header declares it and the bytes aren't UTF-8", () => {
+    // "Søren Ærø, Råby" — ø/Æ are spacing letters (0xB2/0xA5); å is ring
+    // above (0xEA) written *before* its "a", ANSEL's order for diacritics.
+    const bytes = new Uint8Array([
+      ...ascii("0 HEAD\n1 CHAR ANSEL\n0 @I1@ INDI\n1 NAME S"),
+      0xb2,
+      ...ascii("ren /"),
+      0xa5,
+      ...ascii("r"),
+      0xb2,
+      ...ascii(", R"),
+      0xea,
+      ...ascii("aby/"),
+    ]);
+    const { text, encoding } = decodeGedcomBytes(bytes);
+    expect(encoding).toBe("ansel");
+    expect(text.endsWith("1 NAME Søren /Ærø, Råby/")).toBe(true);
+    // Precomposed (NFC), not "a" + a separate combining ring.
+    expect(text.includes("\u00e5")).toBe(true);
+  });
+
+  it("reads a file that only claims ANSEL but is valid UTF-8 as UTF-8", () => {
+    const bytes = new TextEncoder().encode("0 HEAD\n1 CHAR ANSEL\n1 NOTE Søren");
+    expect(decodeGedcomBytes(bytes).encoding).toBe("utf-8");
+  });
+
+  it("maps an unknown ANSEL byte to U+FFFD rather than dropping it", () => {
+    expect(decodeAnsel(new Uint8Array([0x41, 0x9f, 0x42]))).toBe("A\ufffdB");
   });
 
   it("recognizes BOM-less UTF-16LE by the NUL after the leading 0", () => {
@@ -304,10 +337,14 @@ describe("planGedcomImport", () => {
         title: "Brande parish register",
         author: "Brande Kirke",
         publication: null,
-        repository: "Rigsarkivet",
+        repositoryRef: "R1",
+        callNumber: null,
         sourceType: null,
       },
       expect.objectContaining({ title: "Family bible" }),
+    ]);
+    expect(result.repositories).toEqual([
+      expect.objectContaining({ ref: "R1", name: "Rigsarkivet" }),
     ]);
     expect(result.persons[0]?.events[0]?.citations).toEqual([
       {
@@ -318,6 +355,7 @@ describe("planGedcomImport", () => {
         certificateNumber: null,
         note: "Born to Peder and Ane",
         confidence: "proven",
+        ancestryApid: null,
       },
     ]);
     expect(result.persons[0]?.citations).toEqual([
@@ -378,15 +416,36 @@ describe("planGedcomImport", () => {
   });
 
   it("warns about dates it can't interpret, keeping their wording", () => {
-    const result = plan([...HEAD, "0 @I1@ INDI", "1 BIRT", "2 DATE @#DJULIAN@ 1 JAN 1700"]);
+    const result = plan([...HEAD, "0 @I1@ INDI", "1 BIRT", "2 DATE @#DHEBREW@ 1 TSH 5500"]);
     expect(result.persons[0]?.events[0]?.date).toEqual({
-      original: "@#DJULIAN@ 1 JAN 1700",
+      original: "@#DHEBREW@ 1 TSH 5500",
       earliest: null,
       latest: null,
     });
     expect(result.warnings.find((w) => w.code === "unparsedDate")?.examples).toEqual([
-      "@#DJULIAN@ 1 JAN 1700",
+      "@#DHEBREW@ 1 TSH 5500",
     ]);
+  });
+
+  it("prefers a note's _MARKDOWN original over its plain-text line", () => {
+    const result = plan([
+      ...HEAD,
+      "0 @I1@ INDI",
+      "1 NOTE Census 1801",
+      "2 _MARKDOWN # Census 1801",
+      "1 NOTE Plain only",
+    ]);
+    expect(result.persons[0]?.notes).toBe("# Census 1801\n\nPlain only");
+  });
+
+  it("reads a Julian date, keeping its wording and converting its bounds", () => {
+    const result = plan([...HEAD, "0 @I1@ INDI", "1 BIRT", "2 DATE @#DJULIAN@ 1 JAN 1700"]);
+    expect(result.persons[0]?.events[0]?.date).toEqual({
+      original: "@#DJULIAN@ 1 JAN 1700",
+      earliest: "1700-01-11",
+      latest: "1700-01-11",
+    });
+    expect(result.warnings.find((w) => w.code === "unparsedDate")).toBeUndefined();
   });
 
   it("counts what a plan will write", () => {
@@ -416,6 +475,8 @@ describe("planGedcomImport", () => {
       associations: 0,
       researchNotes: 0,
       places: 0,
+      repositories: 0,
+      externalIds: 0,
     });
   });
 });
@@ -515,30 +576,96 @@ const skipped = (result: ReturnType<typeof plan>) =>
   result.warnings.find((w) => w.code === "skippedTag")?.examples ?? [];
 
 describe("planGedcomImport — nothing dropped silently", () => {
-  it("reports nested tags it doesn't store: coordinates, repository details, FamilySearch ids", () => {
+  it("stores external ids, repository details and call numbers, and still reports the rest", () => {
     const result = plan([
       ...HEAD,
       "0 @I1@ INDI",
       "1 _FSFTID LZXY-ABC",
+      "1 REFN 1042",
+      "2 TYPE Family file",
+      "1 EXID 98765",
+      "2 TYPE https://example.org/ids",
       "1 BIRT",
       "2 PLAC Brande",
       "3 MAP",
       "4 LATI N55.9",
       "4 LONG E9.1",
       "1 SOUR @S1@",
+      "2 _APID 1,7602::2771226",
       "0 @S1@ SOUR",
       "1 TITL Kirkebog",
       "1 REPO @R1@",
       "2 CALN C-123",
+      "3 MEDI Book",
       "0 @R1@ REPO",
       "1 NAME Rigsarkivet",
+      "1 ADDR",
+      "2 ADR1 Rigsdagsgården 9",
+      "2 CITY København",
       "1 WWW https://www.sa.dk",
+      "1 FAX 12345678",
     ]);
-    expect(skipped(result)).toEqual(
-      expect.arrayContaining(["INDI._FSFTID (1)", "REPO.CALN (1)", "REPO.WWW (1)"]),
+    expect(result.persons[0]?.externalIds).toEqual([
+      { system: "familysearch", value: "LZXY-ABC", type: null },
+      { system: "refn", value: "1042", type: "Family file" },
+      { system: "exid", value: "98765", type: "https://example.org/ids" },
+    ]);
+    expect(result.persons[0]?.citations[0]?.ancestryApid).toBe("1,7602::2771226");
+    expect(result.sources[0]).toMatchObject({
+      repositoryRef: "R1",
+      callNumber: "C-123",
+      sourceType: "Book",
+    });
+    expect(result.repositories[0]).toEqual({
+      ref: "R1",
+      name: "Rigsarkivet",
+      address: "Rigsdagsgården 9, København",
+      phone: null,
+      email: null,
+      website: "https://www.sa.dk",
+    });
+    // Stored now, so no longer reported…
+    expect(skipped(result)).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/_FSFTID|CALN|REPO\.WWW|_APID/)]),
     );
+    // …but a repository's fax has no column, so it still is.
+    expect(skipped(result)).toEqual(expect.arrayContaining(["REPO.FAX (1)"]));
     expect(result.persons[0]?.events[0]?.place).toBe("Brande");
-    expect(result.sources[0]?.repository).toBe("Rigsarkivet");
+  });
+
+  it("makes a repository a source only names inline, shared by name", () => {
+    const result = plan([
+      ...HEAD,
+      "0 @S1@ SOUR",
+      "1 TITL A",
+      "1 REPO Landsarkivet Viborg",
+      "0 @S2@ SOUR",
+      "1 TITL B",
+      "1 REPO Landsarkivet Viborg",
+    ]);
+    expect(result.repositories).toEqual([
+      expect.objectContaining({ ref: "__inline_repo_1", name: "Landsarkivet Viborg" }),
+    ]);
+    expect(result.sources.map((source) => source.repositoryRef)).toEqual([
+      "__inline_repo_1",
+      "__inline_repo_1",
+    ]);
+  });
+
+  it("files a GEDCOM 7 EXID from FamilySearch as a FamilySearch id", () => {
+    const result = plan([
+      ...HEAD,
+      "0 @I1@ INDI",
+      "1 EXID LZXY-ABC",
+      "2 TYPE https://www.familysearch.org/tree/person/",
+    ]);
+    expect(result.persons[0]?.externalIds).toEqual([
+      {
+        system: "familysearch",
+        value: "LZXY-ABC",
+        type: "https://www.familysearch.org/tree/person/",
+      },
+    ]);
   });
 
   it("builds an address from structured lines when ADDR itself is empty", () => {

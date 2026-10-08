@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Switch as RACSwitch, type SwitchProps as RACSwitchProps } from "react-aria-components";
 
+import { useReadOnly } from "../lib/read-only";
 import { cn } from "../lib/utils";
 
 export function Switch({
@@ -8,8 +9,10 @@ export function Switch({
   children,
   ...props
 }: Omit<RACSwitchProps, "children" | "className"> & { className?: string; children?: ReactNode }) {
+  const isReadOnly = useReadOnly();
   return (
     <RACSwitch
+      {...(isReadOnly ? { isReadOnly: true } : {})}
       data-slot="switch"
       className={cn(
         "group inline-flex items-center gap-2 text-sm data-disabled:cursor-not-allowed data-disabled:opacity-50",

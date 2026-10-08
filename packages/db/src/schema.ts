@@ -261,18 +261,65 @@ export const associations = pgTable(
 );
 
 /** A record a claim can be cited from: a parish register, a census, a headstone. */
+/**
+ * An archive or library holding sources — GEDCOM's REPO record. Its own
+ * table (rather than free text on each source) because many sources share
+ * one repository, and its address and contact details belong to it, not to
+ * any one source. Not deduplicated by name: two archives can share a name.
+ */
+export const repositories = pgTable("repositories", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  address: text("address"),
+  phone: text("phone"),
+  email: text("email"),
+  website: text("website"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const sources = pgTable("sources", {
   id: uuid("id").primaryKey().defaultRandom(),
   title: text("title").notNull(),
   author: text("author"),
   publication: text("publication"),
-  repository: text("repository"),
+  repositoryId: uuid("repository_id").references(() => repositories.id, {
+    onDelete: "set null",
+  }),
+  /** The source's shelf mark in its repository — GEDCOM's REPO.CALN. */
+  callNumber: text("call_number"),
   // Free text, not an enum: "1920 US Federal Census", "parish register",
   // "land deed" — this vocabulary is too open-ended for a closed enum, unlike
   // `confidence` below.
   sourceType: text("source_type"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * A person's id in another system: FamilySearch (`_FSFTID`), Ancestry
+ * (`_APID` on a person), a user reference number (`REFN`, with its TYPE), or
+ * a GEDCOM 7 `EXID` (with its TYPE URI). `system` is structural — the GEDCOM
+ * exporter branches on it — so it's checked against
+ * `personExternalIdSystemSchema` (plus a CHECK constraint in the migration)
+ * rather than being a configurable option.
+ */
+export const personExternalIds = pgTable(
+  "person_external_ids",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => persons.id, { onDelete: "cascade" }),
+    system: text("system").notNull(),
+    value: text("value").notNull(),
+    /** REFN's TYPE or EXID's TYPE URI, as written; null otherwise. */
+    type: text("type"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("person_external_ids_unique").on(table.personId, table.system, table.value),
+    index("person_external_ids_person_idx").on(table.personId),
+  ],
+);
 
 export const citationFactTypeEnum = pgEnum("citation_fact_type", [
   "person",
@@ -319,6 +366,12 @@ export const citations = pgTable(
     // "confidence") — a new one must not require a migration.
     confidence: text("confidence").notNull().default("medium"),
     note: text("note"),
+    /**
+     * Ancestry's `_APID` — a pointer to the record in one of its databases
+     * (`1,7602::2771226`), which Ancestry writes on citations. Kept so it
+     * round-trips through GEDCOM; nothing else reads it.
+     */
+    ancestryApid: text("ancestry_apid"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -340,9 +393,42 @@ export const user = pgTable("user", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
   image: text("image"),
+  /**
+   * admin | editor | viewer — `memberRoleSchema` in `@genealogy/core`, plus a
+   * CHECK constraint in the migration. A better-auth `additionalFields`
+   * entry (`input: false`, so a client can't pick its own role at sign-up),
+   * which also puts it on every session's `user` with no extra query.
+   */
+  role: text("role").notNull().default("viewer"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * An admin's invitation to join. Sign-up is invite-only (see the
+ * `databaseHooks` in `auth.module.ts`): a new account needs a pending,
+ * unexpired invitation for its email. The link's secret is never stored —
+ * only its SHA-256 hash — so a database read doesn't hand out working links.
+ */
+export const invitations = pgTable(
+  "invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Stored lower-cased; matched case-insensitively against the new account's email. */
+    email: text("email").notNull(),
+    role: text("role").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    personId: uuid("person_id").references(() => persons.id, { onDelete: "set null" }),
+    message: text("message"),
+    invitedBy: text("invited_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    acceptedBy: text("accepted_by").references(() => user.id, { onDelete: "set null" }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => [index("invitations_email_idx").on(table.email)],
+);
 
 export const session = pgTable("session", {
   id: text("id").primaryKey(),
@@ -718,13 +804,16 @@ export type PersonEventRow = typeof personEvents.$inferSelect;
 export type UnionRow = typeof unions.$inferSelect;
 export type AssociationRow = typeof associations.$inferSelect;
 export type PlaceRow = typeof places.$inferSelect;
+export type RepositoryRow = typeof repositories.$inferSelect;
 export type SourceRow = typeof sources.$inferSelect;
+export type PersonExternalIdRow = typeof personExternalIds.$inferSelect;
 export type CitationRow = typeof citations.$inferSelect;
 export type ConfigurableOptionRow = typeof configurableOptions.$inferSelect;
 export type PersonImmichLinkRow = typeof personImmichLinks.$inferSelect;
 export type ImmichAlbumAssetOrderRow = typeof immichAlbumAssetOrder.$inferSelect;
 export type AlbumMetadataRow = typeof albumMetadata.$inferSelect;
 export type UserProfileRow = typeof userProfiles.$inferSelect;
+export type InvitationRow = typeof invitations.$inferSelect;
 export type ResearchNoteRow = typeof researchNotes.$inferSelect;
 export type UserNoteRow = typeof userNotes.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;

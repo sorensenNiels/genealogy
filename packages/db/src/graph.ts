@@ -263,6 +263,29 @@ export async function allParentOfEdges(
 }
 
 /**
+ * Every `PARENT_OF` edge whose both ends are among `personIds` — the links a
+ * walk outward from one person can miss between people it did collect: the
+ * tree view walks down by asking only the root (then their children, ...)
+ * for children, so a spouse it picked up has no edges to the couple's
+ * children until this fills them in.
+ */
+export async function parentEdgesAmong(
+  pool: Pool,
+  personIds: readonly string[],
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<{ parentId: string; childId: string; parentage: Parentage }[]> {
+  if (personIds.length < 2) return [];
+  return cypher<{ parentId: string; childId: string; parentage: Parentage }>(
+    pool,
+    `MATCH (parent:Person)-[r:PARENT_OF]->(child:Person)
+     WHERE parent.id IN $ids AND child.id IN $ids
+     RETURN parent.id AS parentId, child.id AS childId, r.parentage AS parentage`,
+    ["parentId", "childId", "parentage"],
+    { ...options, params: { ids: [...personIds] } },
+  );
+}
+
+/**
  * Every `SPOUSE_OF` edge, once per pair (`addSpouseOf` only ever writes one
  * directed edge) — the GEDCOM exporter needs these on top of `unions` rows,
  * since a couple can be linked as spouses with no union recorded at all.
@@ -520,6 +543,18 @@ export async function treeAround(
       spouseEdges.push([id, spouse.personId]);
       personIds.add(spouse.personId);
     }
+  }
+
+  // The walks only follow edges from the people they queried, so a spouse
+  // collected above has no edges to the couple's children yet (nor a child's
+  // spouse to the grandchildren). Fill in every parent link between people
+  // already collected — without collecting anyone new, so the tree's reach
+  // is unchanged.
+  for (const edge of await parentEdgesAmong(pool, [...personIds], options)) {
+    const key = `${edge.parentId}->${edge.childId}`;
+    if (parentEdgeKeys.has(key)) continue;
+    parentEdgeKeys.add(key);
+    parentEdges.push(edge);
   }
 
   return {

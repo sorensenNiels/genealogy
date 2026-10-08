@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 
+import { useReadOnly } from "../lib/read-only";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./dialog";
 
 export interface FormDialogProps {
@@ -25,12 +26,15 @@ export interface FormDialogProps {
 /** Owns the open/close state around a trigger + form, for every "Add/Edit X" dialog in the app. */
 export function FormDialog({ trigger, title, children, onOpenChange }: FormDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
+  // Every FormDialog is an "add/edit X" form — read-only, it isn't offered.
+  const isReadOnly = useReadOnly();
 
   const handleOpenChange = (next: boolean) => {
     setIsOpen(next);
     onOpenChange?.(next);
   };
 
+  if (isReadOnly) return null;
   return (
     <Dialog isOpen={isOpen} onOpenChange={handleOpenChange}>
       {trigger}

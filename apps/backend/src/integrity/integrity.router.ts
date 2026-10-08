@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 
-import { protectedProcedure, router } from "../trpc/trpc.base.js";
+import { adminProcedure, router } from "../trpc/trpc.base.js";
 import { IntegrityService } from "./integrity.service.js";
 
 @Injectable()
@@ -10,8 +10,8 @@ export class IntegrityRouter {
   /** Built by a method rather than a field initializer — same reason as every other router in this app. */
   build() {
     return router({
-      checkData: protectedProcedure.query(() => this.integrity.checkData()),
-      checkGraphConsistency: protectedProcedure.query(() => this.integrity.checkGraphConsistency()),
+      checkData: adminProcedure.query(() => this.integrity.checkData()),
+      checkGraphConsistency: adminProcedure.query(() => this.integrity.checkGraphConsistency()),
     });
   }
 }

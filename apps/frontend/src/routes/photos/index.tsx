@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@genealogy/ui/components/table";
 import { useViewMode } from "@genealogy/ui/hooks/use-view-mode";
+import { ReadOnlyProvider } from "@genealogy/ui/lib/read-only";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ImageIcon, LayoutGridIcon, ListIcon, BookOpenIcon } from "lucide-react";
@@ -33,6 +34,7 @@ import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { formatDisplayDate, historicalDatePreview } from "../../lib/format-date";
+import { usePermissions } from "../../lib/permissions";
 import {
   getSourceAlbumsForAssets,
   isImmichConfigured,
@@ -119,6 +121,7 @@ function kindLabel(t: (key: string) => string, kind: AlbumKind): string {
 
 function AlbumsSection() {
   const { t, i18n } = useTranslation();
+  const { canEdit } = usePermissions();
   const language = toSupportedLanguage(i18n.language);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -239,12 +242,14 @@ function AlbumsSection() {
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         <div className="space-y-6">
-          <CategoriesPanel
-            categories={categoryList}
-            albums={albums.data ?? []}
-            selected={selection}
-            onSelect={setCategorySelection}
-          />
+          <ReadOnlyProvider readOnly={!canEdit}>
+            <CategoriesPanel
+              categories={categoryList}
+              albums={albums.data ?? []}
+              selected={selection}
+              onSelect={setCategorySelection}
+            />
+          </ReadOnlyProvider>
           <SectionCard
             className="h-fit"
             title={t("photosPage.filters")}

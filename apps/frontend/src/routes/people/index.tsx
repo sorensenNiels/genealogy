@@ -43,6 +43,7 @@ import { useTranslation } from "react-i18next";
 import { toSupportedLanguage, type SupportedLanguage } from "../../i18n/create-i18n-instance";
 import { publicBackendUrl } from "../../lib/env";
 import { formatDisplayDate } from "../../lib/format-date";
+import { usePermissions } from "../../lib/permissions";
 import {
   avatarColorClass,
   GenderIcon,
@@ -144,6 +145,7 @@ function People() {
   // straight onto its own page — the same always-editable "person ui" used
   // for editing anyone else — to fill in, rather than asking for a name up
   // front in the list toolbar.
+  const { canEdit } = usePermissions();
   const createPersonMutation = useMutation({
     mutationFn: createPerson,
     onSuccess: async (person) => {
@@ -174,12 +176,14 @@ function People() {
               : t("common.loading")}
           </p>
         </div>
-        <Button
-          isDisabled={createPersonMutation.isPending}
-          onPress={() => createPersonMutation.mutate({ data: {} })}
-        >
-          {createPersonMutation.isPending ? t("people.adding") : t("people.addPerson")}
-        </Button>
+        {canEdit && (
+          <Button
+            isDisabled={createPersonMutation.isPending}
+            onPress={() => createPersonMutation.mutate({ data: {} })}
+          >
+            {createPersonMutation.isPending ? t("people.adding") : t("people.addPerson")}
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
@@ -523,6 +527,7 @@ function ViewInTreeAction({ person }: { person: PersonListItem }) {
 /** Hidden outright when `hasRelations` is set — the backend enforces the same rule in `remove`. */
 function DeletePersonAction({ person }: { person: PersonListItem }) {
   const { t } = useTranslation();
+  const { isAdmin } = usePermissions();
   const queryClient = useQueryClient();
   const removePersonMutation = useMutation({
     mutationFn: removePerson,
@@ -531,7 +536,8 @@ function DeletePersonAction({ person }: { person: PersonListItem }) {
     },
   });
 
-  if (person.hasRelations) {
+  // Deleting people is admin-only; the backend enforces the same rule.
+  if (person.hasRelations || !isAdmin) {
     return null;
   }
 

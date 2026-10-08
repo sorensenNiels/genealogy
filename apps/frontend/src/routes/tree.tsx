@@ -1,6 +1,7 @@
 import { formatLifespan, formatPersonName, type Gender } from "@genealogy/core";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Button, buttonVariants } from "@genealogy/ui/components/button";
+import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
 import {
   Combobox,
   ComboboxContent,
@@ -9,6 +10,8 @@ import {
   ComboboxItem,
 } from "@genealogy/ui/components/combobox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@genealogy/ui/components/dialog";
+import { RemoveButton } from "@genealogy/ui/components/remove-button";
+import { ReadOnlyProvider } from "@genealogy/ui/lib/read-only";
 import { cn } from "@genealogy/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
@@ -24,14 +27,16 @@ import {
   type NodeProps,
   type NodeTypes,
 } from "@xyflow/react";
-import { Cross, Loader2, Network, UserRound } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Cross, Loader2, Network, UserRound, XIcon } from "lucide-react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import "@xyflow/react/dist/style.css";
 
+import { useTranslation } from "react-i18next";
+
 import { publicBackendUrl } from "../lib/env";
-import { computeGenerations, layoutTree, NODE_WIDTH } from "../lib/tree-layout";
+import { usePermissions } from "../lib/permissions";
+import { computeGenerations, layoutTree, NODE_HEIGHT, NODE_WIDTH } from "../lib/tree-layout";
 import {
   createPerson,
   getRelatives,
@@ -39,6 +44,8 @@ import {
   linkParent,
   linkSpouse,
   listPersons,
+  unlinkParent,
+  unlinkSpouse,
 } from "../server/functions/person.functions";
 import { getMyProfile } from "../server/functions/profile.functions";
 
@@ -46,8 +53,12 @@ export const Route = createFileRoute("/tree")({
   // No zod schema here (unlike the server functions this page calls) — a
   // malformed/missing personId just falls through to the "pick a person"
   // empty state below rather than needing its own error path.
-  validateSearch: (search: Record<string, unknown>): { personId?: string } =>
-    typeof search.personId === "string" ? { personId: search.personId } : {},
+  // `view` is left out of the URL for the default "both", so existing links
+  // (the People list's "View in tree", ...) need no change.
+  validateSearch: (search: Record<string, unknown>): { personId?: string; view?: TreeView } => ({
+    ...(typeof search.personId === "string" ? { personId: search.personId } : {}),
+    ...(search.view === "ancestors" || search.view === "descendants" ? { view: search.view } : {}),
+  }),
   // No personId in the URL yet: default to the person linked to the viewer's
   // own account (userProfiles.personId), same as the "this is me" pick on
   // the Profile page, so the tree opens already centered on the visitor
@@ -64,13 +75,16 @@ export const Route = createFileRoute("/tree")({
   component: TreePage,
 });
 
+/** Which side of the centered person the canvas draws — see `filterByView`. */
+type TreeView = "both" | "ancestors" | "descendants";
+
 type TreeData = Awaited<ReturnType<typeof getTree>>;
 type TreePersonRow = TreeData["people"][number];
 type TreeEdgeRow = TreeData["parentEdges"][number];
 type PersonListItem = Awaited<ReturnType<typeof listPersons>>["items"][number];
 
 function TreePage() {
-  const { personId } = Route.useSearch();
+  const { personId, view = "both" } = Route.useSearch();
 
   return (
     // No page title/subtitle here — the tree view is the whole page, and the
@@ -79,7 +93,7 @@ function TreePage() {
     // the /tree route (h-screen + flex-1 there, see isNoScrollPath) — no
     // guessing at the header's pixel height, and no page-level scrollbar.
     <div className="flex h-full flex-col gap-4">
-      {personId ? <FamilyTree key={personId} rootId={personId} /> : <RootPicker />}
+      {personId ? <FamilyTree key={personId} rootId={personId} view={view} /> : <RootPicker />}
     </div>
   );
 }
@@ -170,7 +184,10 @@ function ParentsIcon({ className }: { className?: string }) {
 
 interface PersonNodeData extends Record<string, unknown> {
   person: TreePersonRow;
+  /** The person the tree is centred on — the strong highlight. Double-click another card to centre on them. */
   isRoot: boolean;
+  /** Shown in the side panel (single click) — a lighter outline, so it's distinct from the centre. */
+  isSelected: boolean;
   // Whether this person's parents haven't been fetched yet (tree.parentsKnownIds) — same
   // condition DetailPanel's own "Load ancestors" button already gates on, just
   // surfaced directly on the card so a viewer doesn't need to select the node
@@ -181,10 +198,23 @@ interface PersonNodeData extends Record<string, unknown> {
   onLoadAncestors: () => void;
 }
 type PersonFlowNode = Node<PersonNodeData, "person">;
+/** A couple's id for its union point — the same whichever partner comes first. */
+function coupleKey(a: string, b: string): string {
+  return [a, b].toSorted().join("|");
+}
+
+/**
+ * An invisible point in the middle of a couple's marriage line — the one
+ * place their shared children's lines start from, the usual genealogy-chart
+ * shape, instead of a line from each parent crossing under the couple.
+ */
+type UnionFlowNode = Node<Record<string, never>, "union">;
+type FlowNode = PersonFlowNode | UnionFlowNode;
 
 function PersonNode({ data }: NodeProps<PersonFlowNode>) {
   const { t } = useTranslation();
-  const { person, isRoot, canLoadAncestors, isLoadingAncestors, onLoadAncestors } = data;
+  const { person, isRoot, isSelected, canLoadAncestors, isLoadingAncestors, onLoadAncestors } =
+    data;
   const photoUrl = person.photoPath ? `${publicBackendUrl}/uploads/${person.photoPath}` : null;
 
   return (
@@ -192,7 +222,10 @@ function PersonNode({ data }: NodeProps<PersonFlowNode>) {
       className={cn(
         "relative flex items-center gap-2 overflow-hidden rounded-lg border bg-card p-3 pl-4 text-left shadow-sm",
         isRoot && "border-primary ring-2 ring-primary/40",
+        isSelected && !isRoot && "border-foreground/40 ring-2 ring-foreground/15",
       )}
+      // Double-click centres the tree here (see onNodeDoubleClick in FamilyTree).
+      title={isRoot ? undefined : t("tree.doubleClickToCenter")}
       style={{ width: NODE_WIDTH }}
     >
       <div className={cn("absolute inset-y-0 left-0 w-1.5", genderAccentClasses(person.gender))} />
@@ -296,7 +329,21 @@ function PersonNode({ data }: NodeProps<PersonFlowNode>) {
   );
 }
 
-const NODE_TYPES: NodeTypes = { person: PersonNode };
+function UnionNode() {
+  return (
+    <div className="size-px" aria-hidden="true">
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="family-out"
+        isConnectable={false}
+        className="opacity-0"
+      />
+    </div>
+  );
+}
+
+const NODE_TYPES: NodeTypes = { person: PersonNode, union: UnionNode };
 
 interface ExtraTreeData {
   people: TreePersonRow[];
@@ -331,15 +378,35 @@ interface MergedTree {
  * whole layout and could shuffle everyone else on screen for what's usually
  * a one-person addition.
  */
-function mergeTree(base: TreeData, extra: ExtraTreeData): MergedTree {
+/** Edge keys, shared by `mergeTree`'s dedup and the removal set below so the two always agree. */
+function parentEdgeKey(parentId: string, childId: string): string {
+  return `${parentId}->${childId}`;
+}
+function spouseEdgeKey(pair: readonly [string, string]): string {
+  return pair.toSorted().join("|");
+}
+
+/**
+ * Relationships removed from the panel during this visit. Applied on top of
+ * the merge rather than refetching the tree, for the same reason additions
+ * are (see `mergeTree`): a refetch would also drop everything "Load more"
+ * pulled in, and reshuffle the whole layout.
+ */
+interface RemovedEdges {
+  parentEdges: ReadonlySet<string>;
+  spouseEdges: ReadonlySet<string>;
+}
+const NO_REMOVED_EDGES: RemovedEdges = { parentEdges: new Set(), spouseEdges: new Set() };
+
+function mergeTree(base: TreeData, extra: ExtraTreeData, removed: RemovedEdges): MergedTree {
   const peopleById = new Map(base.people.map((person) => [person.id, person]));
   for (const person of extra.people) peopleById.set(person.id, person);
 
   const parentEdgeKeys = new Set<string>();
   const parentEdges: TreeEdgeRow[] = [];
   for (const edge of [...base.parentEdges, ...extra.parentEdges]) {
-    const key = `${edge.parentId}->${edge.childId}`;
-    if (parentEdgeKeys.has(key)) continue;
+    const key = parentEdgeKey(edge.parentId, edge.childId);
+    if (parentEdgeKeys.has(key) || removed.parentEdges.has(key)) continue;
     parentEdgeKeys.add(key);
     parentEdges.push(edge);
   }
@@ -347,30 +414,104 @@ function mergeTree(base: TreeData, extra: ExtraTreeData): MergedTree {
   const spouseEdgeKeys = new Set<string>();
   const spouseEdges: Array<[string, string]> = [];
   for (const pair of [...base.spouseEdges, ...extra.spouseEdges]) {
-    const key = pair.toSorted().join("|");
-    if (spouseEdgeKeys.has(key)) continue;
+    const key = spouseEdgeKey(pair);
+    if (spouseEdgeKeys.has(key) || removed.spouseEdges.has(key)) continue;
     spouseEdgeKeys.add(key);
     spouseEdges.push(pair);
   }
 
-  return {
+  return keepConnected({
     rootId: base.rootId,
     people: [...peopleById.values()],
     parentEdges,
     spouseEdges,
     parentsKnownIds: new Set([...base.parentsKnownIds, ...extra.parentsKnownIds]),
     childrenKnownIds: new Set([...base.childrenKnownIds, ...extra.childrenKnownIds]),
+  });
+}
+
+/** Keeps `ids` and only the edges whose both ends are in it. */
+function restrictTo(tree: MergedTree, ids: ReadonlySet<string>): MergedTree {
+  return {
+    ...tree,
+    people: tree.people.filter((person) => ids.has(person.id)),
+    parentEdges: tree.parentEdges.filter((edge) => ids.has(edge.parentId) && ids.has(edge.childId)),
+    spouseEdges: tree.spouseEdges.filter(([a, b]) => ids.has(a) && ids.has(b)),
   };
 }
 
-function FamilyTree({ rootId }: { rootId: string }) {
+/** Everyone reachable from `startIds` by repeatedly following `next`. */
+function reachable(startIds: string[], next: (id: string) => string[]): Set<string> {
+  const seen = new Set(startIds);
+  const queue = [...startIds];
+  while (queue.length > 0) {
+    for (const id of next(queue.shift()!)) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        queue.push(id);
+      }
+    }
+  }
+  return seen;
+}
+
+/**
+ * Drops anyone no longer connected to the root by any edge — after a removal
+ * in the panel, a removed parent and everyone above them would otherwise
+ * stay on the canvas with no generation to place them in (`computeGenerations`
+ * floods from the root, so they'd all pile onto the root's own row).
+ */
+function keepConnected(tree: MergedTree): MergedTree {
+  const neighbors = new Map<string, string[]>();
+  const connect = (a: string, b: string) => {
+    neighbors.set(a, [...(neighbors.get(a) ?? []), b]);
+    neighbors.set(b, [...(neighbors.get(b) ?? []), a]);
+  };
+  for (const edge of tree.parentEdges) connect(edge.parentId, edge.childId);
+  for (const [a, b] of tree.spouseEdges) connect(a, b);
+  return restrictTo(
+    tree,
+    reachable([tree.rootId], (id) => neighbors.get(id) ?? []),
+  );
+}
+
+/**
+ * What the canvas draws for each `TreeView`. "ancestors" is the direct line
+ * upward only — a pedigree, so not even the root's own spouse. "descendants"
+ * is everyone below plus each of their partners, the usual shape of a
+ * descendant chart. The panel keeps working off the full tree either way.
+ */
+function filterByView(tree: MergedTree, view: TreeView): MergedTree {
+  if (view === "both") return tree;
+  if (view === "ancestors") {
+    const ids = reachable([tree.rootId], (id) =>
+      tree.parentEdges.filter((edge) => edge.childId === id).map((edge) => edge.parentId),
+    );
+    return restrictTo(tree, ids);
+  }
+  const descendants = reachable([tree.rootId], (id) =>
+    tree.parentEdges.filter((edge) => edge.parentId === id).map((edge) => edge.childId),
+  );
+  const ids = new Set(descendants);
+  for (const [a, b] of tree.spouseEdges) {
+    if (descendants.has(a)) ids.add(b);
+    if (descendants.has(b)) ids.add(a);
+  }
+  return restrictTo(tree, ids);
+}
+
+function FamilyTree({ rootId, view }: { rootId: string; view: TreeView }) {
   const { t } = useTranslation();
+  const { canEdit } = usePermissions();
+  const navigate = useNavigate();
   const treeQuery = useQuery({
     queryKey: ["person", "tree", rootId],
     queryFn: () => getTree({ data: { id: rootId } }),
   });
 
   const [extra, setExtra] = useState<ExtraTreeData>(EMPTY_EXTRA);
+  const [removed, setRemoved] = useState<RemovedEdges>(NO_REMOVED_EDGES);
+
   const addToExtra = (update: Partial<ExtraTreeData>) => {
     setExtra((previous) => ({
       people: [...previous.people, ...(update.people ?? [])],
@@ -379,15 +520,40 @@ function FamilyTree({ rootId }: { rootId: string }) {
       parentsKnownIds: [...previous.parentsKnownIds, ...(update.parentsKnownIds ?? [])],
       childrenKnownIds: [...previous.childrenKnownIds, ...(update.childrenKnownIds ?? [])],
     }));
+    // A link re-added (or reloaded from the server) after being removed this
+    // visit is real again — without this, the removal would keep hiding it.
+    const readded = new Set([
+      ...(update.parentEdges ?? []).map((edge) => parentEdgeKey(edge.parentId, edge.childId)),
+      ...(update.spouseEdges ?? []).map((pair) => spouseEdgeKey(pair)),
+    ]);
+    if (readded.size > 0) {
+      setRemoved((previous) => ({
+        parentEdges: new Set([...previous.parentEdges].filter((key) => !readded.has(key))),
+        spouseEdges: new Set([...previous.spouseEdges].filter((key) => !readded.has(key))),
+      }));
+    }
+  };
+
+  const addToRemoved = (removal: { parentEdge?: string; spouseEdge?: string }) => {
+    setRemoved((previous) => ({
+      parentEdges: removal.parentEdge
+        ? new Set([...previous.parentEdges, removal.parentEdge])
+        : previous.parentEdges,
+      spouseEdges: removal.spouseEdge
+        ? new Set([...previous.spouseEdges, removal.spouseEdge])
+        : previous.spouseEdges,
+    }));
   };
 
   // Memoized so its identity is stable across unrelated re-renders (the
   // `isArranging` check below compares against this reference) and only
-  // actually changes when the data it's built from does.
+  // actually changes when the data it's built from does. `merged` is the
+  // whole tree (what the panel reads); `visible` is what the canvas draws.
   const merged = useMemo(
-    () => (treeQuery.data ? mergeTree(treeQuery.data, extra) : null),
-    [treeQuery.data, extra],
+    () => (treeQuery.data ? mergeTree(treeQuery.data, extra, removed) : null),
+    [treeQuery.data, extra, removed],
   );
+  const visible = useMemo(() => (merged ? filterByView(merged, view) : null), [merged, view]);
 
   // Defaults to the root rather than nobody, so the detail panel is already
   // populated with the person the tree is centered on instead of an empty
@@ -404,7 +570,7 @@ function FamilyTree({ rootId }: { rootId: string }) {
   // instead of tracked as its own state set synchronously inside the effect.
   const [layout, setLayout] = useState<{
     data: MergedTree;
-    nodes: PersonFlowNode[];
+    nodes: FlowNode[];
     edges: Edge[];
   } | null>(null);
 
@@ -412,7 +578,7 @@ function FamilyTree({ rootId }: { rootId: string }) {
   // expand, or an add-relative); elk's layout is async, so this can't be a
   // plain render-time computation.
   useEffect(() => {
-    const data = merged;
+    const data = visible;
     if (!data) return undefined;
     let cancelled = false;
 
@@ -425,7 +591,7 @@ function FamilyTree({ rootId }: { rootId: string }) {
       data.rootId,
     ).then((positions) => {
       if (cancelled) return;
-      const nodes = data.people.flatMap((person) => {
+      const nodes: FlowNode[] = data.people.flatMap((person) => {
         const position = positions.get(person.id);
         if (!position) return [];
         return [
@@ -440,6 +606,7 @@ function FamilyTree({ rootId }: { rootId: string }) {
             data: {
               person,
               isRoot: person.id === data.rootId,
+              isSelected: false,
               canLoadAncestors: false,
               isLoadingAncestors: false,
               onLoadAncestors: () => {},
@@ -448,15 +615,73 @@ function FamilyTree({ rootId }: { rootId: string }) {
           },
         ];
       });
+      // A couple on one row gets a union point in the middle of their
+      // marriage line (layoutTree keeps partners side by side).
+      const unionPoints = new Map<string, { x: number; y: number }>();
+      for (const [a, b] of data.spouseEdges) {
+        const posA = positions.get(a);
+        const posB = positions.get(b);
+        if (!posA || !posB || posA.y !== posB.y) continue;
+        const [left, right] = posA.x <= posB.x ? [posA, posB] : [posB, posA];
+        unionPoints.set(coupleKey(a, b), {
+          x: (left.x + NODE_WIDTH + right.x) / 2,
+          y: left.y + NODE_HEIGHT / 2,
+        });
+      }
+      // Each child hangs from their parents' union point when two of their
+      // parents are such a couple; any other parent (a lone parent, a third
+      // adoptive one) keeps a direct line.
+      const usedUnions = new Set<string>();
+      const lineageEdges: Edge[] = [];
+      const parentsByChild = new Map<string, string[]>();
+      for (const edge of data.parentEdges) {
+        parentsByChild.set(edge.childId, [
+          ...(parentsByChild.get(edge.childId) ?? []),
+          edge.parentId,
+        ]);
+      }
+      for (const [childId, parentIds] of parentsByChild) {
+        let remaining = parentIds;
+        const pair = parentIds
+          .flatMap((a, i) => parentIds.slice(i + 1).map((b) => [a, b] as const))
+          .find(([a, b]) => unionPoints.has(coupleKey(a, b)));
+        if (pair) {
+          const key = coupleKey(pair[0], pair[1]);
+          usedUnions.add(key);
+          lineageEdges.push({
+            id: `family-${key}-${childId}`,
+            source: `union-${key}`,
+            sourceHandle: "family-out",
+            target: childId,
+            targetHandle: "parent-in",
+            type: "smoothstep",
+          });
+          remaining = parentIds.filter((id) => id !== pair[0] && id !== pair[1]);
+        }
+        for (const parentId of remaining) {
+          lineageEdges.push({
+            id: `parent-${parentId}-${childId}`,
+            source: parentId,
+            sourceHandle: "child-out",
+            target: childId,
+            targetHandle: "parent-in",
+            type: "smoothstep",
+          });
+        }
+      }
+      for (const key of usedUnions) {
+        nodes.push({
+          id: `union-${key}`,
+          type: "union",
+          position: unionPoints.get(key)!,
+          data: {},
+          draggable: false,
+          selectable: false,
+          focusable: false,
+        });
+      }
       const edges: Edge[] = [
-        ...data.parentEdges.map((edge) => ({
-          id: `parent-${edge.parentId}-${edge.childId}`,
-          source: edge.parentId,
-          sourceHandle: "child-out",
-          target: edge.childId,
-          targetHandle: "parent-in",
-          type: "smoothstep",
-        })),
+        ...lineageEdges,
         // A marriage line is short and solid, routed through dedicated
         // left/right handles rather than the top/bottom ones lineage edges
         // use — connected left-partner → right-partner so it's always the
@@ -485,7 +710,7 @@ function FamilyTree({ rootId }: { rootId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [merged]);
+  }, [visible]);
 
   const expandMutation = useMutation({
     mutationFn: async ({ nodeId, direction }: { nodeId: string; direction: "up" | "down" }) => {
@@ -523,6 +748,27 @@ function FamilyTree({ rootId }: { rootId: string }) {
         }
       });
 
+      // Each new person's *other* parents who are already on the canvas — a
+      // grandchild loaded under one parent also belongs to that parent's
+      // spouse. Same gap the initial load fills with `parentEdgesAmong`;
+      // these come with their parentage, which the panel needs for
+      // Father/Mother.
+      const onCanvas = new Set([
+        ...(merged?.people.map((row) => row.id) ?? []),
+        ...newPeople.map((row) => row.id),
+        ...spousePeople.map((row) => row.id),
+      ]);
+      newPeople.forEach((person, index) => {
+        for (const parent of spouseResults[index]!.parents) {
+          if (!onCanvas.has(parent.id)) continue;
+          parentEdges.push({
+            parentId: parent.id,
+            childId: person.id,
+            parentage: parent.parentage,
+          });
+        }
+      });
+
       return {
         people: [...newPeople, ...spousePeople],
         parentEdges,
@@ -540,12 +786,15 @@ function FamilyTree({ rootId }: { rootId: string }) {
   // whether it's mid-expand needs to update live with `merged` (parentsKnownIds
   // changing) and with expandMutation's own pending state, without forcing a
   // full elk relayout on every mutation state change.
-  const nodes = useMemo<PersonFlowNode[]>(() => {
+  const nodes = useMemo<FlowNode[]>(() => {
     const base = layout?.nodes ?? EMPTY_NODES;
     if (!merged) return base;
     return base.map((node) => {
+      if (node.type !== "person") return node;
       const data: PersonNodeData = Object.assign({}, node.data, {
-        canLoadAncestors: !merged.parentsKnownIds.has(node.id),
+        isSelected: node.id === selectedId,
+        // In the descendants view, loaded ancestors couldn't be drawn anyway.
+        canLoadAncestors: view !== "descendants" && !merged.parentsKnownIds.has(node.id),
         isLoadingAncestors:
           expandMutation.isPending &&
           expandMutation.variables?.nodeId === node.id &&
@@ -554,7 +803,7 @@ function FamilyTree({ rootId }: { rootId: string }) {
       });
       return Object.assign({}, node, { data });
     });
-  }, [layout, merged, expandMutation]);
+  }, [layout, merged, view, expandMutation, selectedId]);
 
   if (treeQuery.isPending) {
     return (
@@ -572,29 +821,60 @@ function FamilyTree({ rootId }: { rootId: string }) {
     );
   }
 
-  const isArranging = !layout || layout.data !== merged;
+  const isArranging = !layout || layout.data !== visible;
   const edges = layout?.edges ?? EMPTY_EDGES;
-  const selectedPerson = merged?.people.find((person) => person.id === selectedId) ?? null;
+  // Falls back to the root when the selected person is no longer drawn —
+  // hidden by the view toggle, or disconnected by a removal.
+  const selectedPerson =
+    visible?.people.find((person) => person.id === selectedId) ??
+    visible?.people.find((person) => person.id === rootId) ??
+    null;
 
   return (
     <div className="flex flex-1 gap-4 overflow-hidden">
       {merged && selectedPerson && (
-        <DetailPanel
-          person={selectedPerson}
-          isRoot={selectedPerson.id === merged.rootId}
-          tree={merged}
-          onAdded={addToExtra}
-          onExpand={(direction) => expandMutation.mutate({ nodeId: selectedPerson.id, direction })}
-          expandingDirection={expandMutation.isPending ? expandMutation.variables?.direction : null}
-        />
+        <ReadOnlyProvider readOnly={!canEdit}>
+          <DetailPanel
+            person={selectedPerson}
+            isRoot={selectedPerson.id === merged.rootId}
+            tree={merged}
+            view={view}
+            onAdded={addToExtra}
+            onRemoved={addToRemoved}
+            onExpand={(direction) =>
+              expandMutation.mutate({ nodeId: selectedPerson.id, direction })
+            }
+            expandingDirection={
+              expandMutation.isPending ? expandMutation.variables?.direction : null
+            }
+          />
+        </ReadOnlyProvider>
       )}
       <div className="relative flex-1 overflow-hidden rounded-lg border">
+        <div className="absolute top-3 left-3 z-10 rounded-md bg-card shadow-sm">
+          <ButtonRadioGroup
+            aria-label={t("tree.view.label")}
+            value={view}
+            onChange={(next) =>
+              void navigate({
+                to: "/tree",
+                search: { personId: rootId, ...(next === "both" ? {} : { view: next }) },
+              })
+            }
+            options={[
+              { value: "both", label: t("tree.view.both") },
+              { value: "ancestors", label: t("tree.view.ancestors") },
+              { value: "descendants", label: t("tree.view.descendants") },
+            ]}
+          />
+        </div>
         {isArranging ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             {t("tree.arrangingTree")}
           </div>
         ) : (
           <ReactFlow
+            style={CANVAS_THEME}
             nodes={nodes}
             edges={edges}
             nodeTypes={NODE_TYPES}
@@ -610,7 +890,20 @@ function FamilyTree({ rootId }: { rootId: string }) {
             proOptions={{ hideAttribution: true }}
             minZoom={0.1}
             defaultEdgeOptions={{ style: { strokeWidth: 1.5 } }}
-            onNodeClick={(_, node) => setSelectedId(node.id)}
+            onNodeClick={(_, node) => {
+              if (node.type === "person") setSelectedId(node.id);
+            }}
+            // Double-click a person to centre the tree on them — the same as
+            // "Center tree here" in the panel, keeping the current view.
+            // React Flow's own double-click zoom would fire too, so it's off.
+            zoomOnDoubleClick={false}
+            onNodeDoubleClick={(_, node) => {
+              if (node.type !== "person" || node.id === rootId) return;
+              void navigate({
+                to: "/tree",
+                search: { personId: node.id, ...(view === "both" ? {} : { view }) },
+              });
+            }}
           >
             <Background />
             <Controls showInteractive={false} />
@@ -621,9 +914,24 @@ function FamilyTree({ rootId }: { rootId: string }) {
   );
 }
 
-function RelativeRow({ label, person }: { label?: string; person: TreePersonRow }) {
+/**
+ * `remove` adds a confirm-first ✕ that unlinks this one relationship — never
+ * the person. Siblings don't get one: they share a parent rather than having
+ * a link of their own, the same reason the person page has none for them.
+ */
+function RelativeRow({
+  label,
+  person,
+  remove,
+}: {
+  label?: string;
+  person: TreePersonRow;
+  remove?: { relationLabel: string; onConfirm: () => void; isPending: boolean };
+}) {
+  const { t } = useTranslation();
+  const name = formatPersonName(person);
   return (
-    <div className="flex items-center justify-between gap-2 text-sm">
+    <div className="group flex items-center justify-between gap-2 text-sm">
       <div className="min-w-0">
         {label && <p className="text-xs text-muted-foreground">{label}</p>}
         <Link
@@ -631,10 +939,32 @@ function RelativeRow({ label, person }: { label?: string; person: TreePersonRow 
           params={{ personId: person.id }}
           className="truncate hover:underline"
         >
-          {formatPersonName(person)}
+          {name}
         </Link>
       </div>
-      <span className="shrink-0 text-xs text-muted-foreground">{formatLifespan(person) ?? ""}</span>
+      <div className="flex shrink-0 items-center gap-1">
+        <span className="text-xs text-muted-foreground">{formatLifespan(person) ?? ""}</span>
+        {remove && (
+          <RemoveButton
+            itemLabel={name}
+            title={t("tree.removeTitle", { name, relation: remove.relationLabel })}
+            description={t("tree.removeDescription")}
+            actionLabel={t("tree.removeAction")}
+            onConfirm={remove.onConfirm}
+            trigger={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                aria-label={t("tree.removeAria", { name, relation: remove.relationLabel })}
+                isDisabled={remove.isPending}
+              >
+                <XIcon className="size-3.5" />
+              </Button>
+            }
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -674,6 +1004,7 @@ function AddRelativeButton({
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const { canEdit } = usePermissions();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -746,8 +1077,12 @@ function AddRelativeButton({
   const createAndLink = async () => {
     const presetGender = kind === "father" ? "M" : kind === "mother" ? "F" : "U";
     const created = await createPersonMutation.mutateAsync({ data: { gender: presetGender } });
-    await link(created);
+    // Only editors can create people, and editors see everyone unredacted.
+    await link({ ...created, redacted: false });
   };
+
+  // A plain dialog rather than a FormDialog, so ReadOnlyProvider can't hide it.
+  if (!canEdit) return null;
 
   return (
     <Dialog
@@ -806,18 +1141,67 @@ function DetailPanel({
   person,
   isRoot,
   tree,
+  view,
   onAdded,
+  onRemoved,
   onExpand,
   expandingDirection,
 }: {
   person: TreePersonRow;
   isRoot: boolean;
   tree: MergedTree;
+  view: TreeView;
   onAdded: (update: Partial<ExtraTreeData>) => void;
+  onRemoved: (removal: { parentEdge?: string; spouseEdge?: string }) => void;
   onExpand: (direction: "up" | "down") => void;
   expandingDirection: "up" | "down" | null | undefined;
 }) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const unlinkParentMutation = useMutation({ mutationFn: unlinkParent });
+  const unlinkSpouseMutation = useMutation({ mutationFn: unlinkSpouse });
+  const isRemoving = unlinkParentMutation.isPending || unlinkSpouseMutation.isPending;
+
+  // Both people's relatives change (and so the panel's Siblings list and any
+  // open person page), so refresh both before taking the edge off the canvas.
+  const afterRemoval = async (
+    otherId: string,
+    removal: { parentEdge?: string; spouseEdge?: string },
+  ) => {
+    await Promise.all(
+      [person.id, otherId].map((id) =>
+        queryClient.invalidateQueries({ queryKey: ["person", "relatives", id] }),
+      ),
+    );
+    onRemoved(removal);
+  };
+  const removeParentLink = (parentId: string, childId: string, relationLabel: string) => ({
+    relationLabel,
+    isPending: isRemoving,
+    onConfirm: () =>
+      unlinkParentMutation.mutate(
+        { data: { parentId, childId } },
+        {
+          onSuccess: () =>
+            afterRemoval(parentId === person.id ? childId : parentId, {
+              parentEdge: parentEdgeKey(parentId, childId),
+            }),
+        },
+      ),
+  });
+  const removeSpouseLink = (spouseId: string) => ({
+    relationLabel: t("tree.kind.spouse"),
+    isPending: isRemoving,
+    onConfirm: () =>
+      unlinkSpouseMutation.mutate(
+        { data: { aId: person.id, bId: spouseId } },
+        {
+          onSuccess: () =>
+            afterRemoval(spouseId, { spouseEdge: spouseEdgeKey([person.id, spouseId]) }),
+        },
+      ),
+  });
+  const removeError = unlinkParentMutation.error ?? unlinkSpouseMutation.error;
   const peopleById = new Map(tree.people.map((row) => [row.id, row]));
 
   const parents = tree.parentEdges
@@ -897,7 +1281,7 @@ function DetailPanel({
         {!isRoot && (
           <Link
             to="/tree"
-            search={{ personId: person.id }}
+            search={{ personId: person.id, ...(view === "both" ? {} : { view }) }}
             className={buttonVariants({ variant: "outline", size: "sm" })}
           >
             {t("tree.centerTreeHere")}
@@ -905,18 +1289,36 @@ function DetailPanel({
         )}
       </div>
 
+      {removeError && <p className="mt-4 text-sm text-destructive">{removeError.message}</p>}
+
       <section className="mt-6 space-y-2">
         <h3 className="text-xs font-medium text-muted-foreground uppercase">{t("tree.parents")}</h3>
-        {father && <RelativeRow label={t("tree.father")} person={father} />}
+        {father && (
+          <RelativeRow
+            label={t("tree.father")}
+            person={father}
+            remove={removeParentLink(father.id, person.id, t("tree.kind.father"))}
+          />
+        )}
         {!father && parentsKnown && (
           <AddRelativeButton subjectId={person.id} kind="father" onAdded={onAdded} />
         )}
-        {mother && <RelativeRow label={t("tree.mother")} person={mother} />}
+        {mother && (
+          <RelativeRow
+            label={t("tree.mother")}
+            person={mother}
+            remove={removeParentLink(mother.id, person.id, t("tree.kind.mother"))}
+          />
+        )}
         {!mother && parentsKnown && (
           <AddRelativeButton subjectId={person.id} kind="mother" onAdded={onAdded} />
         )}
         {otherParents.map((parent) => (
-          <RelativeRow key={parent.id} person={parent} />
+          <RelativeRow
+            key={parent.id}
+            person={parent}
+            remove={removeParentLink(parent.id, person.id, t("tree.kind.parent"))}
+          />
         ))}
         {!parentsKnown && (
           <Button
@@ -934,7 +1336,7 @@ function DetailPanel({
       <section className="mt-4 space-y-2">
         <h3 className="text-xs font-medium text-muted-foreground uppercase">{t("tree.spouses")}</h3>
         {spouses.map((spouse) => (
-          <RelativeRow key={spouse.id} person={spouse} />
+          <RelativeRow key={spouse.id} person={spouse} remove={removeSpouseLink(spouse.id)} />
         ))}
         <AddRelativeButton subjectId={person.id} kind="spouse" onAdded={onAdded} />
       </section>
@@ -944,7 +1346,11 @@ function DetailPanel({
           {t("tree.children")}
         </h3>
         {children.map((child) => (
-          <RelativeRow key={child.id} person={child} />
+          <RelativeRow
+            key={child.id}
+            person={child}
+            remove={removeParentLink(person.id, child.id, t("tree.kind.child"))}
+          />
         ))}
         {childrenKnown && (
           <AddRelativeButton subjectId={person.id} kind="child" onAdded={onAdded} />
@@ -992,7 +1398,25 @@ function DetailPanel({
   );
 }
 
+/**
+ * Points React Flow's zoom controls at the app's own theme tokens, so they
+ * follow light/dark with everything else. Its defaults are a near-white
+ * button whose icon *inherits* the surrounding text color — in dark mode
+ * that's light text on a white button, a blank white box. Its own
+ * `colorMode="dark"` isn't the fix: it also redraws every connecting line in
+ * #3e3e3e on #141414, which is barely visible. The lines and transparent
+ * canvas background stay on React Flow's light defaults, which read fine on
+ * both themes.
+ */
+const CANVAS_THEME = {
+  "--xy-controls-button-background-color": "var(--card)",
+  "--xy-controls-button-background-color-hover": "var(--accent)",
+  "--xy-controls-button-color": "var(--foreground)",
+  "--xy-controls-button-color-hover": "var(--foreground)",
+  "--xy-controls-button-border-color": "var(--border)",
+} as CSSProperties;
+
 // Stable references so a still-arranging render doesn't hand React Flow a
 // fresh empty array every time.
-const EMPTY_NODES: PersonFlowNode[] = [];
+const EMPTY_NODES: FlowNode[] = [];
 const EMPTY_EDGES: Edge[] = [];

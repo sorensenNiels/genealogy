@@ -26,9 +26,11 @@ import { useTranslation } from "react-i18next";
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { publicBackendUrl } from "../../lib/env";
 import { formatDisplayDate } from "../../lib/format-date";
+import { usePermissions } from "../../lib/permissions";
 import { genderLabel, initials, relationshipToRootLabel } from "../../lib/person-display";
 import { isImmichConfigured } from "../../server/functions/immich.functions";
 import { removePerson } from "../../server/functions/person.functions";
+import { MergePersonDialog } from "./-merge-person-dialog";
 import { SetPhotoFromImmichDialog } from "./-set-photo-from-immich-dialog";
 import type { CitationRow, NameVariantRow, PersonRow, SourceRow } from "./-types";
 
@@ -60,6 +62,7 @@ export function PersonHeaderCard({
   onDeleted: () => void;
 }) {
   const { t, i18n } = useTranslation();
+  const { isAdmin } = usePermissions();
   const language = toSupportedLanguage(i18n.language);
   const removePersonMutation = useMutation({ mutationFn: removePerson, onSuccess: onDeleted });
 
@@ -107,6 +110,11 @@ export function PersonHeaderCard({
                 <CopyableText value={person.publicId} className="font-mono text-foreground" />
               </Badge>
               <Badge variant="outline">{genderLabel(person.gender, t)}</Badge>
+              {person.redacted && (
+                <Badge variant="secondary" title={t("person.header.redactedHint")}>
+                  {t("person.header.redacted")}
+                </Badge>
+              )}
               {person.restriction && (
                 <Badge className="border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400">
                   {t(`person.restriction.${person.restriction}`)}
@@ -155,6 +163,13 @@ export function PersonHeaderCard({
             >
               <Network className="size-4" /> {t("person.header.viewInTree")}
             </Link>
+            {isAdmin && (
+              <MergePersonDialog
+                personId={person.id}
+                personName={formatFullPersonName(person)}
+                onMerged={onChanged}
+              />
+            )}
             {canDelete && (
               <RemoveButton
                 itemLabel={formatFullPersonName(person)}
@@ -212,6 +227,7 @@ function PersonPhoto({
   const photoUrl = person.photoPath ? `${publicBackendUrl}/uploads/${person.photoPath}` : null;
   const dimensionClass = size === "lg" ? "size-24" : "size-16";
   const roundingClass = size === "lg" ? "rounded-xl" : "rounded-full";
+  const { canEdit } = usePermissions();
 
   const upload = async (file: File) => {
     setUploading(true);
@@ -235,6 +251,20 @@ function PersonPhoto({
     await fetch(`/api/people/${person.id}/photo`, { method: "DELETE" });
     await onChanged();
   };
+
+  // Viewers see the photo, not a button to change it.
+  if (!canEdit) {
+    return (
+      <PersonPhotoAvatar
+        person={person}
+        photoUrl={photoUrl}
+        size={size}
+        roundingClass={roundingClass}
+        dimensionClass={dimensionClass}
+        uploading={false}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col items-end gap-1">

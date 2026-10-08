@@ -25,7 +25,9 @@ import {
   personEvents,
   personNames,
   persons,
+  personExternalIds,
   places,
+  repositories,
   researchNotes,
   sources,
   unions,
@@ -198,6 +200,8 @@ export class GedcomImportService {
     // foreign key (citation → source, event → person, ...) is known up front
     // and each table goes in as a handful of multi-row inserts.
     const sourceIds = new Map(plan.sources.map((source) => [source.ref, randomUUID()]));
+    const repositoryIds = new Map(plan.repositories.map((repo) => [repo.ref, randomUUID()]));
+    const externalIdRows: (typeof personExternalIds.$inferInsert)[] = [];
     const personIds = new Map(plan.persons.map((person) => [person.ref, randomUUID()]));
     const personId = (ref: string): string => {
       const id = personIds.get(ref);
@@ -236,6 +240,7 @@ export class GedcomImportService {
           certificateNumber: citation.certificateNumber,
           confidence: citation.confidence,
           note: citation.note,
+          ancestryApid: citation.ancestryApid,
         });
       }
     };
@@ -309,6 +314,9 @@ export class GedcomImportService {
         const eventId = eventIds[association.eventIndex];
         associate(association, id, eventId ? { eventId } : {});
       }
+      for (const externalId of person.externalIds) {
+        externalIdRows.push({ personId: id, ...externalId });
+      }
       for (const note of person.researchNotes) {
         researchNoteRows.push({ personId: id, ...note });
       }
@@ -341,12 +349,23 @@ export class GedcomImportService {
       // the transaction's single connection.
       /* eslint-disable no-await-in-loop */
       for (const chunk of chunked(
+        plan.repositories.map((repo) => {
+          const { ref, ...columns } = repo;
+          return { id: repositoryIds.get(ref)!, ...columns };
+        }),
+      )) {
+        await tx.insert(repositories).values(chunk);
+      }
+      for (const chunk of chunked(
         plan.sources.map((source) => ({
           id: sourceIds.get(source.ref)!,
           title: source.title,
           author: source.author,
           publication: source.publication,
-          repository: source.repository,
+          repositoryId: source.repositoryRef
+            ? (repositoryIds.get(source.repositoryRef) ?? null)
+            : null,
+          callNumber: source.callNumber,
           sourceType: source.sourceType,
         })),
       )) {
@@ -359,6 +378,9 @@ export class GedcomImportService {
       for (const chunk of chunked(associationRows)) await tx.insert(associations).values(chunk);
       for (const chunk of chunked(citationRows)) await tx.insert(citations).values(chunk);
       for (const chunk of chunked(researchNoteRows)) await tx.insert(researchNotes).values(chunk);
+      for (const chunk of chunked(externalIdRows)) {
+        await tx.insert(personExternalIds).values(chunk).onConflictDoNothing();
+      }
       // A place already in the table keeps its coordinates — they may have
       // been corrected by hand, and a file's are no more authoritative.
       // Only touched when the file has coordinates at all, so a file without

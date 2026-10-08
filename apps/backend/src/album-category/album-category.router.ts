@@ -6,7 +6,7 @@ import {
 import { Injectable } from "@nestjs/common";
 import { z } from "zod";
 
-import { protectedProcedure, router } from "../trpc/trpc.base.js";
+import { editorProcedure, protectedProcedure, router } from "../trpc/trpc.base.js";
 import { AlbumCategoryService } from "./album-category.service.js";
 
 @Injectable()
@@ -18,15 +18,15 @@ export class AlbumCategoryRouter {
     return router({
       list: protectedProcedure.query(() => this.categories.list()),
 
-      create: protectedProcedure
+      create: editorProcedure
         .input(createAlbumCategorySchema)
         .mutation(({ input }) => this.categories.create(input)),
 
-      update: protectedProcedure
+      update: editorProcedure
         .input(updateAlbumCategorySchema)
         .mutation(({ input }) => this.categories.update(input)),
 
-      remove: protectedProcedure
+      remove: editorProcedure
         .input(z.object({ id: albumCategoryIdSchema }))
         .mutation(async ({ input }) => {
           await this.categories.remove(input.id);

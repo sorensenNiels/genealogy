@@ -6,10 +6,12 @@ import { AlbumCategoryRouter } from "../album-category/album-category.router.js"
 import { AssociationRouter } from "../association/association.router.js";
 import { AUTH, type Auth } from "../auth/auth.module.js";
 import { BackupRouter } from "../backup/backup.router.js";
+import { ExternalIdRouter } from "../external-id/external-id.router.js";
 import { GedcomRouter } from "../gedcom/gedcom.router.js";
 import { ImmichRouter } from "../immich/immich.router.js";
 import { IntegrityRouter } from "../integrity/integrity.router.js";
 import { MailRouter } from "../mail/mail.router.js";
+import { MembersRouter } from "../members/members.router.js";
 import { NotificationRouter } from "../notification/notification.router.js";
 import { PersonRouter } from "../person/person.router.js";
 import { ProfileRouter } from "../profile/profile.router.js";
@@ -39,6 +41,8 @@ export class TrpcRouter {
     private readonly integrity: IntegrityRouter,
     private readonly association: AssociationRouter,
     private readonly albumCategory: AlbumCategoryRouter,
+    private readonly externalId: ExternalIdRouter,
+    private readonly members: MembersRouter,
     @Inject(AUTH) private readonly auth: Auth,
   ) {}
 
@@ -62,6 +66,8 @@ export class TrpcRouter {
       integrity: this.integrity.build(),
       association: this.association.build(),
       albumCategory: this.albumCategory.build(),
+      externalId: this.externalId.build(),
+      members: this.members.build(),
     });
   }
 

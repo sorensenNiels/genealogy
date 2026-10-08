@@ -1,5 +1,5 @@
 import type { AppRouter } from "@genealogy/backend";
-import { configurableTopicSchema, type ConfigurableTopic } from "@genealogy/core";
+import { configurableTopicSchema, type ConfigurableTopic, isAdmin } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
 import { DialogFooter } from "@genealogy/ui/components/dialog";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
@@ -11,7 +11,7 @@ import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending"
 import { cn } from "@genealogy/ui/lib/utils";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { TFunction } from "i18next";
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
@@ -29,6 +29,10 @@ import {
 const DEFAULT_TOPIC = configurableTopicSchema.options[0]!;
 
 export const Route = createFileRoute("/settings")({
+  // Admin-only (the backend enforces it too); anyone else goes home.
+  beforeLoad: ({ context }) => {
+    if (!isAdmin(context.role)) throw redirect({ to: "/" });
+  },
   // An unrecognized/missing topic (a stale bookmark, a typo'd URL) falls
   // back to the first topic rather than erroring — same reasoning as
   // tree.tsx's personId search param.

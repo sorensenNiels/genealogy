@@ -17,6 +17,7 @@ import {
   useOverlayTransition,
   useOverlayTransitionState,
 } from "../hooks/use-overlay-transition";
+import { useReadOnly } from "../lib/read-only";
 import { cn } from "../lib/utils";
 
 const MotionDiv = motion.create("div");
@@ -40,8 +41,10 @@ export function Combobox<T extends object>({
   // unlike Dialog/Popover/Select there's no controlled-close path here for
   // `animation` to desync from.
   const { contextValue, handleOpenChange } = useOverlayTransition(undefined, onOpenChange);
+  const isReadOnly = useReadOnly();
   return (
     <RACComboBox
+      {...(isReadOnly ? { isReadOnly: true } : {})}
       allowsEmptyCollection
       defaultFilter={() => true}
       // There's no separate trigger button here — just the search input —

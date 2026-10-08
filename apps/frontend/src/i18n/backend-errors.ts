@@ -28,6 +28,15 @@ const EXACT: Record<string, string> = {
   "An album category with that name already exists":
     "Der findes allerede en albumkategori med det navn",
   "Unknown album category": "Ukendt albumkategori",
+  "Only editors can change the family tree": "Kun redaktører kan ændre slægtstræet",
+  "Only admins can do that": "Det kan kun administratorer",
+  "Someone with that email address is already a member":
+    "Der er allerede et medlem med den e-mailadresse",
+  "No such pending invitation": "Ingen sådan åben invitation",
+  "No such member": "Intet sådant medlem",
+  "You can't remove yourself": "Du kan ikke fjerne dig selv",
+  "There must always be at least one admin": "Der skal altid være mindst én administrator",
+  "This person already has that external id": "Personen har allerede dette eksterne id",
   "This Immich person is already linked to someone else":
     "Denne Immich-person er allerede knyttet til en anden",
   "No such Immich person": "Ingen sådan Immich-person",
@@ -69,6 +78,10 @@ const TEMPLATES: { pattern: RegExp; translate: (...groups: string[]) => string }
   {
     pattern: /^No research note with id (.+)$/,
     translate: (id) => `Ingen forskningsnote med id ${id}`,
+  },
+  {
+    pattern: /^These two people can't be merged \((.+)\)$/,
+    translate: (reasons) => `Disse to personer kan ikke flettes (${reasons})`,
   },
   {
     pattern: /^No album category with id (.+)$/,

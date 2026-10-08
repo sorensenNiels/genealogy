@@ -16,33 +16,6 @@ added in the October 2026 review is marked 🆕.
 
 Decided on, not built yet.
 
-**Tree view**
-
-- 🚧 **Ancestor-only / descendant-only toggle.** The tree currently always
-  shows both directions.
-- 🚧 **Remove a relationship from the tree panel.** The panel can only add
-  today; removing still needs the full person page.
-
-**GEDCOM**
-
-- 🚧 **Store what the import preview only reports today:** external IDs
-  (FamilySearch, Ancestry, `REFN`) and repository details/call numbers; decide
-  whether to import media.
-- 🚧 **Close the remaining format gaps:** decode ANSEL-encoded files; parse
-  calendar escapes (`@#DJULIAN@`) and double dates; export notes as plain text
-  rather than raw markdown; GEDCOM 7 export (import already reads some GEDCOM 7
-  constructs).
-- 🚧 **Merge an imported person into an existing one.** Depends on duplicate
-  person detection (see "Up next" below).
-
-**Sharing & collaboration**
-
-- 🚧 **Invite family members with roles** (admin/editor/viewer). How
-  invitations reach people is the 💡 "Invite family members by email" idea
-  below.
-- 🚧 **Redact sensitive details for living people** from non-owner viewers.
-  _Builds on:_ `persons.restriction` and `isLiving`.
-
 **Platform**
 
 - 🚧 **Self-hosted deployment packaging:** docker-compose and backup/restore
@@ -54,14 +27,13 @@ Decided on, not built yet.
 Picked on 2026-09-28 as the next two to scope, one from each focus area:
 
 - 💡 **Duplicate person detection.** Flag likely duplicates (especially after a
-  GEDCOM import) and suggest merges; this also unblocks the planned 🚧 "merge
-  an imported person into an existing one". _Builds on:_ the integrity check's
-  same-name rule and the import preview's name matching. Danish name rules
+  GEDCOM import) and suggest merges. _Builds on:_ the manual "Merge with…"
+  (built — detection only has to point at it), the integrity check's same-name
+  rule and the import preview's name matching. Danish name rules
   matter here: see "Name-aware matching" below.
 - 💡 **Shareable read-only tree links.** Share a branch publicly without a full
-  account. _Builds on:_ `persons.restriction` (stored, not yet enforced). Living
-  people must be redacted first, so this pairs with the planned 🚧 redaction
-  work.
+  account. _Builds on:_ the Viewer redaction (living people by name only),
+  which a public link would apply to everyone.
 
 ## Research aids
 
@@ -85,6 +57,13 @@ Picked on 2026-09-28 as the next two to scope, one from each focus area:
   archive). Today `sources`/`citations` have neither, and GEDCOM import has to
   drop `SOUR.TEXT`. A URL is also the ToS-safe answer for Find A Grave (see
   External data).
+- 💡 🆕 **Merge duplicate sources.** Importing the same file twice leaves two
+  copies of each source and repository; person merge rightly doesn't touch
+  them, since sources are shared. A source merge (re-pointing citations) is the
+  missing half. _Builds on:_ the person merge's identical-citation collapsing.
+- 💡 🆕 **Import media from a GEDCOM 7 zip (`.gdz`).** A 5.5.1 file only holds
+  photo paths, but a GEDCOM 7 zip carries the files — those could go into
+  Immich, linked to the people. _Builds on:_ Immich upload and person links.
 - 💡 🆕 **Source library page.** Browse every source and see everything it's
   cited for. There's no Sources page today; sources are only reachable through
   the people who cite them.
@@ -166,14 +145,6 @@ Picked on 2026-09-28 as the next two to scope, one from each focus area:
 
 ## Sharing & engagement
 
-- 💡 🆕 **Invite family members by email.** Enter a relative's email address
-  and they get an invitation link to create an account and join the tree, with
-  a personal message and optionally "this is you" pre-linked to their person in
-  the tree. Pending invitations are listed, can be resent or withdrawn, and
-  expire after a while. This is the delivery side of the planned 🚧 "Invite
-  family members with roles", which decides what an invited member may do. _Builds on:_ the mail queue (`MailService` templates),
-  better-auth sign-up, and the per-account "this is me" link on the Profile
-  page.
 - 💡 **Birthday, anniversary and "on this day" reminders**, possibly as a
   periodic family digest email. _Builds on:_ the mail queue and notifications.
 - 💡 **Comments and discussion threads** on a person or fact, separate from

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { toGedcomDate } from "./gedcom.js";
 import {
   formatHistoricalDate,
   joinHistoricalDateText,
@@ -159,6 +160,8 @@ describe("parseHistoricalDateDetailed", () => {
         year: 1901,
         month: 3,
         day: 12,
+        calendar: "gregorian",
+        dualYear: null,
         earliest: "1901-03-12",
         latest: "1901-03-12",
       },
@@ -170,6 +173,8 @@ describe("parseHistoricalDateDetailed", () => {
         year: 1901,
         month: 3,
         day: null,
+        calendar: "gregorian",
+        dualYear: null,
         earliest: "1901-03-01",
         latest: "1901-03-31",
       },
@@ -181,6 +186,8 @@ describe("parseHistoricalDateDetailed", () => {
         year: 1901,
         month: null,
         day: null,
+        calendar: "gregorian",
+        dualYear: null,
         earliest: "1901-01-01",
         latest: "1901-12-31",
       },
@@ -430,5 +437,63 @@ describe("Danish ('da') dates", () => {
     // the plain exact-value case — and fails to parse as a date at all,
     // since "before" isn't a recognized month/year shape either.
     expect(parseHistoricalDateDetailed("before 1920", "da")).toEqual({ kind: "unparsed" });
+  });
+});
+
+describe("calendars and double years", () => {
+  it("converts a Julian date's bounds to Gregorian (10 days apart in 1699)", () => {
+    expect(parseHistoricalDate("@#DJULIAN@ 3 MAR 1699")).toEqual({
+      earliest: "1699-03-13",
+      latest: "1699-03-13",
+    });
+  });
+
+  it("reads GEDCOM 7's bare JULIAN keyword the same way", () => {
+    expect(parseHistoricalDate("JULIAN 4 OCT 1582")).toEqual({
+      earliest: "1582-10-14",
+      latest: "1582-10-14",
+    });
+  });
+
+  it("accepts a Julian leap day that the Gregorian calendar doesn't have", () => {
+    // 1700 was a leap year in the Julian calendar only.
+    expect(parseHistoricalDate("@#DJULIAN@ 29 FEB 1700").earliest).toBe("1700-03-11");
+    expect(parseHistoricalDate("29 FEB 1700").earliest).toBeNull();
+  });
+
+  it("converts each side of a Julian month/year range", () => {
+    expect(parseHistoricalDate("BET @#DJULIAN@ FEB 1700 AND @#DJULIAN@ 1701")).toEqual({
+      earliest: "1700-02-11",
+      latest: "1702-01-11",
+    });
+  });
+
+  it("resolves a double year to the later, new-style year", () => {
+    expect(parseHistoricalDate("11 FEB 1749/50").earliest).toBe("1750-02-11");
+    expect(parseHistoricalDate("1699/00").earliest).toBe("1700-01-01");
+    expect(parseHistoricalDate("1749/0").earliest).toBe("1750-01-01");
+    expect(parseHistoricalDate("11 FEB 1749/51").earliest).toBeNull();
+  });
+
+  it("keeps the calendar and double year when formatting", () => {
+    expect(resolveHistoricalDate("@#DJULIAN@ 3 MAR 1699").display).toBe("3 March 1699 (Julian)");
+    expect(resolveHistoricalDate("@#DJULIAN@ 3 MAR 1699", "da").display).toBe(
+      "3 marts 1699 (juliansk)",
+    );
+    expect(resolveHistoricalDate("11 FEB 1749/50").display).toBe("11 February 1749/50");
+  });
+
+  it("leaves Hebrew and French Republican dates unparsed", () => {
+    expect(parseHistoricalDate("@#DHEBREW@ 1 TSH 5500").earliest).toBeNull();
+    expect(parseHistoricalDate("@#DFRENCH R@ 1 VEND 7").earliest).toBeNull();
+  });
+});
+
+const unresolved = (original: string) => ({ original, earliest: null, latest: null });
+
+describe("toGedcomDate with calendars", () => {
+  it("writes the Julian escape and the double year back out", () => {
+    expect(toGedcomDate(unresolved("@#DJULIAN@ 3 MAR 1699"))).toBe("@#DJULIAN@ 3 MAR 1699");
+    expect(toGedcomDate(unresolved("ABT 11 FEB 1749/50"))).toBe("ABT 11 FEB 1749/50");
   });
 });

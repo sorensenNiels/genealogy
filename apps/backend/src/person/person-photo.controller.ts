@@ -7,15 +7,14 @@ import {
   Param,
   Post,
   Req,
-  UnauthorizedException,
   UploadedFile,
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { fromNodeHeaders } from "better-auth/node";
 import type { Request } from "express";
 
 import { AUTH, type Auth } from "../auth/auth.module.js";
+import { requireRole } from "../auth/require-role.js";
 import { PersonService, type UploadedPhoto } from "./person.service.js";
 
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
@@ -40,7 +39,7 @@ export class PersonPhotoController {
     @UploadedFile() file: UploadedPhoto | undefined,
     @Req() req: Request,
   ) {
-    await this.requireSession(req);
+    await requireRole(this.auth, req, "editor");
     const id = personIdSchema.parse(rawId);
     if (!file) {
       throw new BadRequestException("No file uploaded");
@@ -53,15 +52,8 @@ export class PersonPhotoController {
 
   @Delete(":id/photo")
   async remove(@Param("id") rawId: string, @Req() req: Request) {
-    await this.requireSession(req);
+    await requireRole(this.auth, req, "editor");
     const id = personIdSchema.parse(rawId);
     return this.persons.removePhoto(id);
-  }
-
-  private async requireSession(req: Request): Promise<void> {
-    const session = await this.auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
-    if (!session) {
-      throw new UnauthorizedException();
-    }
   }
 }

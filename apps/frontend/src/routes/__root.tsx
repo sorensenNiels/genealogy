@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import type { MemberRole } from "@genealogy/core";
 import { Avatar, AvatarFallback } from "@genealogy/ui/components/avatar";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button } from "@genealogy/ui/components/button";
@@ -31,6 +32,7 @@ import {
   NotebookTextIcon,
   SettingsIcon,
   UserIcon,
+  UsersIcon,
   WrenchIcon,
   XIcon,
 } from "lucide-react";
@@ -39,6 +41,7 @@ import { I18nextProvider, useTranslation } from "react-i18next";
 
 import { createI18nInstance, type SupportedLanguage } from "../i18n/create-i18n-instance";
 import { authClient, useSession } from "../lib/auth-client";
+import { roleOf, usePermissions } from "../lib/permissions";
 import {
   deleteAllNotifications,
   deleteNotification,
@@ -54,6 +57,8 @@ import appCss from "../styles.css?url";
 export interface RouterContext {
   queryClient: QueryClient;
   language: SupportedLanguage;
+  /** The signed-in member's role — see `usePermissions`. "viewer" (least access) when signed out. */
+  role: MemberRole;
 }
 
 export const Route = createRootRouteWithContext<RouterContext>()({
@@ -67,14 +72,18 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   // pass the way dark mode's `use-theme.ts` placeholder-then-fix hook does:
   // translated text flashing from English to Danish after hydration would
   // be far more jarring than a one-frame icon flip.
-  beforeLoad: async ({ location }): Promise<{ language: SupportedLanguage }> => {
-    if (location.pathname === "/login") return { language: "en" };
+  beforeLoad: async ({ location }): Promise<{ language: SupportedLanguage; role: MemberRole }> => {
+    // The login page and an invitation link are the only pages a visitor
+    // without an account can reach.
+    if (location.pathname === "/login" || location.pathname.startsWith("/invite/")) {
+      return { language: "en", role: "viewer" };
+    }
     const session = await getSession();
     if (!session) {
       throw redirect({ to: "/login" });
     }
     const language = await getMyLanguage();
-    return { language };
+    return { language, role: roleOf(session) };
   },
   head: () => ({
     meta: [
@@ -398,8 +407,9 @@ function NotificationsBell() {
 function ToolsLink() {
   const { t } = useTranslation();
   const { data: session, isPending } = useSession();
+  const { isAdmin } = usePermissions();
 
-  if (isPending || !session) {
+  if (isPending || !session || !isAdmin) {
     return null;
   }
 
@@ -418,8 +428,9 @@ function ToolsLink() {
 function SettingsLink() {
   const { t } = useTranslation();
   const { data: session, isPending } = useSession();
+  const { isAdmin } = usePermissions();
 
-  if (isPending || !session) {
+  if (isPending || !session || !isAdmin) {
     return null;
   }
 
@@ -516,6 +527,7 @@ function UserMenu() {
   const { t } = useTranslation();
   const { data: session, isPending } = useSession();
   const navigate = useNavigate();
+  const { isAdmin } = usePermissions();
 
   if (isPending || !session) {
     return null;
@@ -547,6 +559,12 @@ function UserMenu() {
           <NotebookTextIcon className="size-4" aria-hidden="true" />
           {t("userMenu.myNotes")}
         </DropdownMenuItem>
+        {isAdmin && (
+          <DropdownMenuItem onAction={() => navigate({ to: "/members" })}>
+            <UsersIcon className="size-4" aria-hidden="true" />
+            {t("userMenu.members")}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onAction={async () => {

@@ -5,6 +5,7 @@ import {
   type CheckboxProps as RACCheckboxProps,
 } from "react-aria-components";
 
+import { useReadOnly } from "../lib/read-only";
 import { cn } from "../lib/utils";
 
 export function Checkbox({
@@ -15,8 +16,10 @@ export function Checkbox({
   className?: string;
   children?: ReactNode;
 }) {
+  const isReadOnly = useReadOnly();
   return (
     <RACCheckbox
+      {...(isReadOnly ? { isReadOnly: true } : {})}
       data-slot="checkbox"
       className={cn(
         "group inline-flex items-center gap-2 text-sm data-disabled:cursor-not-allowed data-disabled:opacity-50",

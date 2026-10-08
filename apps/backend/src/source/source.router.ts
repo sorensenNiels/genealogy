@@ -7,12 +7,16 @@ import {
 import { Injectable } from "@nestjs/common";
 import { z } from "zod";
 
-import { protectedProcedure, router } from "../trpc/trpc.base.js";
+import { PersonRedactor, viewerOf } from "../privacy/person-redactor.js";
+import { editorProcedure, protectedProcedure, router } from "../trpc/trpc.base.js";
 import { SourceService } from "./source.service.js";
 
 @Injectable()
 export class SourceRouter {
-  constructor(private readonly sources: SourceService) {}
+  constructor(
+    private readonly sources: SourceService,
+    private readonly redactor: PersonRedactor,
+  ) {}
 
   /**
    * Built by a method rather than a field initializer: class fields run before
@@ -22,19 +26,23 @@ export class SourceRouter {
     return router({
       listSources: protectedProcedure.query(() => this.sources.listSources()),
 
-      createSource: protectedProcedure
+      createSource: editorProcedure
         .input(createSourceSchema)
         .mutation(({ input }) => this.sources.createSource(input)),
 
       listCitations: protectedProcedure
         .input(z.object({ personId: personIdSchema }))
-        .query(({ input }) => this.sources.listCitations(input.personId)),
+        .query(({ input, ctx }) =>
+          this.redactor.listFor(viewerOf(ctx), input.personId, () =>
+            this.sources.listCitations(input.personId),
+          ),
+        ),
 
-      addCitation: protectedProcedure
+      addCitation: editorProcedure
         .input(createCitationSchema)
         .mutation(({ input }) => this.sources.addCitation(input)),
 
-      removeCitation: protectedProcedure
+      removeCitation: editorProcedure
         .input(z.object({ id: citationIdSchema }))
         .mutation(async ({ input }) => {
           await this.sources.removeCitation(input.id);

@@ -14,12 +14,15 @@ What the genealogy app can do today (✅). Planned work (🚧) and undecided ide
 - ✅ People list: avatar, gender icon, living/deceased badge, age column, name search, pagination.
 - ✅ Person profile photo (local upload, or picked from an Immich photo — see Photos below).
 - ✅ Delete a person outright, once they have no recorded parent/spouse/child; confirm-before-remove on relationships, alternate names, and life events.
+- ✅ Merge a duplicate into a person ("Merge with…"): a preview of what moves, everything moved in one transaction, nothing on the kept person overwritten, identical facts not doubled; refused for people related to each other.
 - ✅ Research notes per person: open questions to chase down later (a "brick wall"), each with a type and a resolved flag.
 - ✅ Single-person printable report ("family group sheet") at `/people/$personId/print`.
 
 ## Tree & visualization
 
 - ✅ Tree view (`/tree`): ancestors and descendants around one person, expandable generation-by-generation, add a relative (parent, spouse, child or sibling) directly from the tree, a docked detail panel instead of navigating away. See "Tree view: React Flow + elkjs" in TECH_STACK.md for the layout design.
+- ✅ Show both sides, ancestors only, or descendants only (a toggle on the canvas, kept in the URL).
+- ✅ Remove a parent, spouse or child relationship from the tree's side panel (confirm first; people and marriage records are kept).
 
 ## Photos
 
@@ -33,13 +36,16 @@ What the genealogy app can do today (✅). Planned work (🚧) and undecided ide
 
 ## Import / export
 
-- ✅ GEDCOM 5.5.1 export (every person, name, event, family, source, and citation) from the Tools page; this app's own fields travel as underscore tags so export → import is lossless. See "GEDCOM export" in TECH_STACK.md.
-- ✅ GEDCOM import from the Tools page: pick a file, see a preview (what will be added, anything that can't be imported, and incoming people who share a name with someone already in the tree), then import. Everyone is added as a new person — likely duplicates are reported, not merged. See "GEDCOM import" in TECH_STACK.md.
-- ✅ Witnesses, godparents and other roles on a person's records (a "Witnesses & godparents" card; tied to an event, a marriage, or neither; the person can be someone in the tree or just a name), privacy restrictions on people (badge; not yet enforced), other programs' research to-dos imported as research notes, and place coordinates (PostGIS, no map UI yet) — all imported from and exported back to GEDCOM.
+- ✅ GEDCOM export from the Tools page, as 5.5.1 (default, most compatible) or 7.0: every person, name, event, family, source, repository and citation; notes as plain text for other programs; this app's own fields travel as underscore tags so export → import is lossless. See "GEDCOM export" in TECH_STACK.md.
+- ✅ GEDCOM import from the Tools page: pick a file, see a preview (what will be added, anything that can't be imported, and incoming people who share a name with someone already in the tree), then import. Everyone is added as a new person — likely duplicates are reported, then merged by hand ("Merge with…" on the person page). Reads UTF-8, UTF-16, Windows-1252 and ANSEL files, Julian dates and double years (`1749/50`), and the common GEDCOM 7 forms. Media is reported, not imported (a 5.5.1 file only holds file paths). See "GEDCOM import" in TECH_STACK.md.
+- ✅ Witnesses, godparents and other roles on a person's records (a "Witnesses & godparents" card; tied to an event, a marriage, or neither; the person can be someone in the tree or just a name), privacy restrictions on people (badge; not yet enforced), other programs' research to-dos imported as research notes, and place coordinates (PostGIS, no map UI yet), repositories with contact details and call numbers, and external IDs (FamilySearch, Ancestry, REFN, EXID — shown on an "External IDs" card, FamilySearch linked to its profile) — all imported from and exported back to GEDCOM.
 
 ## Sharing & collaboration
 
-- ✅ Account sign-up/sign-in (email/password + Google OAuth); login required to use the app.
+- ✅ Sign-in by email/password or Google; joining is by invitation only (the very first account on a new install becomes admin).
+- ✅ Members & roles: Admin (members, Settings, Tools, merge/delete), Editor (edits the tree and photos), Viewer (read-only). A Members page to change roles, remove members, and manage invitations.
+- ✅ Invite family members by email: a link valid 14 days, with role, an optional "this is you" person and a personal message; sent in the inviting admin's language, and always shown to copy in case email isn't set up.
+- ✅ Living people are shown to Viewers by name only — dates, places, notes, photos and records hidden (also for people marked private/confidential); a Viewer's own person is never hidden from them.
 
 ## Tools
 

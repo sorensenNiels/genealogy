@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 
-import { protectedProcedure, router } from "../trpc/trpc.base.js";
+import { adminProcedure, router } from "../trpc/trpc.base.js";
 import { BackupService } from "./backup.service.js";
 
 @Injectable()
@@ -10,7 +10,7 @@ export class BackupRouter {
   /** Built by a method rather than a field initializer — same reason as every other router in this app. */
   build() {
     return router({
-      create: protectedProcedure.mutation(async ({ ctx }) => {
+      create: adminProcedure.mutation(async ({ ctx }) => {
         await this.backups.enqueueBackup(ctx.session.user.id);
         return { queued: true } as const;
       }),

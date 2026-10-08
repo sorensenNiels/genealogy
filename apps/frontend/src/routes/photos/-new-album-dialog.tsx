@@ -12,6 +12,7 @@ import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
+import { usePermissions } from "../../lib/permissions";
 import { createImmichAlbum } from "../../server/functions/immich.functions";
 import { AlbumCategoryPicker } from "./-album-categories";
 
@@ -26,6 +27,8 @@ export function NewAlbumDialog({
   onCreated: (albumId: string) => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const { canEdit } = usePermissions();
+  if (!canEdit) return null;
   return (
     <FormDialog trigger={<Button>{t("album.addAlbum")}</Button>} title={t("album.newAlbum")}>
       {(close) => (

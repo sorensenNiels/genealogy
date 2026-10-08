@@ -1,6 +1,7 @@
 import { Loader2Icon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { useReadOnly } from "../lib/read-only";
 import { Button, type ButtonProps } from "./button";
 
 export interface SaveButtonProps extends Omit<ButtonProps, "isDisabled" | "children"> {
@@ -42,6 +43,9 @@ export function SaveButton({
   type = "submit",
   ...props
 }: SaveButtonProps) {
+  const isReadOnly = useReadOnly();
+  // Nothing to save where nothing can be edited.
+  if (isReadOnly) return null;
   return (
     <Button type={type} isDisabled={isPending || isDisabled} aria-busy={isPending} {...props}>
       {children}

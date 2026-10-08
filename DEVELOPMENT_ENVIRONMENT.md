@@ -16,7 +16,7 @@ sync.
 2. Accept **Reopen in Container** when prompted, or run
    _Dev Containers: Reopen in Container_ from the command palette.
 3. Wait for the first build. `post-create.sh` installs dependencies.
-4. Run `docker compose up -d --wait` (Postgres, Redis and Immich) and
+4. Run `docker compose up -d --wait` (Postgres and Redis) and
    `make db-migrate` when database-backed development is needed.
    `make db-up` / `make redis-up` start just one service.
 5. Run `pnpm dev`.
@@ -24,8 +24,7 @@ sync.
 The app (`apps/frontend`) is on <http://localhost:5173> — open this and nothing
 else; its server side proxies data and auth calls to the backend for you. The
 backend is on <http://localhost:3000/trpc> for API inspection, Postgres on
-`localhost:5432`, Redis on `localhost:6379`, and Immich's web UI on
-<http://localhost:2283>. All are forwarded to the
+`localhost:5432` and Redis on `localhost:6379`. All are forwarded to the
 host, so host-side tools such as DBeaver can reach the database directly with
 user/password/database all set to `genealogy`.
 
@@ -39,17 +38,20 @@ user/password/database all set to `genealogy`.
 | PostgreSQL                      | 18                                                           | Apache AGE 1.8.0 and PostGIS 3                                                                  |
 | Apache AGE                      | 1.8.0                                                        | graph extension, compiled into the image above                                                  |
 | `psql`, `pg_isready`, `pg_dump` | 18 (via the PGDG apt repo — Debian's own repo only ships 17) | version pinned to match the server; `pg_dump` refuses to run against a newer server than itself |
-| Redis (Valkey)                  | 9                                                            | backs apps/backend's BullMQ queues; shared with Immich                                          |
+| Redis (Valkey)                  | 9                                                            | backs apps/backend's BullMQ queues                                                              |
 
 The dev container builds straight from `.devcontainer/Dockerfile` — that's where
 you and VS Code live, with the repository bind-mounted at `/workspaces/genealogy`.
 
-PostgreSQL, Redis and Immich are defined separately in the root
-`docker-compose.yml`, and a plain `docker compose up -d` starts all of them.
-They publish ports `5432`, `6379` and `2283`, and the workspace connects
-through `host.docker.internal` (`devcontainer.json` sets `DATABASE_URL`,
-`REDIS_URL` and `IMMICH_URL` accordingly — `localhost` inside the dev
-container is the dev container itself, not the host).
+PostgreSQL and Redis are defined separately in the root `docker-compose.yml`,
+and a plain `docker compose up -d` starts both. They publish ports `5432` and
+`6379`, and the workspace connects
+through `host.docker.internal` (`devcontainer.json` sets `DATABASE_URL` and
+`REDIS_URL` accordingly — `localhost` inside the dev container is the dev
+container itself, not the host). `IMMICH_URL` is deliberately _not_ set there:
+it goes in `apps/backend/.env`, pointing at your own Immich server (see
+"Environment variables" below) — a container-wide variable would override
+`.env`.
 Those commands work from either side: the dev container has the
 `docker-outside-of-docker` feature, so its `docker` CLI talks to the host's
 Docker daemon and sees the same containers you'd see on the host (not
@@ -61,11 +63,7 @@ workspace's host path.
 PostgreSQL's data lives on the named volume `postgres-data`, so it survives
 container rebuilds — Redis holds only in-flight queue jobs, so it doesn't
 need one. Redis is core infrastructure here (it backs apps/backend's BullMQ
-queues — see "Long-running work: BullMQ + a shared Redis" in TECH_STACK.md),
-not something bundled just for Immich: Immich's services connect to this
-same instance rather than running a second Redis. Immich's own data lives on
-the named volumes `immich-db-data`, `immich-uploads` and
-`immich-model-cache`.
+queues — see "Long-running work: BullMQ + a shared Redis" in TECH_STACK.md).
 
 ### Database initialisation
 
@@ -79,8 +77,8 @@ existing database. Prefer a migration that makes the same change idempotently
 (`0033_places_postgis.sql` runs `CREATE EXTENSION IF NOT EXISTS postgis` for
 exactly this reason). The blunt alternative is `make db-reset`, which rebuilds
 the database from scratch and re-runs migrations — but it uses
-`docker compose down -v`, so it **destroys every compose volume, Immich's photo
-library (`immich-uploads`) and database included**, not just Postgres.
+`docker compose down -v`, so it **destroys every compose volume** — today
+that's the Postgres data — so treat it as wiping the database.
 
 ### Environment variables
 
@@ -97,11 +95,13 @@ container. Three don't, and the app refuses to boot without them:
   these programmatically. Email/password sign-in works without them being real
   — only "Continue with Google" needs valid credentials.
 
-Optional, but needed for the photo library: `IMMICH_API_KEY`. Create a user in
-Immich's web UI (<http://localhost:2283>) on first start, then generate a key
-under Account Settings → API Keys — there's no headless way to do it. The key
-needs write permissions; see "Photos & albums" in TECH_STACK.md for the list.
-Without it the app runs normally and the Photos pages show a setup message.
+Optional, but needed for the photo library: `IMMICH_URL` and `IMMICH_API_KEY`.
+Immich isn't part of this repo's compose stack — it runs on its own (a home
+NAS, say). Set `IMMICH_URL` to its address as reached from the dev container
+(e.g. `http://my-nas:2283`), and generate a key in its web UI under Account
+Settings → API Keys — there's no headless way to do it. The key needs write
+permissions; see "Photos & albums" in TECH_STACK.md for the list. Without
+them the app runs normally and the Photos pages show a setup message.
 
 ## Day-to-day commands
 

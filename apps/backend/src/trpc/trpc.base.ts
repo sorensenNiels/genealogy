@@ -1,3 +1,4 @@
+import { canEdit, isAdmin, memberRoleSchema, type MemberRole } from "@genealogy/core";
 import { initTRPC, TRPCError } from "@trpc/server";
 // Unused directly, but req/res on TrpcContext are Express types whose generics
 // resolve to these — without them in scope, tsc can't emit a portable
@@ -33,10 +34,34 @@ export const mergeRouters = t.mergeRouters;
 
 export const publicProcedure = t.procedure;
 
-/** Applied to every procedure in person.router.ts, source.router.ts and settings.router.ts. */
+/**
+ * Any signed-in member. Reads go through this; a Viewer's reads of living
+ * people come back redacted (see `PersonRedactor`), so `ctx.role` is passed
+ * along for that.
+ */
 export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   if (!ctx.session) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
-  return next({ ctx: { ...ctx, session: ctx.session } });
+  // The column is CHECK-constrained, so this only falls back for a session
+  // minted before the role column existed — and then to the least access.
+  const parsed = memberRoleSchema.safeParse(ctx.session.user.role);
+  const role: MemberRole = parsed.success ? parsed.data : "viewer";
+  return next({ ctx: { ...ctx, session: ctx.session, role } });
+});
+
+/** Editors and admins: every change to the tree and photos. */
+export const editorProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (!canEdit(ctx.role)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Only editors can change the family tree" });
+  }
+  return next();
+});
+
+/** Admins only: members, Settings, Tools, merging and deleting. */
+export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (!isAdmin(ctx.role)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Only admins can do that" });
+  }
+  return next();
 });

@@ -7,6 +7,7 @@ import { XIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { usePermissions } from "../../lib/permissions";
 import {
   isImmichConfigured,
   linkImmichPerson,
@@ -49,6 +50,7 @@ function PersonPhotosCardContent({ personId }: { personId: string }) {
     queryFn: () => listPersonPhotos({ data: { personId } }),
   });
   const unlinkMutation = useMutation({ mutationFn: unlinkImmichPerson });
+  const { canEdit } = usePermissions();
 
   const refresh = async () => {
     await Promise.all([
@@ -93,18 +95,20 @@ function PersonPhotosCardContent({ personId }: { personId: string }) {
                 <AvatarFallback className="text-[10px]">?</AvatarFallback>
               </Avatar>
               {person.name.trim() || t("common.unnamedPerson")}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-4"
-                aria-label={t("person.photos.unlinkAria", {
-                  name: person.name.trim() || t("person.photos.unlinkThisFace"),
-                })}
-                onPress={() => void unlink(person.linkId)}
-              >
-                <XIcon className="size-3" />
-              </Button>
+              {canEdit && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-4"
+                  aria-label={t("person.photos.unlinkAria", {
+                    name: person.name.trim() || t("person.photos.unlinkThisFace"),
+                  })}
+                  onPress={() => void unlink(person.linkId)}
+                >
+                  <XIcon className="size-3" />
+                </Button>
+              )}
             </span>
           ))}
         </div>

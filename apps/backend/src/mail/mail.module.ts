@@ -8,6 +8,6 @@ import { MAIL_QUEUE, MailService } from "./mail.service.js";
 @Module({
   imports: [BullModule.registerQueue({ name: MAIL_QUEUE })],
   providers: [MailService, MailProcessor, MailRouter],
-  exports: [MailRouter],
+  exports: [MailRouter, MailService],
 })
 export class MailModule {}

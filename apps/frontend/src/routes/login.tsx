@@ -2,21 +2,34 @@ import { Button } from "@genealogy/ui/components/button";
 import { Input } from "@genealogy/ui/components/input";
 import { SectionCard } from "@genealogy/ui/components/section-card";
 import { useForm } from "@tanstack/react-form";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { authClient } from "../lib/auth-client";
+import { getSignupOpen } from "../server/functions/members.functions";
 
 export const Route = createFileRoute("/login")({
+  // `error` is set by better-auth when a Google sign-in is refused — almost
+  // always because that Google account was never invited.
+  validateSearch: (search: Record<string, unknown>): { error?: string } =>
+    typeof search.error === "string" ? { error: search.error } : {},
   component: Login,
 });
 
 function Login() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { error: oauthError } = Route.useSearch();
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(oauthError ? t("login.notInvited") : null);
+  // Sign-up is invite-only (an invitation link opens /invite/…); this page
+  // offers it only on a brand-new install, to create the first admin.
+  const signupOpen = useQuery({
+    queryKey: ["members", "signupOpen"],
+    queryFn: () => getSignupOpen(),
+  });
 
   const form = useForm({
     defaultValues: { name: "", email: "", password: "" },
@@ -108,21 +121,31 @@ function Login() {
         <Button
           variant="outline"
           className="w-full"
-          onPress={() => authClient.signIn.social({ provider: "google", callbackURL: "/" })}
+          onPress={() =>
+            authClient.signIn.social({
+              provider: "google",
+              callbackURL: "/",
+              errorCallbackURL: "/login",
+            })
+          }
         >
           {t("login.continueWithGoogle")}
         </Button>
 
-        <button
-          type="button"
-          className="text-sm text-muted-foreground hover:text-foreground"
-          onClick={() => {
-            setMode(mode === "sign-in" ? "sign-up" : "sign-in");
-            setError(null);
-          }}
-        >
-          {mode === "sign-in" ? t("login.needAccount") : t("login.haveAccount")}
-        </button>
+        {signupOpen.data ? (
+          <button
+            type="button"
+            className="text-sm text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              setMode(mode === "sign-in" ? "sign-up" : "sign-in");
+              setError(null);
+            }}
+          >
+            {mode === "sign-in" ? t("login.needAccount") : t("login.haveAccount")}
+          </button>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t("login.inviteOnly")}</p>
+        )}
       </SectionCard>
     </div>
   );

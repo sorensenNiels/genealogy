@@ -1,8 +1,10 @@
 import { formatFullPersonName } from "@genealogy/core";
+import { ReadOnlyProvider } from "@genealogy/ui/lib/read-only";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
+import { usePermissions } from "../../lib/permissions";
 import { listAssociations } from "../../server/functions/association.functions";
 import {
   getPersonById,
@@ -17,6 +19,7 @@ import { listCitations, listSources } from "../../server/functions/source.functi
 import { AssociationsCard } from "./-associations-card";
 import { BirthCard } from "./-birth-card";
 import { CitationsSection } from "./-citations-section";
+import { ExternalIdsCard } from "./-external-ids-card";
 import { FamilyCard } from "./-family-card";
 import { PersonPhotosCard } from "./-immich-photos-card";
 import { LifeEventsCard } from "./-life-events-card";
@@ -42,6 +45,7 @@ function PersonDetailRoute() {
   const { t } = useTranslation();
   const { personId } = Route.useParams();
   const queryClient = useQueryClient();
+  const { canEdit, isAdmin } = usePermissions();
   const navigate = useNavigate();
 
   const person = useQuery({
@@ -129,104 +133,115 @@ function PersonDetailRoute() {
   // Mirrors the guard in PersonService.remove — a union can outlive the
   // SPOUSE_OF edge it came from (see unlinkSpouse), so it counts too.
   const canDelete =
-    parents.length === 0 && spouses.length === 0 && children.length === 0 && unionRows.length === 0;
+    isAdmin &&
+    parents.length === 0 &&
+    spouses.length === 0 &&
+    children.length === 0 &&
+    unionRows.length === 0;
 
+  // A Viewer sees the same page, read-only — every card's fields, Save,
+  // Add and Remove follow `ReadOnlyProvider` (see packages/ui).
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <nav
-          className="flex items-center gap-1.5 text-sm text-muted-foreground"
-          aria-label={t("person.detail.breadcrumb")}
-        >
-          <Link to="/people" className="hover:text-foreground">
-            {t("people.title")}
+    <ReadOnlyProvider readOnly={!canEdit}>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between gap-4">
+          <nav
+            className="flex items-center gap-1.5 text-sm text-muted-foreground"
+            aria-label={t("person.detail.breadcrumb")}
+          >
+            <Link to="/people" className="hover:text-foreground">
+              {t("people.title")}
+            </Link>
+            <span aria-hidden="true">/</span>
+            <span className="text-foreground">
+              {formatFullPersonName({ ...person.data, nickname: nicknames })}
+            </span>
+          </nav>
+          <Link
+            to="/people/$personId/print"
+            params={{ personId }}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            {t("person.detail.printSummary")}
           </Link>
-          <span aria-hidden="true">/</span>
-          <span className="text-foreground">
-            {formatFullPersonName({ ...person.data, nickname: nicknames })}
-          </span>
-        </nav>
-        <Link
-          to="/people/$personId/print"
-          params={{ personId }}
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
-          {t("person.detail.printSummary")}
-        </Link>
-      </div>
-      <PersonHeaderCard
-        person={person.data}
-        names={names.data ?? []}
-        citations={citationsList.data ?? []}
-        sourcesList={sourcesList.data ?? []}
-        hasParent={parents.length > 0}
-        onChanged={refresh}
-        canDelete={canDelete}
-        onDeleted={() => navigate({ to: "/people" })}
-      />
-      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        <div className="space-y-6">
-          <NamesGenderCard
-            person={person.data}
-            names={names.data ?? []}
-            options={options.data ?? []}
-            onChanged={refresh}
-          />
-          <BirthCard person={person.data} onChanged={refresh} />
-          <LivingStatusDeathCard person={person.data} onChanged={refresh} />
-          <PersonPhotosCard personId={personId} />
-          <LifeEventsCard
-            personId={personId}
-            events={events.data ?? []}
-            unions={unions.data ?? []}
-            spouses={spouses}
-            parents={parents}
-            person={person.data}
-            citations={citationsList.data ?? []}
-            sourcesList={sourcesList.data ?? []}
-            options={options.data ?? []}
-            onChanged={refresh}
-          />
-          <CitationsSection
-            personId={personId}
-            citations={citationsList.data ?? []}
-            sourcesList={sourcesList.data ?? []}
-            names={names.data ?? []}
-            events={events.data ?? []}
-            unions={unions.data ?? []}
-            associations={associationsList.data?.own ?? []}
-            options={options.data ?? []}
-            onChanged={refresh}
-          />
-          <AssociationsCard
-            personId={personId}
-            own={associationsList.data?.own ?? []}
-            appearances={associationsList.data?.appearances ?? []}
-            events={events.data ?? []}
-            unions={unions.data ?? []}
-            spouses={spouses}
-            options={options.data ?? []}
-            onChanged={refresh}
-          />
-          <ResearchNotesSection
-            personId={personId}
-            notes={researchNotesList.data ?? []}
-            options={options.data ?? []}
-            onChanged={refresh}
-          />
         </div>
-        <FamilyCard
-          personId={personId}
-          parents={parents}
-          spouses={spouses}
-          childRelatives={children}
-          siblings={siblings}
-          excludeIds={excludeIds}
-          options={options.data ?? []}
-          unions={unions.data ?? []}
+        <PersonHeaderCard
+          person={person.data}
+          names={names.data ?? []}
+          citations={citationsList.data ?? []}
+          sourcesList={sourcesList.data ?? []}
+          hasParent={parents.length > 0}
           onChanged={refresh}
+          canDelete={canDelete}
+          onDeleted={() => navigate({ to: "/people" })}
         />
+        <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+          <div className="space-y-6">
+            <NamesGenderCard
+              person={person.data}
+              names={names.data ?? []}
+              options={options.data ?? []}
+              onChanged={refresh}
+            />
+            <BirthCard person={person.data} onChanged={refresh} />
+            <LivingStatusDeathCard person={person.data} onChanged={refresh} />
+            <PersonPhotosCard personId={personId} />
+            <LifeEventsCard
+              personId={personId}
+              events={events.data ?? []}
+              unions={unions.data ?? []}
+              spouses={spouses}
+              parents={parents}
+              person={person.data}
+              citations={citationsList.data ?? []}
+              sourcesList={sourcesList.data ?? []}
+              options={options.data ?? []}
+              onChanged={refresh}
+            />
+            <CitationsSection
+              personId={personId}
+              citations={citationsList.data ?? []}
+              sourcesList={sourcesList.data ?? []}
+              names={names.data ?? []}
+              events={events.data ?? []}
+              unions={unions.data ?? []}
+              associations={associationsList.data?.own ?? []}
+              options={options.data ?? []}
+              onChanged={refresh}
+            />
+            <AssociationsCard
+              personId={personId}
+              own={associationsList.data?.own ?? []}
+              appearances={associationsList.data?.appearances ?? []}
+              events={events.data ?? []}
+              unions={unions.data ?? []}
+              spouses={spouses}
+              options={options.data ?? []}
+              onChanged={refresh}
+            />
+            <ResearchNotesSection
+              personId={personId}
+              notes={researchNotesList.data ?? []}
+              options={options.data ?? []}
+              onChanged={refresh}
+            />
+          </div>
+          <div className="space-y-6">
+            <FamilyCard
+              personId={personId}
+              parents={parents}
+              spouses={spouses}
+              childRelatives={children}
+              siblings={siblings}
+              excludeIds={excludeIds}
+              options={options.data ?? []}
+              unions={unions.data ?? []}
+              onChanged={refresh}
+            />
+            <ExternalIdsCard personId={personId} />
+          </div>
+        </div>
       </div>
-    </div>
+    </ReadOnlyProvider>
   );
 }

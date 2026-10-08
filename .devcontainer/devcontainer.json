@@ -20,11 +20,10 @@
     "PGUSER": "genealogy",
     "PGPASSWORD": "genealogy",
     "PGDATABASE": "genealogy",
-    "REDIS_URL": "redis://host.docker.internal:6379",
-    // Immich's server, also published on the host by docker-compose.yml.
-    // `localhost` only reached it under the old docker-in-docker setup, where
-    // compose's published ports landed inside this container.
-    "IMMICH_URL": "http://host.docker.internal:2283"
+    "REDIS_URL": "redis://host.docker.internal:6379"
+    // No IMMICH_URL here: a container-wide variable would override
+    // apps/backend/.env, where each developer points it at their own Immich
+    // (the compose stack's at http://host.docker.internal:2283, or a NAS).
   },
 
   "features": {

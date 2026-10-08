@@ -7,7 +7,7 @@ import {
 import { Injectable } from "@nestjs/common";
 import { z } from "zod";
 
-import { protectedProcedure, router } from "../trpc/trpc.base.js";
+import { adminProcedure, protectedProcedure, router } from "../trpc/trpc.base.js";
 import { SettingsService } from "./settings.service.js";
 
 @Injectable()
@@ -22,19 +22,19 @@ export class SettingsRouter {
     return router({
       listOptions: protectedProcedure.query(() => this.settings.listOptions()),
 
-      addOption: protectedProcedure
+      addOption: adminProcedure
         .input(addConfigurableOptionSchema)
         .mutation(({ input }) => this.settings.addOption(input)),
 
-      updateOption: protectedProcedure
+      updateOption: adminProcedure
         .input(updateConfigurableOptionSchema)
         .mutation(({ input }) => this.settings.updateOption(input)),
 
-      moveOption: protectedProcedure
+      moveOption: adminProcedure
         .input(moveConfigurableOptionSchema)
         .mutation(({ input }) => this.settings.moveOption(input.id, input.direction)),
 
-      removeOption: protectedProcedure
+      removeOption: adminProcedure
         .input(z.object({ id: configurableOptionIdSchema }))
         .mutation(async ({ input }) => {
           await this.settings.removeOption(input.id);

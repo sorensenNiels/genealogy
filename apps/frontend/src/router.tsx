@@ -19,7 +19,7 @@ export function getRouter() {
     routeTree,
     // "en" is only the placeholder until the root route's own `beforeLoad`
     // resolves the real value per request — see __root.tsx.
-    context: { queryClient, language: "en" },
+    context: { queryClient, language: "en", role: "viewer" },
     defaultPreload: "intent",
   });
 

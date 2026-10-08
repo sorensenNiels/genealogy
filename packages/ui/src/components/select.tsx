@@ -17,6 +17,7 @@ import {
   useOverlayTransition,
   useOverlayTransitionState,
 } from "../hooks/use-overlay-transition";
+import { useReadOnly } from "../lib/read-only";
 import { cn } from "../lib/utils";
 
 const MotionDiv = motion.create("div");
@@ -31,8 +32,10 @@ export function Select<T extends object>({
   onOpenChange?: (isOpen: boolean) => void;
 }) {
   const { contextValue, handleOpenChange } = useOverlayTransition(isOpen, onOpenChange);
+  const isReadOnly = useReadOnly();
   return (
     <RACSelect
+      {...(isReadOnly ? { isDisabled: true } : {})}
       {...props}
       {...(isOpen !== undefined ? { isOpen } : {})}
       onOpenChange={handleOpenChange}

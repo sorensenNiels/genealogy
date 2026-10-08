@@ -54,7 +54,8 @@
   "userMenu": {
     "profileSettings": "Profile settings",
     "myNotes": "My Notes",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "members": "Members"
   },
   "profile": {
     "title": "Profile",
@@ -95,7 +96,9 @@
     "needAccount": "Need an account? Sign up",
     "haveAccount": "Already have an account? Sign in",
     "somethingWentWrong": "Something went wrong.",
-    "requestFailed": "Request failed — check the browser console for details."
+    "requestFailed": "Request failed — check the browser console for details.",
+    "notInvited": "That account hasn't been invited. This family tree is invite-only — ask an admin for an invitation.",
+    "inviteOnly": "New here? Joining is by invitation — ask a family admin to invite you."
   },
   "assetViewer": {
     "caption": "Caption",
@@ -286,8 +289,20 @@
       "mother": "mother",
       "spouse": "spouse",
       "child": "child",
-      "sibling": "sibling"
-    }
+      "sibling": "sibling",
+      "parent": "parent"
+    },
+    "view": {
+      "label": "Show",
+      "both": "Both",
+      "ancestors": "Ancestors",
+      "descendants": "Descendants"
+    },
+    "removeTitle": "Remove {{name}} as {{relation}}?",
+    "removeDescription": "Only this relationship is removed — both people, and any marriage record, are kept.",
+    "removeAction": "Remove",
+    "removeAria": "Remove {{name}} as {{relation}}",
+    "doubleClickToCenter": "Double-click to center the tree on this person"
   },
   "tools": {
     "title": "Tools",
@@ -325,6 +340,11 @@
     "gedcomDescription": "Exports every person, name, event, family, source, and citation as a standard GEDCOM 5.5.1 file — importable into most other genealogy software. Photos aren't included: they live in Immich, which GEDCOM has no way to reference.",
     "exporting": "Exporting…",
     "exportGedcom": "Export GEDCOM",
+    "gedcomVersion": "GEDCOM version",
+    "gedcomVersion551": "5.5.1",
+    "gedcomVersion70": "7.0",
+    "gedcomVersion551Hint": "Read by almost every genealogy program — the safe choice.",
+    "gedcomVersion70Hint": "The newest standard. Check that the program you're sending it to can read GEDCOM 7.",
     "exportFailed": "Export failed",
     "gedcomImport": {
       "description": "Adds the people, names, events, families, sources and citations from a GEDCOM file (exported from FamilySearch, Ancestry, MyHeritage, Gramps, or this app) to your tree. Pick a file to see what it contains first — nothing is saved until you press Import.",
@@ -354,8 +374,6 @@
         "malformedLine_other": "{{count}} lines couldn't be read and will be skipped",
         "legacyEncoding_one": "The file isn't UTF-8 — it was read as Windows \"ANSI\" text. Check that letters like æ, ø and å look right after importing.",
         "legacyEncoding_other": "The file isn't UTF-8 — it was read as Windows \"ANSI\" text. Check that letters like æ, ø and å look right after importing.",
-        "anselEncoding_one": "The file uses the old ANSEL character set, which isn't supported — accented letters will come through garbled. Re-export as UTF-8 if your program allows it.",
-        "anselEncoding_other": "The file uses the old ANSEL character set, which isn't supported — accented letters will come through garbled. Re-export as UTF-8 if your program allows it.",
         "unparsedDate_one": "{{count}} date couldn't be interpreted — its wording is kept, but it won't sort or count towards ages",
         "unparsedDate_other": "{{count}} dates couldn't be interpreted — their wording is kept, but they won't sort or count towards ages",
         "missingReference_one": "{{count}} reference points to a record that isn't in the file and will be skipped",
@@ -529,7 +547,9 @@
       "age": "Age {{age}}",
       "alsoKnownAs": "Also known as:",
       "viewInTree": "View in tree",
-      "researchCompleteness": "Research completeness"
+      "researchCompleteness": "Research completeness",
+      "redacted": "Living — details hidden",
+      "redactedHint": "As a viewer you see living people by name only."
     },
     "photo": {
       "change": "Change photo",
@@ -760,6 +780,128 @@
       "someoneInTree": "Someone in the tree",
       "justAName": "Just a name",
       "nameAsWritten": "Name as written in the record"
+    },
+    "externalIds": {
+      "title": "External IDs",
+      "add": "Add external ID",
+      "empty": "None yet — FamilySearch and other ids arrive with a GEDCOM import, or add one here.",
+      "systemLabel": "System",
+      "value": "ID",
+      "type": "Type",
+      "typeRefnHint": "e.g. Family file",
+      "typeExidHint": "The issuing authority's URI",
+      "removeTitle": "Remove {{value}}?",
+      "removeAria": "Remove {{value}}",
+      "system": {
+        "familysearch": "FamilySearch",
+        "ancestry": "Ancestry",
+        "refn": "Reference number",
+        "exid": "Other ID (EXID)"
+      }
+    },
+    "merge": {
+      "button": "Merge with…",
+      "title": "Merge a duplicate into {{name}}",
+      "pickIntro": "Pick the duplicate. Everything recorded on it moves to this person, and the duplicate is then deleted.",
+      "searchLabel": "Search for the duplicate",
+      "loading": "Checking what would move…",
+      "summary": "Merge {{duplicate}} into {{keep}}.",
+      "movesHeading": "Moves over:",
+      "nothingToMove": "The duplicate has nothing recorded beyond its name.",
+      "count": {
+        "names_one": "{{count}} alternate name",
+        "names_other": "{{count}} alternate names",
+        "events_one": "{{count}} life event",
+        "events_other": "{{count}} life events",
+        "unions_one": "{{count}} marriage/union",
+        "unions_other": "{{count}} marriages/unions",
+        "parents_one": "{{count}} parent link",
+        "parents_other": "{{count}} parent links",
+        "children_one": "{{count}} child",
+        "children_other": "{{count}} children",
+        "spouses_one": "{{count}} spouse link",
+        "spouses_other": "{{count}} spouse links",
+        "citations_one": "{{count}} citation",
+        "citations_other": "{{count}} citations",
+        "associations_one": "{{count}} witness/godparent role",
+        "associations_other": "{{count}} witness/godparent roles",
+        "researchNotes_one": "{{count}} research note",
+        "researchNotes_other": "{{count}} research notes",
+        "photoLinks_one": "{{count}} Immich photo link",
+        "photoLinks_other": "{{count}} Immich photo links",
+        "externalIds_one": "{{count}} external ID",
+        "externalIds_other": "{{count}} external IDs"
+      },
+      "identical_one": "{{count}} record is identical to one this person already has, so it isn't copied twice.",
+      "identical_other": "{{count}} records are identical to ones this person already has, so they aren't copied twice.",
+      "vitalConflicts_one": "Both have a birth or death — the duplicate's is kept as an \"other\" event.",
+      "vitalConflicts_other": "Both have a birth and death — the duplicate's are kept as \"other\" events.",
+      "alternateName": "\"{{name}}\" is kept as an alternate name.",
+      "takesPhoto": "The duplicate's photo becomes this person's photo.",
+      "warning": "{{duplicate}} will be deleted. This can't be undone.",
+      "back": "Back",
+      "confirm": "Merge",
+      "merging": "Merging…",
+      "blocker": {
+        "samePerson": "That's this person.",
+        "directlyRelated": "They're recorded as each other's parent, child or spouse — remove that relationship first if they really are one person.",
+        "sameLineage": "One is recorded as the other's ancestor — merging would make them their own ancestor.",
+        "bothLinkedToAccounts": "Both are linked to user accounts (\"this is me\"). Unlink one of them first."
+      }
     }
+  },
+  "members": {
+    "title": "Members",
+    "subtitle": "Who can see and edit the family tree. Joining is by invitation only.",
+    "role": {
+      "admin": "Admin",
+      "editor": "Editor",
+      "viewer": "Viewer"
+    },
+    "roleDescription": {
+      "admin": "Everything, including members, Settings, Tools, merging and deleting.",
+      "editor": "Adds and edits people, relationships, sources and photos.",
+      "viewer": "Reads the tree. Living people show by name only."
+    },
+    "membersTitle_one": "{{count}} member",
+    "membersTitle_other": "{{count}} members",
+    "you": "you",
+    "roleFor": "Role for {{name}}",
+    "removeTitle": "Remove {{name}}?",
+    "removeDescription": "They lose access straight away. The people they added to the tree stay.",
+    "invitationsTitle": "Invitations",
+    "invite": "Invite",
+    "inviteTitle": "Invite a family member",
+    "noInvitations": "No open invitations.",
+    "expires": "Link works until {{date}}",
+    "expired": "Link expired — resend to make a new one",
+    "resend": "Resend",
+    "revoke": "Revoke",
+    "revokeTitle": "Revoke the invitation for {{email}}?",
+    "revokeDescription": "The link stops working. You can invite them again later.",
+    "linkSent": "Invitation emailed to {{email}}. You can also pass the link on yourself:",
+    "linkNotSent": "Email isn't set up on this server, so nothing was sent to {{email}} — copy the link and send it yourself:",
+    "linkOnce": "For security, this link is only shown now. Resend to get a new one.",
+    "dismiss": "Done",
+    "email": "Email address",
+    "roleLabel": "Role",
+    "whoInTree": "Who they are in the tree (optional)",
+    "whoInTreePlaceholder": "Search people",
+    "message": "Personal message (optional)",
+    "messagePlaceholder": "e.g. Here's the family tree I told you about",
+    "send": "Send invitation"
+  },
+  "invite": {
+    "loading": "Checking your invitation…",
+    "title": "{{name}} invited you to the family tree",
+    "someone": "Someone",
+    "asRole": "You're invited as {{role}}.",
+    "createAccount": "Create account",
+    "googleHint": "Google works only if your Google account uses {{email}}.",
+    "googleRefused": "That Google account isn't the invited address. Use the form above, or sign in to Google with the invited address.",
+    "unusableTitle": "This invitation can't be used",
+    "unusable": "The link has expired, been withdrawn, or isn't complete. Ask the person who invited you for a new one.",
+    "acceptedTitle": "Already accepted",
+    "accepted": "This invitation has already been used to create an account."
   }
 }

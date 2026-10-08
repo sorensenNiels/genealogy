@@ -17,7 +17,9 @@ import {
 import { Injectable } from "@nestjs/common";
 import { z } from "zod";
 
-import { protectedProcedure, router } from "../trpc/trpc.base.js";
+import { PersonRedactor, viewerOf } from "../privacy/person-redactor.js";
+import { adminProcedure, editorProcedure, protectedProcedure, router } from "../trpc/trpc.base.js";
+import { PersonMergeService } from "./person-merge.service.js";
 import { PersonService } from "./person.service.js";
 
 const listInput = z.object({
@@ -52,19 +54,38 @@ const treeInput = z.object({
 
 @Injectable()
 export class PersonRouter {
-  constructor(private readonly persons: PersonService) {}
+  constructor(
+    private readonly persons: PersonService,
+    private readonly merges: PersonMergeService,
+    private readonly redactor: PersonRedactor,
+  ) {}
 
   /**
    * Built by a method rather than a field initializer: class fields run before
    * the constructor body, so `this.persons` would still be undefined.
    */
   build() {
+    const mergeInput = z.object({ keepId: personIdSchema, removeId: personIdSchema });
     return router({
-      list: protectedProcedure
-        .input(listInput)
-        .query(({ input, ctx }) =>
-          this.persons.list({ ...input, viewerUserId: ctx.session.user.id }),
-        ),
+      // A query, though it reads a fair bit: nothing is written until `merge`.
+      mergePreview: adminProcedure
+        .input(mergeInput)
+        .query(({ input }) => this.merges.preview(input.keepId, input.removeId)),
+      merge: adminProcedure.input(mergeInput).mutation(async ({ input }) => {
+        await this.merges.merge(input.keepId, input.removeId);
+        return { ok: true } as const;
+      }),
+      list: protectedProcedure.input(listInput).query(async ({ input, ctx }) => {
+        const result = await this.persons.list({ ...input, viewerUserId: ctx.session.user.id });
+        const items = await this.redactor.people(viewerOf(ctx), result.items);
+        // A redacted person's citations are hidden, so their summary is too.
+        return {
+          ...result,
+          items: items.map((item) =>
+            item.redacted ? { ...item, citationCount: 0, topConfidence: null } : item,
+          ),
+        };
+      }),
 
       listTitlePrefixes: protectedProcedure.query(() => this.persons.listTitlePrefixes()),
 
@@ -72,28 +93,40 @@ export class PersonRouter {
 
       byId: protectedProcedure
         .input(z.object({ id: personIdSchema }))
-        .query(({ input, ctx }) => this.persons.byId(input.id, ctx.session.user.id)),
+        .query(async ({ input, ctx }) =>
+          this.redactor.person(
+            viewerOf(ctx),
+            await this.persons.byId(input.id, ctx.session.user.id),
+          ),
+        ),
 
-      create: protectedProcedure
+      create: editorProcedure
         .input(createPersonSchema)
         .mutation(({ input }) => this.persons.create(input)),
 
-      update: protectedProcedure
+      update: editorProcedure
         .input(updatePersonSchema)
         .mutation(({ input }) => this.persons.update(input)),
 
-      remove: protectedProcedure
-        .input(z.object({ id: personIdSchema }))
-        .mutation(async ({ input }) => {
-          await this.persons.remove(input.id);
-          return { ok: true } as const;
-        }),
+      remove: adminProcedure.input(z.object({ id: personIdSchema })).mutation(async ({ input }) => {
+        await this.persons.remove(input.id);
+        return { ok: true } as const;
+      }),
 
       relatives: protectedProcedure
         .input(z.object({ id: personIdSchema }))
-        .query(({ input }) => this.persons.relatives(input.id)),
+        .query(async ({ input, ctx }) => {
+          const relatives = await this.persons.relatives(input.id);
+          const viewer = viewerOf(ctx);
+          return {
+            parents: await this.redactor.people(viewer, relatives.parents),
+            spouses: await this.redactor.people(viewer, relatives.spouses),
+            children: await this.redactor.people(viewer, relatives.children),
+            siblings: await this.redactor.people(viewer, relatives.siblings),
+          };
+        }),
 
-      linkParent: protectedProcedure
+      linkParent: editorProcedure
         .input(
           z.object({
             parentId: personIdSchema,
@@ -106,21 +139,21 @@ export class PersonRouter {
           return { ok: true } as const;
         }),
 
-      linkSpouse: protectedProcedure
+      linkSpouse: editorProcedure
         .input(z.object({ aId: personIdSchema, bId: personIdSchema }))
         .mutation(async ({ input }) => {
           await this.persons.linkSpouse(input.aId, input.bId);
           return { ok: true } as const;
         }),
 
-      unlinkParent: protectedProcedure
+      unlinkParent: editorProcedure
         .input(z.object({ parentId: personIdSchema, childId: personIdSchema }))
         .mutation(async ({ input }) => {
           await this.persons.unlinkParent(input.parentId, input.childId);
           return { ok: true } as const;
         }),
 
-      unlinkSpouse: protectedProcedure
+      unlinkSpouse: editorProcedure
         .input(z.object({ aId: personIdSchema, bId: personIdSchema }))
         .mutation(async ({ input }) => {
           await this.persons.unlinkSpouse(input.aId, input.bId);
@@ -135,25 +168,32 @@ export class PersonRouter {
         .input(pedigreeInput)
         .query(({ input }) => this.persons.descendants(input.id, input.generations)),
 
-      tree: protectedProcedure
-        .input(treeInput)
-        .query(({ input }) =>
-          this.persons.tree(input.id, input.ancestorGenerations, input.descendantGenerations),
-        ),
+      tree: protectedProcedure.input(treeInput).query(async ({ input, ctx }) => {
+        const tree = await this.persons.tree(
+          input.id,
+          input.ancestorGenerations,
+          input.descendantGenerations,
+        );
+        return { ...tree, people: await this.redactor.people(viewerOf(ctx), tree.people) };
+      }),
 
       listNames: protectedProcedure
         .input(z.object({ personId: personIdSchema }))
-        .query(({ input }) => this.persons.listNames(input.personId)),
+        .query(({ input, ctx }) =>
+          this.redactor.listFor(viewerOf(ctx), input.personId, () =>
+            this.persons.listNames(input.personId),
+          ),
+        ),
 
-      addName: protectedProcedure
+      addName: editorProcedure
         .input(createNameVariantSchema)
         .mutation(({ input }) => this.persons.addName(input)),
 
-      updateName: protectedProcedure
+      updateName: editorProcedure
         .input(updateNameVariantSchema)
         .mutation(({ input }) => this.persons.updateName(input)),
 
-      removeName: protectedProcedure
+      removeName: editorProcedure
         .input(z.object({ id: nameVariantIdSchema }))
         .mutation(async ({ input }) => {
           await this.persons.removeName(input.id);
@@ -162,17 +202,21 @@ export class PersonRouter {
 
       listEvents: protectedProcedure
         .input(z.object({ personId: personIdSchema }))
-        .query(({ input }) => this.persons.listEvents(input.personId)),
+        .query(({ input, ctx }) =>
+          this.redactor.listFor(viewerOf(ctx), input.personId, () =>
+            this.persons.listEvents(input.personId),
+          ),
+        ),
 
-      addEvent: protectedProcedure
+      addEvent: editorProcedure
         .input(createPersonEventSchema)
         .mutation(({ input }) => this.persons.addEvent(input)),
 
-      updateEvent: protectedProcedure
+      updateEvent: editorProcedure
         .input(updatePersonEventSchema)
         .mutation(({ input }) => this.persons.updateEvent(input)),
 
-      removeEvent: protectedProcedure
+      removeEvent: editorProcedure
         .input(z.object({ id: personEventIdSchema }))
         .mutation(async ({ input }) => {
           await this.persons.removeEvent(input.id);
@@ -181,17 +225,38 @@ export class PersonRouter {
 
       listUnions: protectedProcedure
         .input(z.object({ personId: personIdSchema }))
-        .query(({ input }) => this.persons.listUnions(input.personId)),
+        .query(async ({ input, ctx }) => {
+          // A marriage is about both partners: if either may only be seen by
+          // name, its dates, places and notes are hidden — the fact of it
+          // (and its status) stays, as the Family card shows the spouse anyway.
+          const rows = await this.persons.listUnions(input.personId);
+          const hidden = await this.redactor.hiddenIds(
+            viewerOf(ctx),
+            rows.flatMap((row) => [row.personAId, row.personBId]),
+          );
+          return rows.map((row) =>
+            hidden.has(row.personAId) || hidden.has(row.personBId)
+              ? {
+                  ...row,
+                  startDate: null,
+                  startPlace: null,
+                  endDate: null,
+                  endPlace: null,
+                  notes: null,
+                }
+              : row,
+          );
+        }),
 
-      addUnion: protectedProcedure
+      addUnion: editorProcedure
         .input(createUnionSchema)
         .mutation(({ input }) => this.persons.addUnion(input)),
 
-      updateUnion: protectedProcedure
+      updateUnion: editorProcedure
         .input(updateUnionSchema)
         .mutation(({ input }) => this.persons.updateUnion(input)),
 
-      removeUnion: protectedProcedure
+      removeUnion: editorProcedure
         .input(z.object({ id: unionIdSchema }))
         .mutation(async ({ input }) => {
           await this.persons.removeUnion(input.id);

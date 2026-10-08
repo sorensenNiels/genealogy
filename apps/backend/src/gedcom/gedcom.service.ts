@@ -5,9 +5,15 @@ import {
   gedcomEventTag,
   gedcomNameType,
   gedcomPointer,
+  gedcom7NameType,
+  gedcom7Role,
+  gedcomDatePhrase,
   gedcomQuay,
+  markdownToPlainText,
   toGedcomDate,
   type Gender,
+  type GedcomVersion,
+  type HistoricalDate,
 } from "@genealogy/core";
 import {
   allParentOfEdges,
@@ -16,9 +22,11 @@ import {
   citations,
   configurableOptions,
   personEvents,
+  personExternalIds,
   personNames,
   persons,
   places,
+  repositories,
   researchNotes,
   sources,
   unions,
@@ -26,8 +34,10 @@ import {
   type CitationRow,
   type Database,
   type PersonEventRow,
+  type PersonExternalIdRow,
   type PersonNameRow,
   type PersonRow,
+  type RepositoryRow,
   type ResearchNoteRow,
   type SourceRow,
   type UnionRow,
@@ -40,11 +50,15 @@ import { DRIZZLE, PG_POOL } from "../database/database.module.js";
 
 /** Every whole-tree lookup the per-record writers need, built once per export. */
 interface ExportLookups {
+  version: GedcomVersion;
   personXref: Map<string, string>;
   sourceXref: Map<string, string>;
   citationsByKey: Map<string, CitationRow[]>;
   eventTypeLabels: Map<string, string>;
   roleLabels: Map<string, string>;
+  nameTypeLabels: Map<string, string>;
+  repositoryXref: Map<string, string>;
+  externalIdsByPerson: Map<string, PersonExternalIdRow[]>;
   /** Associations by their context: an event id, a union id, or (no context) the owner's person id. */
   associationsByEvent: Map<string, AssociationRow[]>;
   associationsByUnion: Map<string, AssociationRow[]>;
@@ -74,6 +88,52 @@ interface Family {
  * underscore tags (`_STAT`, `_DETAIL`, `_TODO`, ...) that other programs
  * ignore but `GedcomImportService` reads back.
  */
+/**
+ * Notes are stored as markdown; other programs show a NOTE verbatim, so the
+ * line itself carries plain text. When that loses anything (the note had
+ * formatting), the markdown follows as this app's own `_MARKDOWN` child —
+ * ignored elsewhere, preferred by `resolveNote` on import, so this app's own
+ * round trip stays lossless.
+ */
+function writeDate(
+  writer: GedcomWriter,
+  level: number,
+  tag: string,
+  date: HistoricalDate,
+  version: GedcomVersion,
+): void {
+  writer.line(level, tag, toGedcomDate(date, version));
+  const phrase = gedcomDatePhrase(date, version);
+  if (phrase) writer.line(level + 1, "PHRASE", phrase);
+}
+
+/**
+ * This app's own extension tags, declared in a GEDCOM 7 header's SCHMA as 7
+ * asks. The URI is a URN of this app's own rather than a web address, since
+ * nothing is published there. Third-party tags this exporter also writes
+ * (`_FSFTID`, `_APID`, `_FREL`/`_MREL`, `_TODO`) are deliberately left
+ * undeclared — 7 allows undocumented extensions, and declaring them would
+ * mean inventing URIs on other vendors' behalf.
+ */
+const APP_EXTENSION_TAGS = [
+  "_STAT",
+  "_END",
+  "_DETAIL",
+  "_DATE",
+  "_VOLUME",
+  "_ENTRY",
+  "_CERT",
+  "_TYPE",
+  "_MARKDOWN",
+];
+const APP_EXTENSION_URN = "urn:x-genealogy-app:gedcom:";
+
+function writeNote(writer: GedcomWriter, level: number, tag: string, markdown: string): void {
+  const plain = markdownToPlainText(markdown);
+  writer.line(level, tag, plain);
+  if (plain !== markdown.trim()) writer.line(level + 1, "_MARKDOWN", markdown);
+}
+
 @Injectable()
 export class GedcomService {
   constructor(
@@ -93,7 +153,7 @@ export class GedcomService {
    * `submitterName` fills the SUBM record 5.5.1 requires — whoever is
    * signed in and exporting.
    */
-  async exportAll(submitterName: string): Promise<string> {
+  async exportAll(submitterName: string, version: GedcomVersion = "5.5.1"): Promise<string> {
     const [
       allPersons,
       allNames,
@@ -108,6 +168,9 @@ export class GedcomService {
       allPlaces,
       allEdges,
       allSpouseEdges,
+      allRepositories,
+      allExternalIds,
+      nameTypeOptions,
     ] = await Promise.all([
       this.db.select().from(persons),
       this.db.select().from(personNames),
@@ -128,18 +191,36 @@ export class GedcomService {
       this.loadPlaces(),
       allParentOfEdges(this.pool),
       allSpouseOfEdges(this.pool),
+      this.db.select().from(repositories),
+      this.db.select().from(personExternalIds),
+      this.db
+        .select({ key: configurableOptions.key, label: configurableOptions.label })
+        .from(configurableOptions)
+        .where(eq(configurableOptions.topic, "name_variant_type")),
     ]);
 
-    const writer = new GedcomWriter();
-    writer.line(0, "HEAD");
-    writer.line(1, "SOUR", "genealogy-app");
+    const writer = new GedcomWriter(version);
     const today = new Date().toISOString().slice(0, 10);
+    writer.line(0, "HEAD");
+    if (version === "7.0") {
+      // 7.0: GEDC first, no FORM or CHAR (a GEDCOM 7 file is always UTF-8),
+      // and this app's extension tags declared in SCHMA.
+      writer.line(1, "GEDC");
+      writer.line(2, "VERS", "7.0");
+      writer.line(1, "SCHMA");
+      for (const tag of APP_EXTENSION_TAGS) {
+        writer.line(2, "TAG", `${tag} ${APP_EXTENSION_URN}${tag.slice(1)}`);
+      }
+    }
+    writer.line(1, "SOUR", "genealogy-app");
     writer.line(1, "DATE", toGedcomDate({ original: today, earliest: today, latest: today }));
     writer.line(1, "SUBM", gedcomPointer("U1"));
-    writer.line(1, "GEDC");
-    writer.line(2, "VERS", "5.5.1");
-    writer.line(2, "FORM", "LINEAGE-LINKED");
-    writer.line(1, "CHAR", "UTF-8");
+    if (version === "5.5.1") {
+      writer.line(1, "GEDC");
+      writer.line(2, "VERS", "5.5.1");
+      writer.line(2, "FORM", "LINEAGE-LINKED");
+      writer.line(1, "CHAR", "UTF-8");
+    }
     writer.line(0, "SUBM", undefined, "U1");
     writer.line(1, "NAME", submitterName || "Unknown");
 
@@ -162,13 +243,8 @@ export class GedcomService {
 
     const sourceXref = new Map<string, string>();
     allSources.forEach((source, index) => sourceXref.set(source.id, `S${index + 1}`));
-    // One REPO record per distinct repository name — `sources.repository` is
-    // free text, so "the same repository" can only mean "the same text".
-    const repoXref = new Map<string, string>();
-    for (const source of allSources) {
-      const name = source.repository?.trim();
-      if (name && !repoXref.has(name)) repoXref.set(name, `R${repoXref.size + 1}`);
-    }
+    const repositoryXref = new Map<string, string>();
+    allRepositories.forEach((repo, index) => repositoryXref.set(repo.id, `R${index + 1}`));
 
     const families = this.buildFamilies(
       allEdges,
@@ -186,11 +262,15 @@ export class GedcomService {
     }
 
     const lookups: ExportLookups = {
+      version,
       personXref,
       sourceXref,
       citationsByKey,
       eventTypeLabels: new Map(eventTypeOptions.map((option) => [option.key, option.label])),
       roleLabels: new Map(roleOptions.map((option) => [option.key, option.label])),
+      nameTypeLabels: new Map(nameTypeOptions.map((option) => [option.key, option.label])),
+      repositoryXref,
+      externalIdsByPerson: groupBy(allExternalIds, (row) => row.personId),
       associationsByEvent: groupBy(
         allAssociations.filter((row) => row.eventId),
         (row) => row.eventId!,
@@ -225,11 +305,10 @@ export class GedcomService {
     }
 
     for (const source of allSources) {
-      this.writeSource(writer, source, sourceXref.get(source.id)!, repoXref);
+      this.writeSource(writer, source, sourceXref.get(source.id)!, lookups);
     }
-    for (const [name, xref] of repoXref) {
-      writer.line(0, "REPO", undefined, xref);
-      writer.line(1, "NAME", name);
+    for (const repo of allRepositories) {
+      this.writeRepository(writer, repo, repositoryXref.get(repo.id)!);
     }
 
     writer.line(0, "TRLR");
@@ -276,24 +355,35 @@ export class GedcomService {
     rows: AssociationRow[] | undefined,
     lookups: ExportLookups,
   ): void {
+    const isSeven = lookups.version === "7.0";
     for (const row of rows ?? []) {
       if (row.associatePersonId) {
         const xref = lookups.personXref.get(row.associatePersonId);
         if (!xref) continue;
         writer.line(level, "ASSO", gedcomPointer(xref));
       } else if (row.associateName) {
-        writer.line(level, "_ASSO", row.associateName);
+        // 7.0 has a standard form for "someone not in the file": @VOID@ + PHRASE.
+        if (isSeven) {
+          writer.line(level, "ASSO", "@VOID@");
+          writer.line(level + 1, "PHRASE", row.associateName);
+        } else {
+          writer.line(level, "_ASSO", row.associateName);
+        }
       } else {
         continue;
       }
-      writer.line(
-        level + 1,
-        "RELA",
+      const roleLabel =
         row.role === "other"
           ? (row.label ?? "Other")
-          : (lookups.roleLabels.get(row.role) ?? row.role),
-      );
-      if (row.notes) writer.line(level + 1, "NOTE", row.notes);
+          : (lookups.roleLabels.get(row.role) ?? row.role);
+      if (isSeven) {
+        const { role, phrase } = gedcom7Role(row.role, roleLabel);
+        writer.line(level + 1, "ROLE", role);
+        if (phrase) writer.line(level + 2, "PHRASE", phrase);
+      } else {
+        writer.line(level + 1, "RELA", roleLabel);
+      }
+      if (row.notes) writeNote(writer, level + 1, "NOTE", row.notes);
       this.writeCitations(
         writer,
         level + 1,
@@ -314,9 +404,12 @@ export class GedcomService {
     },
     lookups: ExportLookups,
   ): void {
-    const { citationsByKey, sourceXref } = lookups;
+    const { citationsByKey, sourceXref, version } = lookups;
+    const isSeven = version === "7.0";
     writer.line(0, "INDI", undefined, lookups.personXref.get(person.id)!);
-    if (person.restriction) writer.line(1, "RESN", person.restriction);
+    if (person.restriction) {
+      writer.line(1, "RESN", isSeven ? person.restriction.toUpperCase() : person.restriction);
+    }
     writer.line(1, "NAME", `${person.given} /${person.surname}/`);
     if (person.given) writer.line(2, "GIVN", person.given);
     if (person.surname) writer.line(2, "SURN", person.surname);
@@ -329,11 +422,20 @@ export class GedcomService {
       writer.line(1, "NAME", `${name.given} /${name.surname}/`);
       if (name.given) writer.line(2, "GIVN", name.given);
       if (name.surname) writer.line(2, "SURN", name.surname);
-      writer.line(2, "TYPE", gedcomNameType(name.nameType));
-      // 5.5.1's NAME structure has no date; `_DATE` keeps "known by this
+      if (isSeven) {
+        const { type, phrase } = gedcom7NameType(
+          name.nameType,
+          lookups.nameTypeLabels.get(name.nameType) ?? name.nameType,
+        );
+        writer.line(2, "TYPE", type);
+        if (phrase) writer.line(3, "PHRASE", phrase);
+      } else {
+        writer.line(2, "TYPE", gedcomNameType(name.nameType));
+      }
+      // GEDCOM's NAME structure has no date; `_DATE` keeps "known by this
       // name since" for this app's own importer.
-      if (name.since) writer.line(2, "_DATE", toGedcomDate(name.since));
-      if (name.notes) writer.line(2, "NOTE", name.notes);
+      if (name.since) writeDate(writer, 2, "_DATE", name.since, version);
+      if (name.notes) writeNote(writer, 2, "NOTE", name.notes);
       this.writeCitations(writer, 2, citationsByKey.get(`name:${name.id}`), sourceXref);
     }
 
@@ -351,30 +453,32 @@ export class GedcomService {
     // dead, date unknown" — GEDCOM's own convention for that is a bare
     // `1 DEAT` with no further detail, distinct from omitting it entirely
     // (which GEDCOM readers take as "unknown whether living").
-    if (!person.isLiving && !hasDeathEvent) writer.line(1, "DEAT");
+    // (7.0 spells that "it happened, no details" as the payload Y.)
+    if (!person.isLiving && !hasDeathEvent) writer.line(1, "DEAT", isSeven ? "Y" : undefined);
 
     // The INDI → FAM back-links 5.5.1 expects alongside FAM's own
     // HUSB/WIFE/CHIL — several programs build their family view from these.
     for (const family of context.familiesAsChild) {
       writer.line(1, "FAMC", gedcomPointer(family.xref));
       const pedigree = sharedPedigree(family, person.id);
-      if (pedigree) writer.line(2, "PEDI", pedigree);
+      if (pedigree) writer.line(2, "PEDI", isSeven ? pedigree.toUpperCase() : pedigree);
     }
     for (const family of context.familiesAsSpouse) {
       writer.line(1, "FAMS", gedcomPointer(family.xref));
     }
 
     this.writeAssociations(writer, 1, lookups.associationsByPerson.get(person.id), lookups);
+    this.writeExternalIds(writer, lookups.externalIdsByPerson.get(person.id), version);
 
     // Research notes as the `_TODO` Legacy and RootsMagic use for research
     // tasks — TYPE carries the note type, `_STAT DONE` a resolved one.
     for (const note of lookups.researchNotesByPerson.get(person.id) ?? []) {
-      writer.line(1, "_TODO", note.body);
+      writeNote(writer, 1, "_TODO", note.body);
       writer.line(2, "TYPE", note.noteType);
       if (note.resolved) writer.line(2, "_STAT", "DONE");
     }
 
-    if (person.notes) writer.line(1, "NOTE", person.notes);
+    if (person.notes) writeNote(writer, 1, "NOTE", person.notes);
   }
 
   /**
@@ -392,7 +496,13 @@ export class GedcomService {
       value = details[mapped.valueDetail];
       delete details[mapped.valueDetail];
     }
-    writer.line(1, mapped?.tag ?? "EVEN", value);
+    const hasDetail = !!(value || event.date || event.place);
+    // 7.0: a known event with nothing else to say carries the payload Y.
+    writer.line(
+      1,
+      mapped?.tag ?? "EVEN",
+      value ?? (lookups.version === "7.0" && mapped && !hasDetail ? "Y" : undefined),
+    );
     if (!mapped) {
       writer.line(
         2,
@@ -402,7 +512,7 @@ export class GedcomService {
           : (lookups.eventTypeLabels.get(event.eventType) ?? event.eventType),
       );
     }
-    if (event.date) writer.line(2, "DATE", toGedcomDate(event.date));
+    if (event.date) writeDate(writer, 2, "DATE", event.date, lookups.version);
     if (event.place) {
       writer.line(2, "PLAC", event.place);
       this.writeCoordinates(writer, 2, event.place, lookups);
@@ -418,7 +528,7 @@ export class GedcomService {
         writer.line(3, "TYPE", key);
       }
     }
-    if (event.notes) writer.line(2, "NOTE", event.notes);
+    if (event.notes) writeNote(writer, 2, "NOTE", event.notes);
   }
 
   /**
@@ -537,13 +647,14 @@ export class GedcomService {
     if (union.status !== "married" && union.status !== "divorced" && union.status !== "annulled") {
       writer.line(1, "_STAT", union.status);
     }
-    writer.line(1, "MARR");
-    if (union.startDate) writer.line(2, "DATE", toGedcomDate(union.startDate));
+    const isSeven = lookups.version === "7.0";
+    writer.line(1, "MARR", isSeven && !union.startDate && !union.startPlace ? "Y" : undefined);
+    if (union.startDate) writeDate(writer, 2, "DATE", union.startDate, lookups.version);
     if (union.startPlace) {
       writer.line(2, "PLAC", union.startPlace);
       this.writeCoordinates(writer, 2, union.startPlace, lookups);
     }
-    if (union.notes) writer.line(2, "NOTE", union.notes);
+    if (union.notes) writeNote(writer, 2, "NOTE", union.notes);
     this.writeCitations(writer, 2, citationsByKey.get(`union:${union.id}`), sourceXref);
     // Marriage witnesses, under the MARR they witnessed.
     this.writeAssociations(writer, 2, lookups.associationsByUnion.get(union.id), lookups);
@@ -553,8 +664,8 @@ export class GedcomService {
       // separation) has no standard tag and goes out as `_END`.
       const tag =
         union.status === "annulled" ? "ANUL" : union.status === "divorced" ? "DIV" : "_END";
-      writer.line(1, tag);
-      if (union.endDate) writer.line(2, "DATE", toGedcomDate(union.endDate));
+      writer.line(1, tag, isSeven && !union.endDate && !union.endPlace ? "Y" : undefined);
+      if (union.endDate) writeDate(writer, 2, "DATE", union.endDate, lookups.version);
       if (union.endPlace) {
         writer.line(2, "PLAC", union.endPlace);
         this.writeCoordinates(writer, 2, union.endPlace, lookups);
@@ -566,17 +677,51 @@ export class GedcomService {
     writer: GedcomWriter,
     source: SourceRow,
     xref: string,
-    repoXref: Map<string, string>,
+    lookups: ExportLookups,
   ): void {
     writer.line(0, "SOUR", undefined, xref);
     writer.line(1, "TITL", source.title);
     if (source.author) writer.line(1, "AUTH", source.author);
     if (source.publication) writer.line(1, "PUBL", source.publication);
-    const repo = source.repository?.trim();
-    if (repo) writer.line(1, "REPO", gedcomPointer(repoXref.get(repo)!));
+    const repoXref = source.repositoryId ? lookups.repositoryXref.get(source.repositoryId) : null;
+    if (repoXref) {
+      writer.line(1, "REPO", gedcomPointer(repoXref));
+      if (source.callNumber) writer.line(2, "CALN", source.callNumber);
+    }
     // Free text ("parish register", "1920 census") — no 5.5.1 field fits;
     // `REPO.CALN.MEDI` is a fixed media vocabulary and needs a call number.
     if (source.sourceType) writer.line(1, "_TYPE", source.sourceType);
+  }
+
+  private writeRepository(writer: GedcomWriter, repo: RepositoryRow, xref: string): void {
+    writer.line(0, "REPO", undefined, xref);
+    writer.line(1, "NAME", repo.name);
+    if (repo.address) writer.line(1, "ADDR", repo.address);
+    if (repo.phone) writer.line(1, "PHON", repo.phone);
+    if (repo.email) writer.line(1, "EMAIL", repo.email);
+    if (repo.website) writer.line(1, "WWW", repo.website);
+  }
+
+  /**
+   * FamilySearch as `_FSFTID` (what FamilySearch itself and most programs
+   * write) unless it arrived as a GEDCOM 7 EXID with a TYPE, which then goes
+   * back out the same way; Ancestry as `_APID`; REFN as REFN. A generic id is
+   * an EXID in 7.0 — 5.5.1 has no EXID, so it's this app's own `_EXID` there.
+   */
+  private writeExternalIds(
+    writer: GedcomWriter,
+    rows: PersonExternalIdRow[] | undefined,
+    version: GedcomVersion,
+  ): void {
+    for (const row of rows ?? []) {
+      let tag: string;
+      if (row.system === "familysearch") tag = version === "7.0" && row.type ? "EXID" : "_FSFTID";
+      else if (row.system === "ancestry") tag = "_APID";
+      else if (row.system === "refn") tag = "REFN";
+      else tag = version === "7.0" ? "EXID" : "_EXID";
+      writer.line(1, tag, row.value);
+      if (row.type && tag !== "_FSFTID" && tag !== "_APID") writer.line(2, "TYPE", row.type);
+    }
   }
 
   private writeCitations(
@@ -596,6 +741,7 @@ export class GedcomService {
       if (citation.certificateNumber) {
         writer.line(level + 1, "_CERT", citation.certificateNumber);
       }
+      if (citation.ancestryApid) writer.line(level + 1, "_APID", citation.ancestryApid);
       // The four seeded confidence levels are QUAY 0–3; a level added in
       // Settings has no QUAY equivalent and is folded into the text instead
       // (the importer reads that suffix back).

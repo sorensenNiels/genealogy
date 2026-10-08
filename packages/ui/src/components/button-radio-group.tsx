@@ -6,6 +6,7 @@ import {
   type RadioGroupProps as RACRadioGroupProps,
 } from "react-aria-components";
 
+import { useReadOnly } from "../lib/read-only";
 import { cn } from "../lib/utils";
 
 export interface ButtonRadioGroupOption<T extends string> {
@@ -48,8 +49,10 @@ export function ButtonRadioGroup<T extends string>({
   className,
   ...props
 }: ButtonRadioGroupProps<T>) {
+  const isReadOnly = useReadOnly();
   return (
     <RACRadioGroup
+      {...(isReadOnly ? { isReadOnly: true } : {})}
       value={value}
       onChange={(next) => onChange(next as T)}
       orientation="horizontal"

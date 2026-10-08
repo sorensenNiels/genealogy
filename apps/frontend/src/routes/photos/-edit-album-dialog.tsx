@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { historicalDateFieldPreview } from "../../lib/format-date";
+import { usePermissions } from "../../lib/permissions";
 import {
   type listImmichAlbums,
   updateImmichAlbum,
@@ -43,6 +44,8 @@ export function EditAlbumDialog({
   className: string;
 }) {
   const { t } = useTranslation();
+  const { canEdit } = usePermissions();
+  if (!canEdit) return null;
   return (
     <FormDialog
       trigger={

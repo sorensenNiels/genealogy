@@ -77,6 +77,27 @@ buys and what to watch for when extending it.
 
 ## Conventions that will bite you
 
+**Never let a route file be empty while `pnpm dev` runs.** TanStack Start's
+route generator watches `apps/frontend/src/routes/` and replaces any route
+file it sees empty with a placeholder ("Hello /…"). An edit that truncates
+then rewrites a file (a script's `open(path, "w")`, a shell `>` redirect) can
+hit that instant and lose the whole file — it happened to
+`people/$personId.tsx`. Write route files atomically: a temp file in the
+same folder with a `-` prefix (which the generator ignores), then rename it
+over the original. After bulk edits or `pnpm format`, check with
+`grep -rln 'Hello "/' apps/frontend/src/routes`.
+
+**Every procedure is gated by role.** `protectedProcedure` is any signed-in
+member (reads, and their own notes/notifications/profile), `editorProcedure`
+any change to the tree or photos, `adminProcedure` members, Settings, Tools,
+merging and deleting (`apps/backend/src/trpc/trpc.base.ts`). Pick one for
+every new procedure — a mutation on `protectedProcedure` lets a Viewer write.
+A read that returns person data goes through `PersonRedactor`
+(`apps/backend/src/privacy/`), so Viewers see living people by name only; a
+REST controller uses `requireRole`. In the UI, wrap a page in
+`ReadOnlyProvider` for a Viewer and gate anything the scope can't see (plain
+buttons, drag handlers) with `usePermissions()`.
+
 **The whole monorepo is ESM.** NestJS 12 ships ESM-only, so there is no CJS half.
 Relative imports in Node-targeted packages (`core`, `db`, `backend`) must carry an
 explicit `.js` extension — `import { x } from "./thing.js"` — even though the file

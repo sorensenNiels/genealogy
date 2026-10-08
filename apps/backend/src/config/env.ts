@@ -18,6 +18,8 @@ const envSchema = z.object({
   BETTER_AUTH_SECRET: z.string().min(1),
   /** This server's own public URL — better-auth builds OAuth callback URLs from it. */
   BETTER_AUTH_URL: z.string().default("http://localhost:3000"),
+  /** The web app's public URL (apps/frontend) — invitation links point here. */
+  APP_URL: z.string().default("http://localhost:5173"),
   // Created in Google Cloud Console; there is no default because there is no
   // safe placeholder that would let Google sign-in fail quietly.
   GOOGLE_CLIENT_ID: z.string().min(1),

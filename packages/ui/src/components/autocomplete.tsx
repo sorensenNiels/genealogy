@@ -15,6 +15,7 @@ import {
   useOverlayTransition,
   useOverlayTransitionState,
 } from "../hooks/use-overlay-transition";
+import { useReadOnly } from "../lib/read-only";
 import { cn } from "../lib/utils";
 
 const MotionDiv = motion.create("div");
@@ -56,6 +57,7 @@ export function Autocomplete({
   ...props
 }: AutocompleteProps) {
   const { contextValue, handleOpenChange } = useOverlayTransition();
+  const isReadOnly = useReadOnly();
   // `items` is a controlled collection as far as RAC is concerned — it
   // doesn't filter it against `inputValue` itself (that's `defaultItems`'
   // job), so the "contains" narrowing happens here instead.
@@ -75,6 +77,7 @@ export function Autocomplete({
     // inner <input> instead, which the check doesn't look at. A caller
     // passing aria-label without this would see it silently do nothing.
     <RACComboBox
+      {...(isReadOnly ? { isReadOnly: true } : {})}
       allowsCustomValue
       menuTrigger="focus"
       inputValue={value}

@@ -1,12 +1,12 @@
-import { gedcomImportInputSchema } from "@genealogy/core";
+import { gedcomExportInputSchema, gedcomImportInputSchema } from "@genealogy/core";
 import { createServerFn } from "@tanstack/react-start";
 
 import { trpcProxy } from "../trpc-proxy-client";
 
 /** Walks the whole tree and returns the GEDCOM text directly — small enough at this app's scale to skip the queue-and-notify pattern `createBackup` uses. */
-export const exportGedcom = createServerFn({ method: "GET" }).handler(() =>
-  trpcProxy.gedcom.export.query(),
-);
+export const exportGedcom = createServerFn({ method: "GET" })
+  .validator(gedcomExportInputSchema)
+  .handler(({ data }) => trpcProxy.gedcom.export.query(data));
 
 /**
  * The file arrives already decoded to text (`decodeGedcomBytes`, in the

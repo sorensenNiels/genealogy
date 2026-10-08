@@ -5,7 +5,8 @@ import { backendUrl } from "../env";
 
 /** Only the fields this app actually reads (see __root.tsx's SessionStatus). */
 export interface Session {
-  user: { name: string; email: string };
+  /** `role` is better-auth's `additionalFields` entry — see `memberRoleSchema`. */
+  user: { name: string; email: string; role?: string };
 }
 
 /**

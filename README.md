@@ -14,7 +14,7 @@ is installed on your machine.
 
 1. Open the repository in VS Code.
 2. Choose **Reopen in Container**.
-3. Run `docker compose up -d --wait` (Postgres, Redis and Immich), then
+3. Run `docker compose up -d --wait` (Postgres and Redis), then
    `make db-migrate`.
 4. Copy `apps/backend/.env.example` to `apps/backend/.env` and fill in the
    values it can't default — see "Environment variables" in
@@ -26,7 +26,6 @@ is installed on your machine.
 | Web      | <http://localhost:5173>                                    |
 | Backend  | <http://localhost:3000/trpc>                               |
 | Database | `localhost:5432` (`genealogy` / `genealogy` / `genealogy`) |
-| Immich   | <http://localhost:2283>                                    |
 
 You only ever open the Web URL — its server side proxies both data and auth
 calls to the backend, so the backend URL above is for API inspection, not

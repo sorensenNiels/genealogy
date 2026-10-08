@@ -4,11 +4,13 @@ import { ImageViewer } from "@genealogy/ui/components/image-viewer";
 import { Input } from "@genealogy/ui/components/input";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { TagInput } from "@genealogy/ui/components/tag-input";
+import { ReadOnlyProvider } from "@genealogy/ui/lib/read-only";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { usePermissions } from "../../lib/permissions";
 import {
   deleteImmichAssets,
   getImmichAssetDetail,
@@ -71,6 +73,7 @@ export function AssetViewer({
   const queryClient = useQueryClient();
   const removeFromAlbumMutation = useMutation({ mutationFn: removeImmichAlbumAssets });
   const deleteAssetsMutation = useMutation({ mutationFn: deleteImmichAssets });
+  const { canEdit, isAdmin } = usePermissions();
   const unlinkMutation = useMutation({ mutationFn: unlinkImmichPerson });
   const updateDescriptionMutation = useMutation({ mutationFn: updateImmichAssetDescription });
   const setTagsMutation = useMutation({ mutationFn: setImmichAssetTags });
@@ -132,7 +135,8 @@ export function AssetViewer({
       void navigate({ to: "/people/$personId", params: { personId: face.linkedPerson.personId } });
       return;
     }
-    setTagFaceId(faceId);
+    // Tagging a face is an edit — a Viewer can only follow ones already linked.
+    if (canEdit) setTagFaceId(faceId);
   };
 
   const handleUnlinkPress = async (faceId: string): Promise<void> => {
@@ -160,23 +164,25 @@ export function AssetViewer({
 
   const footer = (
     <div className="w-full max-w-md space-y-3">
-      <div className="space-y-2 text-white">
-        <Input
-          aria-label={t("assetViewer.caption")}
-          placeholder={captionPlaceholder ?? t("assetViewer.captionPlaceholder")}
-          value={caption}
-          onChange={(event) => setCaptionDraft({ assetId: asset.id, value: event.target.value })}
-          onBlur={() => void saveCaption()}
-          className="border-white/30 bg-white/10 text-white placeholder:text-white/60"
-        />
-        <TagInput
-          value={tagNames}
-          onChange={(next) => void saveTags(next)}
-          suggestions={(tagsQuery.data ?? []).map((tag) => tag.name)}
-        />
-      </div>
+      <ReadOnlyProvider readOnly={!canEdit}>
+        <div className="space-y-2 text-white">
+          <Input
+            aria-label={t("assetViewer.caption")}
+            placeholder={captionPlaceholder ?? t("assetViewer.captionPlaceholder")}
+            value={caption}
+            onChange={(event) => setCaptionDraft({ assetId: asset.id, value: event.target.value })}
+            onBlur={() => void saveCaption()}
+            className="border-white/30 bg-white/10 text-white placeholder:text-white/60"
+          />
+          <TagInput
+            value={tagNames}
+            onChange={(next) => void saveTags(next)}
+            suggestions={(tagsQuery.data ?? []).map((tag) => tag.name)}
+          />
+        </div>
+      </ReadOnlyProvider>
       <div className="flex justify-end gap-2">
-        {albumId && (
+        {canEdit && albumId && (
           <RemoveButton
             itemLabel={t("assetViewer.thisPhotoFromAlbum")}
             title={t("assetViewer.removePhotoTitle")}
@@ -190,18 +196,20 @@ export function AssetViewer({
             onConfirm={() => void removeFromAlbum()}
           />
         )}
-        <RemoveButton
-          itemLabel={t("assetViewer.thisPhoto")}
-          title={t("assetViewer.deletePhotoTitle")}
-          description={t("assetViewer.deletePhotoDescription")}
-          actionLabel={t("common.delete")}
-          trigger={
-            <Button type="button" variant="destructive" size="sm">
-              {t("assetViewer.deletePhoto")}
-            </Button>
-          }
-          onConfirm={() => void deletePhoto()}
-        />
+        {isAdmin && (
+          <RemoveButton
+            itemLabel={t("assetViewer.thisPhoto")}
+            title={t("assetViewer.deletePhotoTitle")}
+            description={t("assetViewer.deletePhotoDescription")}
+            actionLabel={t("common.delete")}
+            trigger={
+              <Button type="button" variant="destructive" size="sm">
+                {t("assetViewer.deletePhoto")}
+              </Button>
+            }
+            onConfirm={() => void deletePhoto()}
+          />
+        )}
       </div>
     </div>
   );
@@ -223,7 +231,9 @@ export function AssetViewer({
           alt={asset.originalFileName}
           boxes={boxes}
           onBoxPress={handleBoxPress}
-          onUnlinkPress={(faceId) => void handleUnlinkPress(faceId)}
+          {...(canEdit
+            ? { onUnlinkPress: (faceId: string) => void handleUnlinkPress(faceId) }
+            : {})}
         />
       </ImageViewer>
       {tagFace && (

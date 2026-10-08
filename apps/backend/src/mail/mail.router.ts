@@ -1,7 +1,7 @@
 import { sendMailSchema } from "@genealogy/core";
 import { Injectable } from "@nestjs/common";
 
-import { protectedProcedure, router } from "../trpc/trpc.base.js";
+import { adminProcedure, protectedProcedure, router } from "../trpc/trpc.base.js";
 import { MailService } from "./mail.service.js";
 
 @Injectable()
@@ -13,7 +13,7 @@ export class MailRouter {
     return router({
       isConfigured: protectedProcedure.query(() => this.mail.isConfigured()),
 
-      send: protectedProcedure.input(sendMailSchema).mutation(async ({ input }) => {
+      send: adminProcedure.input(sendMailSchema).mutation(async ({ input }) => {
         await this.mail.enqueueMail(input);
         return { queued: true } as const;
       }),

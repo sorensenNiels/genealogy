@@ -9,7 +9,7 @@ import { z } from "zod";
  * new .hbs file plus the context shape it expects), not something an admin
  * should be able to add at runtime.
  */
-export const mailTemplateSchema = z.enum(["notification"]);
+export const mailTemplateSchema = z.enum(["notification", "invitation"]);
 export type MailTemplate = z.infer<typeof mailTemplateSchema>;
 
 export const sendMailSchema = z.object({

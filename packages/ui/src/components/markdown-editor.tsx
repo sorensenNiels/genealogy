@@ -18,7 +18,9 @@ import {
 import { useEffect, useState } from "react";
 
 import { useTheme } from "../hooks/use-theme";
+import { useReadOnly } from "../lib/read-only";
 import { cn } from "../lib/utils";
+import { MarkdownContent } from "./markdown-content";
 
 export interface MarkdownEditorProps {
   value: string;
@@ -67,12 +69,20 @@ export function MarkdownEditor({
   className,
   ...props
 }: MarkdownEditorProps) {
+  const isReadOnly = useReadOnly();
   const [isMounted, setIsMounted] = useState(false);
   const { theme } = useTheme();
   useEffect(() => {
     // eslint-disable-next-line react/set-state-in-effect -- SSR safety, see use-theme.ts
     setIsMounted(true);
   }, []);
+
+  // Read-only: the note as it reads, not an editor someone can't save from.
+  if (isReadOnly) {
+    return value.trim() === "" ? null : (
+      <MarkdownContent className={cn("text-sm", className)}>{value}</MarkdownContent>
+    );
+  }
 
   if (!isMounted) {
     return (

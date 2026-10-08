@@ -610,14 +610,32 @@ gets ignored or shifts one side down a layer. elk's `partitioning` feature looks
 like the fix but isn't: verified empirically that it only constrains _ordering
 between_ partitions, not that same-partition nodes share a layer.
 
-So row assignment is done by hand, before elk runs: `computeGenerations`
-(`apps/frontend/src/lib/tree-layout.ts`) floods outward from the root person —
-+1 down a `PARENT_OF` edge, -1 up one, +0 across a `SPOUSE_OF` edge — and that
-number becomes `y` directly. elk only lays out the `PARENT_OF` edges, and only
-its `x` output is kept, for left-to-right ordering (crossing minimization)
-within each fixed row. A spouse with no blood edge in the collected set (a pure
-in-law) never reaches elk — they're placed beside whichever partner elk did
-position, in a fixed-point pass over the spouse edges afterward.
+So row assignment is done by hand, before elk runs:
+`computeGenerations` (`apps/frontend/src/lib/tree-layout.ts`) floods outward
+from the root person — +1 down a `PARENT_OF` edge, -1 up one, +0 across a
+`SPOUSE_OF` edge — and that number becomes `y` directly.
+
+**Couples are one block, and their children hang from one line.** Partners on
+the same row (a whole chain, for someone remarried) are given to elk as a
+single node as wide as all their cards, with every `PARENT_OF` edge fed
+between blocks — so elk can't pull a couple apart, and only decides
+left-to-right order (crossing minimization) between blocks. Inside a block,
+each partner is placed on the side nearer their own parents. On the canvas,
+each couple gets an invisible union node at the middle of the marriage line,
+and a child of that couple gets one line from it (the usual genealogy-chart
+shape) instead of a line from each parent, which crossed under the couple; a
+parent who isn't part of such a couple keeps a direct line. Before blocks,
+each partner was centred under their own parents and couples drifted apart,
+joined by a long marriage line.
+
+**elk must lay out in our rows, as one graph — or cards overlap.** elk only
+keeps nodes apart within its _own_ layers. Left to its defaults it (a) works
+out layers from the edges (longest path), and (b) lays each disconnected piece
+out separately and packs the pieces side by side. Both break as soon as an
+in-law's parents are loaded — their cards landed on top of the main tree's.
+`layoutTree` therefore passes each block's row as its starting `y` with
+`INTERACTIVE` layering, and sets `separateConnectedComponents: false`.
+`separateRows` is a final sweep that nudges apart anything still touching.
 
 On the data side, `treeAround` (`packages/db/src/graph.ts`) walks one
 generation at a time via `parentsOf`/`childrenOf`, rather than a single
@@ -625,7 +643,11 @@ generation at a time via `parentsOf`/`childrenOf`, rather than a single
 `parseAgtype` only strips the `::vertex`/`::edge`/`::path` annotation AGE
 appends to a _single_ value per column — a list of vertices/edges each carrying
 its own inline annotation isn't valid JSON once spliced together. A query per
-generation is fine at the depths (4 up, 4 down by default) a tree view renders.
+generation is fine at the depths (4 up, 4 down by default) a tree view renders. The walk only follows edges from the people it queries, so after it (and
+the spouse lookup) `parentEdgesAmong` adds every `PARENT_OF` link between
+people already collected — otherwise a spouse picked up beside the root has
+no links to the couple's children, and the panel shows them childless. "Load
+more" does the same for the people it adds, from their relatives' parents.
 
 **Provenance, not just presence, decides "+ Add relative" vs. "Load more".**
 Absence in the fetched tree isn't absence in the graph: `treeAround`'s walk
@@ -637,6 +659,16 @@ add-relative dialog) or "never looked" (show "Load more"). `treeAround` returns
 as a query source in each direction — and `apps/frontend/src/routes/tree.tsx`
 gates on that. "Load more" reuses `person.relatives` one hop at a time and
 merges the result into local state rather than refetching the whole tree.
+
+**Additions and removals are layered over the fetched tree, not refetched.**
+"+ Add relative", "Load more" and the panel's remove ✕ each patch local state
+(`ExtraTreeData` and `RemovedEdges`, combined in `mergeTree`) instead of
+refetching `person.tree`, which would drop everything "Load more" pulled in and
+reshuffle the layout. After a removal, `keepConnected` drops anyone no longer
+connected to the root — otherwise `computeGenerations` has no row for them and
+they'd pile onto the root's. The ancestors/descendants toggle (`?view=` in the
+URL) is a pure filter over that merged tree (`filterByView`) — the panel keeps
+reading the whole tree, so a hidden spouse or child still shows there.
 
 ### Long-running work: BullMQ + a shared Redis
 
@@ -660,8 +692,7 @@ album, say) is checked synchronously in the tRPC procedure before enqueueing.
 
 **Redis is core infrastructure.** There is exactly one, the always-on `redis`
 service in `docker-compose.yml` (Valkey, Redis-compatible), published on the
-host like `db`; Immich's `REDIS_HOSTNAME` points at the same instance rather
-than running its own. `REDIS_URL` is accordingly a required env var
+host like `db`. `REDIS_URL` is accordingly a required env var
 (`config/env.ts`), unlike `IMMICH_URL`/`IMMICH_API_KEY`.
 
 **Mail** (`apps/backend/src/mail/`): `MailService` owns the SMTP transport and
@@ -685,16 +716,16 @@ metadata layered on top.
 
 #### Running it
 
-Immich is part of the default `docker compose up`: a 3-container stack of its
-own (`immich-db` — Postgres with vector extensions, `immich-server`, and
-`immich-machine-learning`, the last at maybe 6–8 GB of RAM). It's in the
-default stack because the photo library is a core part of this app and one
-command should bring up everything; the backend still tolerates Immich being
-absent, so a self-hosted deployment can leave it out (see below). Images are
-pinned to exact v3.2.2 digests, not `:release`, for the same reason the catalog
-pins versions. The database container is named `immich-db` with `DB_HOSTNAME`
-overridden to match — Immich's own compose file assumes the service name
-`database`, which would otherwise point it at nothing.
+Immich runs **on its own**, not in this repo's `docker compose` stack — it's a
+3-container application of its own (its Postgres with vector extensions, the
+server, and a machine-learning service at maybe 6–8 GB of RAM), and a family
+usually already has one, typically on a home NAS. The backend reaches it at
+`IMMICH_URL` with an `IMMICH_API_KEY` (`apps/backend/.env`), and tolerates it
+being absent. A local copy used to run in the compose stack for development;
+it was removed once a real instance was available, along with every link this
+app held to that test library (Immich ids aren't portable between instances,
+so links to one instance's people, albums and photos mean nothing on
+another). Built against Immich v3.2.2; v3.2.4 verified compatible.
 
 #### Proxying
 
@@ -944,10 +975,11 @@ is translated _in the frontend layer_.
   English, since that's a separate flow from the tRPC error-translation link;
   and the dev-only `/dev/components` showcase page is untranslated.
 
-### GEDCOM export: 5.5.1, built in one request
+### GEDCOM export: 5.5.1 or 7.0, built in one request
 
 The Tools page's export (`apps/backend/src/gedcom/gedcom.service.ts`) writes
-GEDCOM 5.5.1. The domain model was already shaped for it — `HistoricalDate`
+GEDCOM 5.5.1 by default — still what most genealogy programs read best — or
+GEDCOM 7.0 on request (see "GEDCOM 7" below). The domain model was already shaped for it — `HistoricalDate`
 keeps the source's own wording, and `gender` uses the GEDCOM vocabulary.
 `GedcomService.exportAll()` pulls every relational row plus every
 `PARENT_OF`/`SPOUSE_OF` edge (`allParentOfEdges` in `packages/db/src/graph.ts`,
@@ -958,17 +990,22 @@ build and return within one request, unlike `pg_dump`'s streamed binary.
 - **Dates.** `toGedcomDate` (`packages/core/src/gedcom.ts`) re-runs the same
   `parseHistoricalDateDetailed` the app uses for display and sorting — not a
   second parser — and maps the result onto `ABT`/`BEF`/`AFT`/`BET … AND …`.
-  That parser covers the wordings this app's own fields produce, not the full
-  GEDCOM grammar (no double-dating, no calendar escapes); an unparsed date is
-  written as its original wording rather than dropped. GEDCOM output stays
-  English regardless of UI language, with its own `GEDCOM_MONTHS` table.
+  The parser reads Julian dates (`@#DJULIAN@ 3 MAR 1699`, or 7.0's `JULIAN`)
+  and double years (`11 FEB 1749/50`): a date part carries its `calendar` and
+  `dualYear`, its stored `earliest`/`latest` are always converted to the
+  Gregorian calendar (via Julian Day Numbers) so every date sorts on one
+  timeline, and display keeps the calendar ("3 March 1699 (Julian)"). Hebrew
+  and French Republican dates stay unparsed. An unparsed date is written as
+  its original wording rather than dropped. GEDCOM output stays English
+  regardless of UI language, with its own `GEDCOM_MONTHS` table.
 - **What 5.5.1 requires, and what other programs expect.** The header carries
   `DATE`, a `SUBM` record (the exporting user's name) and `GEDC.FORM
   LINEAGE-LINKED`; every INDI has `FAMC`/`FAMS` back-links; events use their
   own tag where GEDCOM has one (`gedcomEventTag` in core — the reverse of the
   importer's table, so the two can't disagree) and `EVEN` + `TYPE <option
   label>` otherwise; confidence is `QUAY` 0–3 for the four seeded levels;
-  repositories are real `REPO` records. A pointer used as a line's _value_
+  repositories are real `REPO` records with their address and contact details,
+  and a source's call number goes on `SOUR.REPO.CALN`. A pointer used as a line's _value_
   (`1 HUSB @I7@`) goes through `gedcomPointer(xref)`, distinct from
   `GedcomWriter.line`'s `xref` parameter, which is only for a record's own
   declaration line (`0 @I1@ INDI`) — conflating the two writes an invalid
@@ -994,17 +1031,51 @@ build and return within one request, unlike `pg_dump`'s streamed binary.
   sub-tag; occupation/employer/address/cause of death use `OCCU`'s
   value/`AGNC`/`ADDR`/`CAUS`), `NAME._DATE` (name-variant "since"),
   `_VOLUME`/`_ENTRY`/`_CERT` (citation fields), `SOUR._TYPE` (source type),
-  `_ASSO` (a name-only associate) and `_TODO` (research notes). Verified live
-  by importing a file exercising each of these, exporting it, and diffing the
-  re-parsed plan against the original: no differences.
+  `_ASSO` (a name-only associate), `_TODO` (research notes), `_MARKDOWN` (a
+  note's formatting, below) and `_EXID` (a generic external id, which 5.5.1
+  has no tag for). External ids go out as the tags other programs use:
+  FamilySearch's `_FSFTID`, Ancestry's `_APID` (on a person, or on a citation
+  as its record pointer), `REFN` + `TYPE`. Verified live — in a scratch
+  database — by importing a file exercising each of these, exporting it in
+  both versions, and diffing the re-parsed plan against the original: no
+  differences for 5.5.1; for 7.0 only the Julian escape's spelling.
+- **Notes go out as plain text.** Notes are stored as markdown, and other
+  programs show a NOTE verbatim, so `markdownToPlainText`
+  (`packages/core/src/markdown-text.ts`) strips the markup. When that loses
+  anything, the original follows in a `_MARKDOWN` child that the importer
+  prefers — so this app's own round trip keeps the formatting.
 - **A reference to a person id with no `persons` row is dropped**, not emitted
   as a malformed pointer. That's graph/Postgres drift — the two-store
   consistency check (below) is where it gets reported.
 - **Deliberately out of scope:** no `OBJE` (photo) records — Immich-hosted
   photos aren't portable outside this app, and `persons.photoPath` local
   uploads have no externally resolvable URL; no `userNotes` (app-specific).
-  Notes are exported as their raw markdown — readable as plain text, but other
-  programs show the `**`/`#` markup literally.
+
+#### GEDCOM 7
+
+One exporter, a `version` switch — the two versions differ in well-defined
+places, not in structure, so a second exporter would only be a second place
+for the two to drift:
+
+- **Header**: `GEDC.VERS 7.0` first, no `FORM` or `CHAR` (a 7.0 file is always
+  UTF-8), and a `SCHMA` declaring this app's own extension tags. Those are
+  declared under a URN of this app's own (`urn:x-genealogy-app:gedcom:…`),
+  since nothing is published at a web address. Third-party tags this exporter
+  also writes — `_FSFTID`, `_APID`, `_FREL`/`_MREL`, `_TODO` — are left
+  undeclared, which 7.0 allows, rather than inventing URIs on other vendors'
+  behalf.
+- **Lines**: no `CONC` (7.0 has no length limit; only `CONT` for a newline),
+  and no trailing space on an empty line.
+- **Dates**: `JULIAN` instead of `@#DJULIAN@`. 7.0 dropped double years and
+  free-text dates, so those go in a `PHRASE` under the `DATE` (the new-style
+  year in `DATE`, or an empty `DATE` for free text). The importer prefers a
+  `PHRASE` that reads as a date, so the wording survives.
+- **Enumerations**: 7.0's fixed codes — `NAME.TYPE` (`BIRTH`, `MARRIED`,
+  `AKA`, else `OTHER` + `PHRASE` with the option's label), `PEDI` and `RESN` in
+  upper case, `ASSO.ROLE` (`GODP`, `WITN`, `OFFICIATOR`, else `OTHER` +
+  `PHRASE`), and a name-only associate as `ASSO @VOID@` + `PHRASE`.
+- **Ids and events**: a generic external id is `EXID` + `TYPE`; a known event
+  with nothing else to say (`DEAT`, `MARR`) carries the payload `Y`.
 
 ### GEDCOM import: preview, then add everyone as new people
 
@@ -1016,8 +1087,9 @@ bigger problem than reading the file — so import never attempts it.
 Every INDI becomes a new person; the preview step lists incoming people
 whose normalized given+surname matches an existing person (the same rule
 `IntegrityService`'s possible-duplicates check uses, so the two agree),
-and resolving them is left to the user — today by hand, later via the
-planned duplicate-detection/merge feature in IDEAS.md.
+and resolving them is left to the user — with "Merge with…" on the person
+page (see "Merging people" below); automatic duplicate detection is still an
+idea in IDEAS.md.
 
 - **Split by layer.** `packages/core/src/gedcom-import.ts` is pure:
   `decodeGedcomBytes` (bytes → text), `parseGedcom` (text → level-nested
@@ -1034,10 +1106,13 @@ planned duplicate-detection/merge feature in IDEAS.md.
   in a JSON body through ordinary `createServerFn`s (`previewGedcomImport`/
   `importGedcom`), not a raw multipart API route like photo/backup
   uploads: a GEDCOM file is a few MB of text, not a large binary.
-  UTF-8 (BOM or not) and UTF-16 are recognized; anything that isn't
-  valid UTF-8 falls back to Windows-1252 with a warning. ANSEL (GEDCOM
-  5.5's own legacy charset) has no `TextDecoder` and isn't decoded — a
-  file that declares it and contains non-ASCII gets a warning instead.
+  UTF-8 (BOM or not) and UTF-16 are recognized. Anything that isn't valid
+  UTF-8 is decoded as ANSEL — GEDCOM 5.5's own legacy charset, which has no
+  `TextDecoder` — when the header says `CHAR ANSEL` (`decodeAnsel`: a byte
+  table, plus moving each combining diacritic _after_ its letter, since
+  ANSEL writes it before, then NFC), else as Windows-1252 with a warning. A
+  file that declares ANSEL but is valid UTF-8 is read as UTF-8: mislabelled
+  UTF-8 is far more common than real ANSEL.
 - **Stateless preview → import.** Both are tRPC mutations taking the same
   text (`gedcomImportInputSchema`, capped at `GEDCOM_IMPORT_MAX_CHARS`);
   `import` re-parses rather than the server holding a parsed plan
@@ -1063,17 +1138,16 @@ planned duplicate-detection/merge feature in IDEAS.md.
   is marked deceased and the preview says how many — leaving them
   "living" would matter once living-person redaction exists.
 - **Losses, all reported in the preview rather than silent**: unreadable
-  lines, unparsed dates (wording kept, bounds null — `@#DJULIAN@` and
-  other calendar escapes land here), pointers to missing records, a
+  lines, unparsed dates (wording kept, bounds null — Hebrew and French
+  Republican calendars land here), pointers to missing records, a
   second birth/death (kept as an `"other"` event), inline source
   citations (each becomes a source), source `NOTE`/`TEXT` (`sources` has
   no column for it), and every tag the importer doesn't read, tallied by
-  `PARENT.CHILD` path (`INDI.OBJE`, `INDI.REFN`, `REPO.WWW`, ...). The
+  `PARENT.CHILD` path (`INDI.OBJE`, `REPO.FAX`, ...). The
   tally walks nested structures too — PLAC, ADDR, a citation's DATA, FAMC,
   CHIL, REPO/NOTE records — not just each record's direct children, or
   data nested a level down would vanish without a trace. Only change
-  stamps, record ids and submitter links are skipped without a warning;
-  an external id like `_FSFTID` is data, so it's reported.
+  stamps, record ids and submitter links are skipped without a warning.
 - **Partly recovered rather than only reported:**
   structured ADDR lines (ADR1…CTRY) are joined when ADDR's own value is
   empty; a citation's `DATA.DATE` becomes a "Recorded: …" line in its
@@ -1081,12 +1155,30 @@ planned duplicate-detection/merge feature in IDEAS.md.
   before the MARR, banns, a second MARR from another source) and any
   TYPE/ADDR/AGE/AGNC/CAUS on the start/end become lines in the union's
   notes; a `FAMC.STAT disproven` link is not created (the file asserts
-  the opposite), a `challenged` one is created and flagged. Still
-  reported-only, pending data-model decisions: external ids
-  (`_FSFTID`, `REFN`, `_APID`), repository contact details and call
-  numbers, media.
+  the opposite), a `challenged` one is created and flagged.
+- **Media is reported, not imported — a decision, not a gap.** A 5.5.1
+  `OBJE` holds a _file path on the exporting computer_
+  (`C:\Users\…\photo.jpg`); the picture itself isn't in the file, so there's
+  nothing to import. Only a GEDCOM 7 zip (`.gdz`) carries the files; reading
+  one into Immich would be a feature of its own, not part of this importer.
 - **Data with its own home in the schema**, each a data-model decision
   made up front rather than squeezed into notes:
+  - `_FSFTID`, `REFN` (+`TYPE`), GEDCOM 7 `EXID` (+`TYPE`) and a person's
+    `_APID` → **`person_external_ids`** (`system` is structural: the
+    exporter writes each as its own tag; CHECK-constrained). An `EXID` whose
+    TYPE names familysearch.org is filed as a FamilySearch id. Shown, added
+    and removed on the person page's "External IDs" card, with a FamilySearch
+    id linked to its profile. Ancestry's `_APID` _on a citation_ is a pointer
+    to a record in one of its databases, not a person id, so it's
+    `citations.ancestry_apid`.
+  - `REPO` records → the **`repositories` table** (name, address, phone,
+    email, website); a source links to one (`sources.repository_id`) with its
+    shelf mark in `sources.call_number` (`REPO.CALN`). A repository a source
+    only names inline (`1 REPO Landsarkivet Viborg`) becomes one too,
+    shared by name within the file. Migration `0035` turned the old free-text
+    `sources.repository` into rows (one per distinct name), `0036` dropped
+    the column. No UI shows repositories yet — that's the "Source library
+    page" idea.
   - `ASSO` → the **`associations` table** (`AssociationService`,
     "Witnesses & godparents" card on the person page): someone named in
     a role on a person's record, tied to one of their events
@@ -1168,6 +1260,94 @@ planned duplicate-detection/merge feature in IDEAS.md.
   not-wired-into-`db:migrate` script for re-resolving already-stored rows
   after a parser change; not something the GEDCOM exporter needs to care
   about, since it reads whatever `original` currently holds.
+
+### Members, roles and privacy: invite-only, enforced in the backend
+
+Three roles (`memberRoleSchema` in `packages/core/src/membership.ts`), stored
+on better-auth's `user.role` as an `additionalFields` entry with
+`input: false` — so it rides on every session with no extra query, and a
+client can't set its own at sign-up (verified: an invited Viewer posting
+`role: "admin"` still gets `viewer`). **Admin**: members, Settings, Tools
+(backup/restore, GEDCOM, integrity, face re-scan, download-all), merging and
+deleting people, deleting albums and photos. **Editor**: every change to the
+tree and photos. **Viewer**: reads, with living people redacted.
+
+- **Gates live in the backend.** `protectedProcedure` (any member),
+  `editorProcedure`, `adminProcedure` in `trpc.base.ts`; every one of the 103
+  procedures was classified by a script (reads → member, mutations → editor,
+  an explicit admin list, and the member's own things — notes,
+  notifications, profile, an album zip — stay member-level). REST
+  controllers use `requireRole`. The UI only mirrors this.
+- **Sign-up is invite-only**, enforced in better-auth's
+  `databaseHooks.user.create.before` (`auth.module.ts`) — the one place every
+  new account passes through, email/password and Google alike. It needs a
+  pending, unexpired invitation for that email; email/password sign-up must
+  also carry the link's `inviteToken`, since unlike Google it proves nothing
+  about owning the address. The first account on an empty install is let
+  through as admin. Migration `0037` made the oldest existing account admin
+  and everyone else viewer.
+- **Invitations** (`invitations` table, `MembersService`): email + role +
+  optional "this is you" person + message, valid 14 days, one live link per
+  address. Only the token's SHA-256 is stored, so the link is shown to the
+  admin once (and emailed via the mail queue, in the admin's language, when
+  SMTP is set up — `APP_URL` builds the link). `/invite/$token` is public;
+  creating the account there accepts it. There must always be one admin
+  left, and an admin can't remove themselves.
+- **Redaction** (`PersonRedactor`, applied in the routers, not the
+  services): a Viewer sees a living person — or one marked private or
+  confidential — as name, gender and place in the tree, `redacted: true`;
+  dates, places, notes, photo, and their names/events/citations/roles/
+  research notes/external ids/linked photos are withheld, and a marriage
+  involving them loses its dates and places. A Viewer's own linked person
+  isn't redacted for them. Editors and admins see everything.
+- **Read-only UI** (`ReadOnlyProvider` in `packages/ui/src/lib/read-only.tsx`):
+  inside it, inputs/selects/switches/date and markdown fields go read-only
+  and `SaveButton`/`RemoveButton`/`FormDialog` don't render, so a whole page
+  of inline forms becomes read-only by wrapping it once. Plain buttons and
+  drag handlers it can't recognise are gated with `usePermissions()`.
+- **Known limits.** Album browsing isn't redacted — an album is a set of
+  photos, not a person, and its faces show names only. The people list's
+  birth-date filters and sort still order redacted people by their hidden
+  dates. `restriction: "locked"` doesn't yet stop editors editing. better-
+  auth's own sign-in/sign-up error texts stay English.
+
+### Merging people: one transaction, nothing overwritten
+
+"Merge with…" on the person page folds a duplicate into the person being
+kept (`apps/backend/src/person/person-merge.service.ts`): pick the duplicate,
+see a preview of exactly what moves (`person.mergePreview`, writes nothing),
+confirm. It's the manual half of duplicate handling — GEDCOM import adds
+everyone as new people — and the planned duplicate detection can point here.
+
+- **Everything moves, in one `inGraphTransaction`.** Every table that
+  references a person — names, events, unions (both sides), citations,
+  associations (as owner and as associate), research notes, Immich links,
+  external ids, the account "this is me" link — is re-pointed, and the
+  duplicate's `PARENT_OF`/`SPOUSE_OF` edges are re-created on the kept person
+  before its node and row are deleted. An edge the kept person already has
+  stays as it is (its parentage wins).
+- **Nothing on the kept person is overwritten.** Gaps are filled from the
+  duplicate (photo, gender if unknown, title, suffix, restriction); notes
+  are joined (once, if identical); deceased wins over living. The
+  duplicate's own name becomes an alternate name if it's spelled
+  differently. A second birth/death becomes an `"other"` event, the same rule
+  GEDCOM import uses — a person has at most one of each.
+- **Identical facts aren't doubled.** Merging two copies of the same import
+  is the common case, so a name, event, union or research note identical to
+  one the kept person already has is dropped instead of copied, its
+  citations and roles re-pointed to the survivor; identical roles and
+  citations are then collapsed too. Verified by importing a file twice into
+  a scratch database, merging each duplicate, and exporting: the result
+  matched importing it once — except that the two imports' _sources_ stay
+  two records, since sources are shared and not part of a person.
+- **Refused up front** (`blockers`, shown in the preview): the same person;
+  two people recorded as each other's parent, child or spouse; one being
+  the other's (depth-capped) ancestor — merging would make someone their
+  own ancestor; and both being linked to user accounts, since
+  `user_profiles.person_id` is unique.
+- Every query inside the transaction runs sequentially: the transaction is
+  one `pg` client, and overlapping queries on a client are deprecated (and
+  an error in `pg` 9).
 
 ### Data integrity checks: report-only
 

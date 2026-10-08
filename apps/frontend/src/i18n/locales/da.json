@@ -54,7 +54,8 @@
   "userMenu": {
     "profileSettings": "Profilindstillinger",
     "myNotes": "Mine noter",
-    "signOut": "Log ud"
+    "signOut": "Log ud",
+    "members": "Medlemmer"
   },
   "profile": {
     "title": "Profil",
@@ -95,7 +96,9 @@
     "needAccount": "Ingen konto? Opret en",
     "haveAccount": "Har du allerede en konto? Log ind",
     "somethingWentWrong": "Noget gik galt.",
-    "requestFailed": "Anmodningen mislykkedes — se browserkonsollen for detaljer."
+    "requestFailed": "Anmodningen mislykkedes — se browserkonsollen for detaljer.",
+    "notInvited": "Den konto er ikke inviteret. Slægtstræet kræver invitation — bed en administrator om en.",
+    "inviteOnly": "Ny her? Man bliver medlem ved invitation — bed en administrator i familien om at invitere dig."
   },
   "assetViewer": {
     "caption": "Billedtekst",
@@ -286,8 +289,20 @@
       "mother": "mor",
       "spouse": "ægtefælle",
       "child": "barn",
-      "sibling": "søskende"
-    }
+      "sibling": "søskende",
+      "parent": "forælder"
+    },
+    "view": {
+      "label": "Vis",
+      "both": "Begge",
+      "ancestors": "Aner",
+      "descendants": "Efterkommere"
+    },
+    "removeTitle": "Fjern {{name}} som {{relation}}?",
+    "removeDescription": "Kun denne relation fjernes — begge personer og en eventuel vielsesregistrering bevares.",
+    "removeAction": "Fjern",
+    "removeAria": "Fjern {{name}} som {{relation}}",
+    "doubleClickToCenter": "Dobbeltklik for at centrere træet på denne person"
   },
   "tools": {
     "title": "Værktøjer",
@@ -325,6 +340,11 @@
     "gedcomDescription": "Eksporterer alle personer, navne, begivenheder, familier, kilder og kildehenvisninger som en standard GEDCOM 5.5.1-fil — kan importeres i de fleste andre slægtsforskningsprogrammer. Fotos er ikke inkluderet: de ligger i Immich, som GEDCOM ikke har nogen måde at referere til.",
     "exporting": "Eksporterer…",
     "exportGedcom": "Eksportér GEDCOM",
+    "gedcomVersion": "GEDCOM-version",
+    "gedcomVersion551": "5.5.1",
+    "gedcomVersion70": "7.0",
+    "gedcomVersion551Hint": "Kan læses af næsten alle slægtsprogrammer — det sikre valg.",
+    "gedcomVersion70Hint": "Den nyeste standard. Tjek, at programmet du sender den til, kan læse GEDCOM 7.",
     "exportFailed": "Eksport mislykkedes",
     "gedcomImport": {
       "description": "Tilføjer personer, navne, begivenheder, familier, kilder og kildehenvisninger fra en GEDCOM-fil (eksporteret fra FamilySearch, Ancestry, MyHeritage, Gramps eller denne app) til dit træ. Vælg en fil for først at se, hvad den indeholder — intet gemmes, før du trykker Importér.",
@@ -354,8 +374,6 @@
         "malformedLine_other": "{{count}} linjer kunne ikke læses og springes over",
         "legacyEncoding_one": "Filen er ikke UTF-8 — den blev læst som Windows \"ANSI\"-tekst. Tjek efter importen, at bogstaver som æ, ø og å ser rigtige ud.",
         "legacyEncoding_other": "Filen er ikke UTF-8 — den blev læst som Windows \"ANSI\"-tekst. Tjek efter importen, at bogstaver som æ, ø og å ser rigtige ud.",
-        "anselEncoding_one": "Filen bruger det gamle ANSEL-tegnsæt, som ikke understøttes — bogstaver med accenter bliver forvanskede. Eksportér igen som UTF-8, hvis dit program kan.",
-        "anselEncoding_other": "Filen bruger det gamle ANSEL-tegnsæt, som ikke understøttes — bogstaver med accenter bliver forvanskede. Eksportér igen som UTF-8, hvis dit program kan.",
         "unparsedDate_one": "{{count}} dato kunne ikke tolkes — ordlyden bevares, men den indgår ikke i sortering eller aldersberegning",
         "unparsedDate_other": "{{count}} datoer kunne ikke tolkes — ordlyden bevares, men de indgår ikke i sortering eller aldersberegning",
         "missingReference_one": "{{count}} henvisning peger på en post, der ikke findes i filen, og springes over",
@@ -529,7 +547,9 @@
       "age": "Alder {{age}}",
       "alsoKnownAs": "Også kendt som:",
       "viewInTree": "Vis i slægtstræ",
-      "researchCompleteness": "Forskningsfuldstændighed"
+      "researchCompleteness": "Forskningsfuldstændighed",
+      "redacted": "Levende — detaljer skjult",
+      "redactedHint": "Som læser ser du levende personer kun med navn."
     },
     "photo": {
       "change": "Skift foto",
@@ -760,6 +780,128 @@
       "someoneInTree": "En person i træet",
       "justAName": "Kun et navn",
       "nameAsWritten": "Navnet som det står i kilden"
+    },
+    "externalIds": {
+      "title": "Eksterne id'er",
+      "add": "Tilføj eksternt id",
+      "empty": "Ingen endnu — FamilySearch og andre id'er kommer med en GEDCOM-import, eller tilføj et her.",
+      "systemLabel": "System",
+      "value": "Id",
+      "type": "Type",
+      "typeRefnHint": "fx Familiefil",
+      "typeExidHint": "Den udstedende myndigheds URI",
+      "removeTitle": "Fjern {{value}}?",
+      "removeAria": "Fjern {{value}}",
+      "system": {
+        "familysearch": "FamilySearch",
+        "ancestry": "Ancestry",
+        "refn": "Referencenummer",
+        "exid": "Andet id (EXID)"
+      }
+    },
+    "merge": {
+      "button": "Flet med…",
+      "title": "Flet en dublet ind i {{name}}",
+      "pickIntro": "Vælg dubletten. Alt, der er registreret på den, flyttes til denne person, og dubletten slettes derefter.",
+      "searchLabel": "Søg efter dubletten",
+      "loading": "Undersøger hvad der flyttes…",
+      "summary": "Flet {{duplicate}} ind i {{keep}}.",
+      "movesHeading": "Flyttes over:",
+      "nothingToMove": "Dubletten har intet registreret ud over navnet.",
+      "count": {
+        "names_one": "{{count}} alternativt navn",
+        "names_other": "{{count}} alternative navne",
+        "events_one": "{{count}} livsbegivenhed",
+        "events_other": "{{count}} livsbegivenheder",
+        "unions_one": "{{count}} ægteskab/forhold",
+        "unions_other": "{{count}} ægteskaber/forhold",
+        "parents_one": "{{count}} forælder-relation",
+        "parents_other": "{{count}} forælder-relationer",
+        "children_one": "{{count}} barn",
+        "children_other": "{{count}} børn",
+        "spouses_one": "{{count}} ægtefælle-relation",
+        "spouses_other": "{{count}} ægtefælle-relationer",
+        "citations_one": "{{count}} kildehenvisning",
+        "citations_other": "{{count}} kildehenvisninger",
+        "associations_one": "{{count}} vidne-/fadderrolle",
+        "associations_other": "{{count}} vidne-/fadderroller",
+        "researchNotes_one": "{{count}} forskningsnote",
+        "researchNotes_other": "{{count}} forskningsnoter",
+        "photoLinks_one": "{{count}} Immich-fotokobling",
+        "photoLinks_other": "{{count}} Immich-fotokoblinger",
+        "externalIds_one": "{{count}} eksternt id",
+        "externalIds_other": "{{count}} eksterne id'er"
+      },
+      "identical_one": "{{count}} registrering er identisk med en, personen allerede har, så den kopieres ikke to gange.",
+      "identical_other": "{{count}} registreringer er identiske med nogle, personen allerede har, så de kopieres ikke to gange.",
+      "vitalConflicts_one": "Begge har en fødsel eller død — dublettens bevares som en \"anden\" begivenhed.",
+      "vitalConflicts_other": "Begge har fødsel og død — dublettens bevares som \"andre\" begivenheder.",
+      "alternateName": "\"{{name}}\" bevares som alternativt navn.",
+      "takesPhoto": "Dublettens foto bliver denne persons foto.",
+      "warning": "{{duplicate}} bliver slettet. Det kan ikke fortrydes.",
+      "back": "Tilbage",
+      "confirm": "Flet",
+      "merging": "Fletter…",
+      "blocker": {
+        "samePerson": "Det er denne person.",
+        "directlyRelated": "De er registreret som hinandens forælder, barn eller ægtefælle — fjern den relation først, hvis de virkelig er samme person.",
+        "sameLineage": "Den ene er registreret som den andens ane — en fletning ville gøre personen til sin egen ane.",
+        "bothLinkedToAccounts": "Begge er koblet til brugerkonti (\"det er mig\"). Fjern koblingen fra den ene først."
+      }
     }
+  },
+  "members": {
+    "title": "Medlemmer",
+    "subtitle": "Hvem der kan se og redigere slægtstræet. Man bliver medlem ved invitation.",
+    "role": {
+      "admin": "Administrator",
+      "editor": "Redaktør",
+      "viewer": "Læser"
+    },
+    "roleDescription": {
+      "admin": "Alt, også medlemmer, indstillinger, værktøjer, fletning og sletning.",
+      "editor": "Tilføjer og redigerer personer, relationer, kilder og fotos.",
+      "viewer": "Læser træet. Levende personer vises kun med navn."
+    },
+    "membersTitle_one": "{{count}} medlem",
+    "membersTitle_other": "{{count}} medlemmer",
+    "you": "dig",
+    "roleFor": "Rolle for {{name}}",
+    "removeTitle": "Fjern {{name}}?",
+    "removeDescription": "De mister adgangen med det samme. De personer, de har tilføjet til træet, bliver.",
+    "invitationsTitle": "Invitationer",
+    "invite": "Inviter",
+    "inviteTitle": "Inviter et familiemedlem",
+    "noInvitations": "Ingen åbne invitationer.",
+    "expires": "Linket virker indtil {{date}}",
+    "expired": "Linket er udløbet — send igen for at lave et nyt",
+    "resend": "Send igen",
+    "revoke": "Tilbagekald",
+    "revokeTitle": "Tilbagekald invitationen til {{email}}?",
+    "revokeDescription": "Linket holder op med at virke. Du kan invitere dem igen senere.",
+    "linkSent": "Invitationen er sendt til {{email}}. Du kan også selv give linket videre:",
+    "linkNotSent": "E-mail er ikke sat op på serveren, så der blev ikke sendt noget til {{email}} — kopier linket og send det selv:",
+    "linkOnce": "Af sikkerhedshensyn vises linket kun nu. Send igen for at få et nyt.",
+    "dismiss": "Færdig",
+    "email": "E-mailadresse",
+    "roleLabel": "Rolle",
+    "whoInTree": "Hvem de er i træet (valgfrit)",
+    "whoInTreePlaceholder": "Søg personer",
+    "message": "Personlig besked (valgfrit)",
+    "messagePlaceholder": "fx Her er slægtstræet, jeg fortalte om",
+    "send": "Send invitation"
+  },
+  "invite": {
+    "loading": "Tjekker din invitation…",
+    "title": "{{name}} har inviteret dig til slægtstræet",
+    "someone": "Nogen",
+    "asRole": "Du er inviteret som {{role}}.",
+    "createAccount": "Opret konto",
+    "googleHint": "Google virker kun, hvis din Google-konto bruger {{email}}.",
+    "googleRefused": "Den Google-konto er ikke den inviterede adresse. Brug formularen ovenfor, eller log ind på Google med den inviterede adresse.",
+    "unusableTitle": "Invitationen kan ikke bruges",
+    "unusable": "Linket er udløbet, trukket tilbage eller ufuldstændigt. Bed den, der inviterede dig, om et nyt.",
+    "acceptedTitle": "Allerede accepteret",
+    "accepted": "Invitationen er allerede brugt til at oprette en konto."
   }
 }

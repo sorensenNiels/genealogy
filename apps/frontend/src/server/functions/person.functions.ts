@@ -49,6 +49,17 @@ export const createPerson = createServerFn({ method: "POST" })
   .validator(createPersonSchema)
   .handler(({ data }) => trpcProxy.person.create.mutate(data));
 
+const mergeInput = z.object({ keepId: personIdSchema, removeId: personIdSchema });
+
+/** What merging `removeId` into `keepId` would move, and anything that blocks it — writes nothing. */
+export const getMergePreview = createServerFn({ method: "GET" })
+  .validator(mergeInput)
+  .handler(({ data }) => trpcProxy.person.mergePreview.query(data));
+
+export const mergePerson = createServerFn({ method: "POST" })
+  .validator(mergeInput)
+  .handler(({ data }) => trpcProxy.person.merge.mutate(data));
+
 export const removePerson = createServerFn({ method: "POST" })
   .validator(z.object({ id: personIdSchema }))
   .handler(({ data }) => trpcProxy.person.remove.mutate(data));

@@ -7,12 +7,16 @@ import {
 import { Injectable } from "@nestjs/common";
 import { z } from "zod";
 
-import { protectedProcedure, router } from "../trpc/trpc.base.js";
+import { PersonRedactor, viewerOf } from "../privacy/person-redactor.js";
+import { editorProcedure, protectedProcedure, router } from "../trpc/trpc.base.js";
 import { ResearchNoteService } from "./research-note.service.js";
 
 @Injectable()
 export class ResearchNoteRouter {
-  constructor(private readonly researchNotes: ResearchNoteService) {}
+  constructor(
+    private readonly researchNotes: ResearchNoteService,
+    private readonly redactor: PersonRedactor,
+  ) {}
 
   /**
    * Built by a method rather than a field initializer: class fields run before
@@ -22,17 +26,21 @@ export class ResearchNoteRouter {
     return router({
       listNotes: protectedProcedure
         .input(z.object({ personId: personIdSchema }))
-        .query(({ input }) => this.researchNotes.listNotes(input.personId)),
+        .query(({ input, ctx }) =>
+          this.redactor.listFor(viewerOf(ctx), input.personId, () =>
+            this.researchNotes.listNotes(input.personId),
+          ),
+        ),
 
-      addNote: protectedProcedure
+      addNote: editorProcedure
         .input(createResearchNoteSchema)
         .mutation(({ input }) => this.researchNotes.addNote(input)),
 
-      updateNote: protectedProcedure
+      updateNote: editorProcedure
         .input(updateResearchNoteSchema)
         .mutation(({ input }) => this.researchNotes.updateNote(input)),
 
-      removeNote: protectedProcedure
+      removeNote: editorProcedure
         .input(z.object({ id: researchNoteIdSchema }))
         .mutation(async ({ input }) => {
           await this.researchNotes.removeNote(input.id);

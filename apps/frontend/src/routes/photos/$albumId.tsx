@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { formatDisplayDate } from "../../lib/format-date";
+import { usePermissions } from "../../lib/permissions";
 import {
   deleteImmichAlbum,
   deleteImmichAssets,
@@ -117,6 +118,7 @@ function AlbumRoute() {
   // the same shape as the Tools page's "Backup database".
   const downloadAlbumMutation = useMutation({ mutationFn: enqueueAlbumZip });
   const deleteAlbumMutation = useMutation({ mutationFn: deleteImmichAlbum });
+  const { canEdit, isAdmin } = usePermissions();
   const reorderMutation = useMutation({ mutationFn: reorderImmichAlbumAssets });
   const removeSelectedMutation = useMutation({ mutationFn: removeImmichAlbumAssets });
   const deleteSelectedMutation = useMutation({ mutationFn: deleteImmichAssets });
@@ -192,14 +194,16 @@ function AlbumRoute() {
       </div>
 
       <div className="flex items-center gap-2">
-        {actions.canUpload && (
+        {canEdit && actions.canUpload && (
           <UploadDialog
             albumId={albumId}
             trigger={<Button variant="outline">{t("albumPage.uploadToAlbum")}</Button>}
             onUploaded={refresh}
           />
         )}
-        {actions.canAddExisting && <AddAssetsDialog albumId={albumId} onAdded={refresh} />}
+        {canEdit && actions.canAddExisting && (
+          <AddAssetsDialog albumId={albumId} onAdded={refresh} />
+        )}
         <Button
           type="button"
           variant="outline"
@@ -216,18 +220,20 @@ function AlbumRoute() {
         >
           {downloadAlbumMutation.isPending ? t("tools.queuing") : t("albumPage.downloadAll")}
         </Button>
-        <RemoveButton
-          itemLabel={t("albumPage.thisAlbum")}
-          title={t("albumPage.deleteAlbumTitle")}
-          description={t("albumPage.deleteAlbumDescription")}
-          actionLabel={t("common.delete")}
-          trigger={
-            <Button type="button" variant="destructive" size="sm" className="ml-auto">
-              {t("albumPage.deleteAlbum")}
-            </Button>
-          }
-          onConfirm={() => void deleteAlbum()}
-        />
+        {isAdmin && (
+          <RemoveButton
+            itemLabel={t("albumPage.thisAlbum")}
+            title={t("albumPage.deleteAlbumTitle")}
+            description={t("albumPage.deleteAlbumDescription")}
+            actionLabel={t("common.delete")}
+            trigger={
+              <Button type="button" variant="destructive" size="sm" className="ml-auto">
+                {t("albumPage.deleteAlbum")}
+              </Button>
+            }
+            onConfirm={() => void deleteAlbum()}
+          />
+        )}
       </div>
 
       {isVirtual && (
@@ -280,7 +286,7 @@ function AlbumRoute() {
             {t("albumPage.selectedCount", { count: selectedIds.length })}
           </p>
           <div className="ml-auto flex gap-2">
-            {selectedIds.length === 1 && (
+            {canEdit && selectedIds.length === 1 && (
               <Button
                 type="button"
                 variant="outline"
@@ -290,30 +296,34 @@ function AlbumRoute() {
                 {t("albumPage.setAsCover")}
               </Button>
             )}
-            <RemoveButton
-              itemLabel={t("albumPage.selectedFromAlbum")}
-              title={t("albumPage.removePhotosTitle", { count: selectedIds.length })}
-              description={t("albumPage.removePhotosDescription")}
-              actionLabel={t("common.remove")}
-              trigger={
-                <Button type="button" variant="outline" size="sm">
-                  {t("albumPage.removeFromAlbum")}
-                </Button>
-              }
-              onConfirm={() => void removeSelected()}
-            />
-            <RemoveButton
-              itemLabel={t("albumPage.selectedPhotos")}
-              title={t("albumPage.deletePhotosTitle", { count: selectedIds.length })}
-              description={t("albumPage.deletePhotosDescription")}
-              actionLabel={t("common.delete")}
-              trigger={
-                <Button type="button" variant="destructive" size="sm">
-                  {t("albumPage.deletePhotos")}
-                </Button>
-              }
-              onConfirm={() => void deleteSelected()}
-            />
+            {canEdit && (
+              <RemoveButton
+                itemLabel={t("albumPage.selectedFromAlbum")}
+                title={t("albumPage.removePhotosTitle", { count: selectedIds.length })}
+                description={t("albumPage.removePhotosDescription")}
+                actionLabel={t("common.remove")}
+                trigger={
+                  <Button type="button" variant="outline" size="sm">
+                    {t("albumPage.removeFromAlbum")}
+                  </Button>
+                }
+                onConfirm={() => void removeSelected()}
+              />
+            )}
+            {isAdmin && (
+              <RemoveButton
+                itemLabel={t("albumPage.selectedPhotos")}
+                title={t("albumPage.deletePhotosTitle", { count: selectedIds.length })}
+                description={t("albumPage.deletePhotosDescription")}
+                actionLabel={t("common.delete")}
+                trigger={
+                  <Button type="button" variant="destructive" size="sm">
+                    {t("albumPage.deletePhotos")}
+                  </Button>
+                }
+                onConfirm={() => void deleteSelected()}
+              />
+            )}
             <Button type="button" variant="ghost" size="sm" onPress={clearSelection}>
               {t("common.clear")}
             </Button>
@@ -346,18 +356,23 @@ function AlbumRoute() {
                 setOpenIndex(index);
               }
             }}
-            onReorder={(orderedIds) => {
-              reorderMutation.mutate(
-                { data: { albumId, assetIds: orderedIds } },
-                {
-                  onSuccess: () => {
-                    void queryClient.invalidateQueries({
-                      queryKey: ["immich", "albumAssets", albumId],
-                    });
+            // No drag handles at all for someone who can't reorder.
+            {...(canEdit
+              ? {
+                  onReorder: (orderedIds: string[]) => {
+                    reorderMutation.mutate(
+                      { data: { albumId, assetIds: orderedIds } },
+                      {
+                        onSuccess: () => {
+                          void queryClient.invalidateQueries({
+                            queryKey: ["immich", "albumAssets", albumId],
+                          });
+                        },
+                      },
+                    );
                   },
-                },
-              );
-            }}
+                }
+              : {})}
           >
             {(asset) => (
               <>

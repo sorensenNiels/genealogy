@@ -7,6 +7,7 @@ import {
   TagList as RACTagList,
 } from "react-aria-components";
 
+import { useReadOnly } from "../lib/read-only";
 import { Autocomplete } from "./autocomplete";
 import { Badge } from "./badge";
 
@@ -43,6 +44,7 @@ export function TagInput({ value, onChange, suggestions, placeholder }: TagInput
   };
 
   const remainingSuggestions = suggestions.filter((tag) => !value.includes(tag));
+  const isReadOnly = useReadOnly();
 
   return (
     <div className="space-y-2">
@@ -59,43 +61,47 @@ export function TagInput({ value, onChange, suggestions, placeholder }: TagInput
               <RACTag id={item.id} textValue={item.id}>
                 <Badge variant="secondary" className="gap-1 pr-1">
                   {item.id}
-                  <RACButton
-                    slot="remove"
-                    aria-label={`Remove ${item.id}`}
-                    className="rounded-full p-0.5 hover:bg-secondary-foreground/10"
-                  >
-                    <XIcon className="size-3" />
-                  </RACButton>
+                  {!isReadOnly && (
+                    <RACButton
+                      slot="remove"
+                      aria-label={`Remove ${item.id}`}
+                      className="rounded-full p-0.5 hover:bg-secondary-foreground/10"
+                    >
+                      <XIcon className="size-3" />
+                    </RACButton>
+                  )}
                 </Badge>
               </RACTag>
             )}
           </RACTagList>
         </RACTagGroup>
       )}
-      <Autocomplete
-        value={draft}
-        onChange={(next) => {
-          if (justSelected.current) {
-            justSelected.current = false;
-            return;
-          }
-          setDraft(next);
-        }}
-        options={remainingSuggestions}
-        placeholder={placeholder ?? "Add a tag"}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === ",") {
-            event.preventDefault();
-            addTag(draft);
-          }
-        }}
-        onSelectionChange={(key) => {
-          if (key != null) {
-            justSelected.current = true;
-            addTag(String(key));
-          }
-        }}
-      />
+      {!isReadOnly && (
+        <Autocomplete
+          value={draft}
+          onChange={(next) => {
+            if (justSelected.current) {
+              justSelected.current = false;
+              return;
+            }
+            setDraft(next);
+          }}
+          options={remainingSuggestions}
+          placeholder={placeholder ?? "Add a tag"}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === ",") {
+              event.preventDefault();
+              addTag(draft);
+            }
+          }}
+          onSelectionChange={(key) => {
+            if (key != null) {
+              justSelected.current = true;
+              addTag(String(key));
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

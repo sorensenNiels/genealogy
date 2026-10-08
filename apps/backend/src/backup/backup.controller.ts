@@ -14,18 +14,17 @@ import {
   Post,
   Req,
   Res,
-  UnauthorizedException,
   UploadedFile,
   UseInterceptors,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { fromNodeHeaders } from "better-auth/node";
 import type { Request, Response } from "express";
 import { diskStorage } from "multer";
 import { z } from "zod";
 
 import { AUTH, type Auth } from "../auth/auth.module.js";
+import { requireRole } from "../auth/require-role.js";
 import { RestoreService } from "./restore.service.js";
 
 /**
@@ -53,10 +52,7 @@ export class BackupController {
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    const session = await this.auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
-    if (!session) {
-      throw new UnauthorizedException();
-    }
+    await requireRole(this.auth, req, "admin");
 
     // `rawId` becomes a filesystem path below, and it's caller-supplied —
     // validated as a bare UUID first so there's no path-traversal surface
@@ -115,9 +111,12 @@ export class BackupController {
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    const session = await this.auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
-    if (!session) {
-      throw new UnauthorizedException();
+    let session: Awaited<ReturnType<typeof requireRole>>;
+    try {
+      session = await requireRole(this.auth, req, "admin");
+    } catch (error) {
+      if (file) await rm(file.path, { force: true });
+      throw error;
     }
     if (!file) {
       throw new BadRequestException("No file uploaded");

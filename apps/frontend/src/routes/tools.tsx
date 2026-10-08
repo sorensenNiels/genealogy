@@ -3,14 +3,17 @@ import {
   decodeGedcomBytes,
   formatPersonName,
   type GedcomImportInput,
+  type GedcomVersion,
+  isAdmin,
 } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
+import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
 import { FileDropZone } from "@genealogy/ui/components/file-drop-zone";
 import { Input } from "@genealogy/ui/components/input";
 import { SectionCard } from "@genealogy/ui/components/section-card";
 import { cn } from "@genealogy/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect, useSearch } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import {
   DatabaseBackupIcon,
@@ -62,6 +65,10 @@ function toolLabels(t: TFunction): Record<Tool, string> {
 const RESTORE_CONFIRMATION_TEXT = "RESTORE";
 
 export const Route = createFileRoute("/tools")({
+  // Admin-only (the backend enforces it too); anyone else goes home.
+  beforeLoad: ({ context }) => {
+    if (!isAdmin(context.role)) throw redirect({ to: "/" });
+  },
   validateSearch: (search: Record<string, unknown>): { tool?: Tool } => {
     const tool = TOOLS.find((option) => option === search.tool);
     return tool ? { tool } : {};
@@ -271,15 +278,17 @@ function GedcomExportPanel() {
   const { t } = useTranslation();
   // Unlike backup/face-rescan, this returns the file directly instead of
   // queuing a job — a GEDCOM export is plain text, small enough at this
-  // app's scale to build and send back within one request.
+  // app's scale to build and send back within one request. 5.5.1 is the
+  // default: it's still what most genealogy programs read best.
+  const [version, setVersion] = useState<GedcomVersion>("5.5.1");
   const exportMutation = useMutation({
     mutationFn: async () => {
-      const { gedcom } = await exportGedcom();
+      const { gedcom } = await exportGedcom({ data: { version } });
       const blob = new Blob([gedcom], { type: "text/vnd.familysearch.gedcom" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "family-tree.ged";
+      link.download = version === "7.0" ? "family-tree-gedcom7.ged" : "family-tree.ged";
       link.click();
       URL.revokeObjectURL(url);
     },
@@ -288,6 +297,20 @@ function GedcomExportPanel() {
   return (
     <SectionCard title={toolLabels(t)["gedcom-export"]}>
       <p className="text-sm text-muted-foreground">{t("tools.gedcomDescription")}</p>
+      <div className="mt-4 space-y-1">
+        <ButtonRadioGroup
+          aria-label={t("tools.gedcomVersion")}
+          value={version}
+          onChange={setVersion}
+          options={[
+            { value: "5.5.1", label: t("tools.gedcomVersion551") },
+            { value: "7.0", label: t("tools.gedcomVersion70") },
+          ]}
+        />
+        <p className="text-xs text-muted-foreground">
+          {version === "7.0" ? t("tools.gedcomVersion70Hint") : t("tools.gedcomVersion551Hint")}
+        </p>
+      </div>
       <div className="mt-4">
         <Button isDisabled={exportMutation.isPending} onPress={() => exportMutation.mutate()}>
           <FileDownIcon className="size-4" aria-hidden="true" />

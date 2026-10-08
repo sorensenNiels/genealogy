@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ConfigurableTopic } from "./configurable-options.js";
 import { parseHistoricalDate, parseHistoricalDateDetailed } from "./historical-date.js";
+import type { PersonExternalIdSystem } from "./person-external-id.js";
 import type { Gender, HistoricalDate, PersonRestriction } from "./person.js";
 
 /*
@@ -27,7 +28,13 @@ declare const TextDecoder: new (
   options?: { fatal?: boolean },
 ) => { decode(input: Uint8Array): string };
 
-export const gedcomEncodingSchema = z.enum(["utf-8", "utf-16le", "utf-16be", "windows-1252"]);
+export const gedcomEncodingSchema = z.enum([
+  "utf-8",
+  "utf-16le",
+  "utf-16be",
+  "windows-1252",
+  "ansel",
+]);
 export type GedcomEncoding = z.infer<typeof gedcomEncodingSchema>;
 
 /**
@@ -47,11 +54,12 @@ export type GedcomImportInput = z.infer<typeof gedcomImportInputSchema>;
  * Turns a file's raw bytes into text. Runs in the browser before upload, so
  * the server only ever sees a plain string. UTF-8 (with or without BOM) and
  * UTF-16 cover every modern exporter (FamilySearch, Ancestry, MyHeritage,
- * Gramps); anything that isn't valid UTF-8 falls back to Windows-1252, the
- * usual "ANSI" of older Windows programs. ANSEL — GEDCOM 5.5's own legacy
- * charset — has no `TextDecoder` and is deliberately not decoded: its ASCII
- * half reads correctly either way, and `buildGedcomImportPlan` warns when a
- * file declares it and contains anything outside ASCII.
+ * Gramps). Anything that isn't valid UTF-8 is either ANSEL — GEDCOM 5.5's
+ * own legacy charset, used when the header says `1 CHAR ANSEL` — or else
+ * Windows-1252, the usual "ANSI" of older Windows programs. A file that
+ * *declares* ANSEL but is valid UTF-8 is read as UTF-8: mislabelled UTF-8 is
+ * far more common in the wild than genuine ANSEL that happens to form valid
+ * UTF-8 byte sequences.
  */
 export function decodeGedcomBytes(bytes: Uint8Array): { text: string; encoding: GedcomEncoding } {
   if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
@@ -68,8 +76,119 @@ export function decodeGedcomBytes(bytes: Uint8Array): { text: string; encoding: 
   try {
     return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes), encoding: "utf-8" };
   } catch {
+    if (declaresAnsel(bytes)) return { text: decodeAnsel(bytes), encoding: "ansel" };
     return { text: new TextDecoder("windows-1252").decode(bytes), encoding: "windows-1252" };
   }
+}
+
+/** Whether the HEAD record declares `CHAR ANSEL` — read from the bytes, since the header is plain ASCII in every charset this handles. */
+function declaresAnsel(bytes: Uint8Array): boolean {
+  const head = new TextDecoder("latin1").decode(bytes.subarray(0, 4096));
+  return /^\s*1\s+CHAR\s+ANSEL\s*$/im.test(head);
+}
+
+/**
+ * ANSEL (ANSI Z39.47) as GEDCOM 5.5 uses it: ASCII below 0x80, a block of
+ * spacing letters and symbols (Ø, Æ, Þ, ...) at 0xA1–0xCF, and combining
+ * diacritics at 0xE0–0xFE. GEDCOM's additions to plain ANSEL are included
+ * (0xBE/0xBF boxes, 0xC7/0xCF ß, 0xC8 €, 0xCD/0xCE midline e/o).
+ */
+const ANSEL_SPACING: Record<number, string> = {
+  0xa1: "Ł",
+  0xa2: "Ø",
+  0xa3: "Đ",
+  0xa4: "Þ",
+  0xa5: "Æ",
+  0xa6: "Œ",
+  0xa7: "ʹ",
+  0xa8: "·",
+  0xa9: "♭",
+  0xaa: "®",
+  0xab: "±",
+  0xac: "Ơ",
+  0xad: "Ư",
+  0xae: "ʼ",
+  0xb0: "ʻ",
+  0xb1: "ł",
+  0xb2: "ø",
+  0xb3: "đ",
+  0xb4: "þ",
+  0xb5: "æ",
+  0xb6: "œ",
+  0xb7: "ʺ",
+  0xb8: "ı",
+  0xb9: "£",
+  0xba: "ð",
+  0xbc: "ơ",
+  0xbd: "ư",
+  0xbe: "□",
+  0xbf: "■",
+  0xc0: "°",
+  0xc1: "ℓ",
+  0xc2: "℗",
+  0xc3: "©",
+  0xc4: "♯",
+  0xc5: "¿",
+  0xc6: "¡",
+  0xc7: "ß",
+  0xc8: "€",
+  0xcd: "e",
+  0xce: "o",
+  0xcf: "ß",
+};
+const ANSEL_COMBINING: Record<number, string> = {
+  0xe0: "\u0309",
+  0xe1: "\u0300",
+  0xe2: "\u0301",
+  0xe3: "\u0302",
+  0xe4: "\u0303",
+  0xe5: "\u0304",
+  0xe6: "\u0306",
+  0xe7: "\u0307",
+  0xe8: "\u0308",
+  0xe9: "\u030c",
+  0xea: "\u030a",
+  0xeb: "\ufe20",
+  0xec: "\ufe21",
+  0xed: "\u0315",
+  0xee: "\u030b",
+  0xef: "\u0310",
+  0xf0: "\u0327",
+  0xf1: "\u0328",
+  0xf2: "\u0323",
+  0xf3: "\u0324",
+  0xf4: "\u0325",
+  0xf5: "\u0333",
+  0xf6: "\u0332",
+  0xf7: "\u0326",
+  0xf8: "\u031c",
+  0xf9: "\u032e",
+  0xfa: "\ufe22",
+  0xfb: "\ufe23",
+  0xfe: "\u0313",
+};
+
+/**
+ * ANSEL puts a combining diacritic *before* the letter it modifies
+ * (0xEA 0x61 = å); Unicode puts it after. So pending diacritics are held
+ * until the next base character and appended to it, then everything is
+ * NFC-normalized into precomposed letters where Unicode has them. A byte
+ * with no mapping becomes U+FFFD rather than silently vanishing.
+ */
+export function decodeAnsel(bytes: Uint8Array): string {
+  let out = "";
+  let pending = "";
+  for (const byte of bytes) {
+    const combining = ANSEL_COMBINING[byte];
+    if (combining) {
+      pending += combining;
+      continue;
+    }
+    const base = byte < 0x80 ? String.fromCharCode(byte) : (ANSEL_SPACING[byte] ?? "\ufffd");
+    out += base + pending;
+    pending = "";
+  }
+  return (out + pending).normalize("NFC");
 }
 
 function stripBom(text: string): string {
@@ -196,6 +315,8 @@ export interface GedcomImportCitation {
   certificateNumber: string | null;
   note: string | null;
   confidence: string;
+  /** Ancestry's record pointer (`_APID`), kept for the round trip. */
+  ancestryApid: string | null;
 }
 
 export interface GedcomImportName {
@@ -251,6 +372,8 @@ export interface GedcomImportPerson {
   /** Roles tied to one of `events`, by its index there. */
   eventAssociations: (GedcomImportAssociation & { eventIndex: number })[];
   researchNotes: { noteType: string; body: string; resolved: boolean }[];
+  /** FamilySearch/Ancestry ids, REFN and GEDCOM 7 EXID — see `personExternalIds`. */
+  externalIds: { system: PersonExternalIdSystem; value: string; type: string | null }[];
 }
 
 export interface GedcomImportUnion {
@@ -272,8 +395,21 @@ export interface GedcomImportSource {
   title: string;
   author: string | null;
   publication: string | null;
-  repository: string | null;
+  /** A `GedcomImportRepository.ref`. */
+  repositoryRef: string | null;
+  /** REPO.CALN — the source's shelf mark in that repository. */
+  callNumber: string | null;
   sourceType: string | null;
+}
+
+/** A REPO record, or a repository a source only names inline (deduplicated by name). */
+export interface GedcomImportRepository {
+  ref: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
 }
 
 /**
@@ -284,7 +420,6 @@ export interface GedcomImportSource {
 export type GedcomImportWarningCode =
   | "malformedLine"
   | "legacyEncoding"
-  | "anselEncoding"
   | "unparsedDate"
   | "missingReference"
   | "extraVitalEvent"
@@ -313,6 +448,7 @@ export interface GedcomImportPlan {
   /** Every couple named by a FAM record — with or without a `unions` row (see `GedcomImportUnion`). */
   spouseLinks: { aRef: string; bRef: string }[];
   sources: GedcomImportSource[];
+  repositories: GedcomImportRepository[];
   /** Coordinates from `PLAC.MAP`, one per distinct place text (the first wins on a conflict). */
   places: { name: string; latitude: number; longitude: number }[];
   warnings: GedcomImportWarning[];
@@ -339,6 +475,8 @@ export interface GedcomImportCounts {
   associations: number;
   researchNotes: number;
   places: number;
+  repositories: number;
+  externalIds: number;
 }
 
 export function countGedcomImportPlan(plan: GedcomImportPlan): GedcomImportCounts {
@@ -380,6 +518,8 @@ export function countGedcomImportPlan(plan: GedcomImportPlan): GedcomImportCount
     associations,
     researchNotes,
     places: plan.places.length,
+    repositories: plan.repositories.length,
+    externalIds: plan.persons.reduce((total, person) => total + person.externalIds.length, 0),
   };
 }
 
@@ -502,6 +642,29 @@ export function gedcomNameType(nameType: string): string {
   );
 }
 
+/**
+ * A `name_variant_type` key as GEDCOM 7's NAME.TYPE: one of its fixed codes
+ * where one fits, otherwise `OTHER` with the option's label as the PHRASE
+ * (7 dropped 5.5.1's user-defined types).
+ */
+export function gedcom7NameType(
+  nameType: string,
+  label: string,
+): { type: string; phrase: string | null } {
+  const code = ({ birth: "BIRTH", married: "MARRIED", nickname: "AKA" } as Record<string, string>)[
+    nameType
+  ];
+  return code ? { type: code, phrase: null } : { type: "OTHER", phrase: label };
+}
+
+/** An `association_role` key as GEDCOM 7's ASSO.ROLE code, or `OTHER` with a PHRASE. */
+export function gedcom7Role(role: string, label: string): { role: string; phrase: string | null } {
+  const code = (
+    { godparent: "GODP", witness: "WITN", officiant: "OFFICIATOR" } as Record<string, string>
+  )[role];
+  return code ? { role: code, phrase: null } : { role: "OTHER", phrase: label };
+}
+
 /** The seeded `confidence` keys as `QUAY` 0–3; `null` for a user-added level, which has no QUAY equivalent. */
 export function gedcomQuay(confidence: string): string | null {
   return (
@@ -609,6 +772,7 @@ const RESTRICTION_PRIORITY: PersonRestriction[] = ["confidential", "privacy", "l
 
 /** Tags a `_TODO` (Legacy, RootsMagic and this app's own exporter) may carry. */
 const TODO_HANDLED = new Set([
+  "_MARKDOWN",
   "DESC",
   "TEXT",
   "NOTE",
@@ -706,9 +870,6 @@ export function buildGedcomImportPlan(
 
   const charset = childValue(head, "CHAR");
   if (options.encoding === "windows-1252") warnings.add("legacyEncoding", charset ?? undefined);
-  if (charset?.toUpperCase() === "ANSEL" && parsed.records.some(hasNonAscii)) {
-    warnings.add("anselEncoding");
-  }
 
   const vocab = new Vocabulary(options.vocabulary);
   const today = options.today ?? new Date();
@@ -750,10 +911,6 @@ export function buildGedcomImportPlan(
   }
 
   for (const record of noteRecords.values()) warnings.skipUnhandled(record);
-  // Only a repository's name has a column (`sources.repository`); its
-  // address/phone/website are reported rather than silently dropped.
-  const repoHandled = new Set(["NAME"]);
-  for (const record of repoRecords.values()) warnings.skipUnhandled(record, repoHandled);
 
   /** An ADDR's text: its own value (with CONT lines), or else its structured ADR1…CTRY lines. */
   const readAddress = (node: GedcomNode | undefined): string | null => {
@@ -801,7 +958,15 @@ export function buildGedcomImportPlan(
     return name;
   };
 
+  /**
+   * A note's text. This app's exporter writes notes as plain text for other
+   * programs, with the original markdown in a `_MARKDOWN` child whenever the
+   * two differ — so prefer that, and an export → import round trip keeps the
+   * formatting.
+   */
   const resolveNote = (node: GedcomNode): string | null => {
+    const markdown = childValue(node, "_MARKDOWN");
+    if (markdown?.trim()) return markdown.trim();
     const pointer = pointerOf(node.value);
     if (!pointer) return node.value.trim() || null;
     const record = noteRecords.get(pointer);
@@ -809,10 +974,35 @@ export function buildGedcomImportPlan(
       warnings.add("missingReference", `@${pointer}@`);
       return null;
     }
-    return record.value.trim() || null;
+    return childValue(record, "_MARKDOWN")?.trim() || record.value.trim() || null;
   };
   const notesOf = (node: GedcomNode, extra: (string | null)[] = []): string | null =>
     joinNotes([...extra, ...childrenOf(node, "NOTE").map(resolveNote)]);
+
+  // Repositories — REPO records, plus any a source only names inline.
+  // FAX, NOTE and the like have no column and are still reported.
+  const repositories: GedcomImportRepository[] = [];
+  const repoHandled = new Set(["NAME", "ADDR", "PHON", "EMAIL", "_EMAIL", "WWW", "_WWW"]);
+  for (const [ref, record] of repoRecords) {
+    warnings.skipUnhandled(record, repoHandled);
+    repositories.push({
+      ref,
+      name: singleLine(childValue(record, "NAME") ?? `Repository ${ref}`),
+      address: readAddress(childOf(record, "ADDR")),
+      phone: nullableSingleLine(childValue(record, "PHON")),
+      email: nullableSingleLine(childValue(record, "EMAIL") ?? childValue(record, "_EMAIL")),
+      website: nullableSingleLine(childValue(record, "WWW") ?? childValue(record, "_WWW")),
+    });
+  }
+  const inlineRepositories = new Map<string, string>();
+  const inlineRepositoryRef = (name: string): string => {
+    const existing = inlineRepositories.get(name);
+    if (existing) return existing;
+    const ref = `__inline_repo_${inlineRepositories.size + 1}`;
+    inlineRepositories.set(name, ref);
+    repositories.push({ ref, name, address: null, phone: null, email: null, website: null });
+    return ref;
+  };
 
   // Sources first — citations anywhere below need to know which refs exist.
   const sources: GedcomImportSource[] = [];
@@ -831,21 +1021,24 @@ export function buildGedcomImportPlan(
   for (const record of sourRecords) {
     if (!record.xref) continue;
     const repoNode = childOf(record, "REPO");
-    let repository: string | null = null;
+    let repositoryRef: string | null = null;
+    let callNumber: string | null = null;
     let sourceType: string | null = null;
     if (repoNode) {
       const repoPointer = pointerOf(repoNode.value);
-      const repoRecord = repoPointer ? repoRecords.get(repoPointer) : undefined;
-      if (repoPointer && !repoRecord) warnings.add("missingReference", `@${repoPointer}@`);
-      repository = repoRecord ? childValue(repoRecord, "NAME") : repoNode.value.trim() || null;
+      if (repoPointer) {
+        if (repoRecords.has(repoPointer)) repositoryRef = repoPointer;
+        else warnings.add("missingReference", `@${repoPointer}@`);
+      } else {
+        const inlineName = singleLine(repoNode.value.trim());
+        if (inlineName) repositoryRef = inlineRepositoryRef(inlineName);
+      }
       warnings.skipUnhandled(repoNode, new Set(["CALN"]));
       const caln = childOf(repoNode, "CALN");
-      sourceType = caln ? childValue(caln, "MEDI") : null;
       if (caln) {
         warnings.skipUnhandled(caln, new Set(["MEDI"]));
-        // The call number itself — the source's shelf mark in the archive —
-        // has no column on `sources` yet.
-        if (caln.value.trim()) warnings.skipRecord("REPO.CALN");
+        callNumber = nullableSingleLine(caln.value.trim() || null);
+        sourceType = childValue(caln, "MEDI");
       }
     }
     // `sources` has no notes column, and a source's transcribed TEXT doesn't
@@ -861,7 +1054,8 @@ export function buildGedcomImportPlan(
       ),
       author: nullableSingleLine(childValue(record, "AUTH")),
       publication: nullableSingleLine(childValue(record, "PUBL")),
-      repository: nullableSingleLine(repository),
+      repositoryRef,
+      callNumber,
       // `_TYPE` is this app's own exporter; REPO.CALN.MEDI what others write.
       sourceType: nullableSingleLine(childValue(record, "_TYPE") ?? sourceType),
     });
@@ -880,6 +1074,7 @@ export function buildGedcomImportPlan(
     "_VOLUME",
     "_ENTRY",
     "_CERT",
+    "_APID",
   ]);
   const mapCitations = (node: GedcomNode): GedcomImportCitation[] =>
     childrenOf(node, "SOUR").flatMap((sour) => {
@@ -900,7 +1095,8 @@ export function buildGedcomImportPlan(
             title: title.slice(0, 500),
             author: null,
             publication: null,
-            repository: null,
+            repositoryRef: null,
+            callNumber: null,
             sourceType: null,
           });
           warnings.add("inlineSource", title.slice(0, 80));
@@ -939,15 +1135,27 @@ export function buildGedcomImportPlan(
           certificateNumber: nullableSingleLine(childValue(sour, "_CERT")),
           note,
           confidence: confidence ?? vocab.match("confidence", ["medium"]) ?? "medium",
+          ancestryApid: nullableSingleLine(childValue(sour, "_APID")),
         },
       ];
     });
 
   const parseDate = (node: GedcomNode, tag = "DATE"): HistoricalDate | null => {
-    const raw = childValue(node, tag);
+    // GEDCOM 7 puts the wording as written in a PHRASE under the DATE — the
+    // only home for a double year or free text there. Prefer it whenever it
+    // reads as a date (or there's no DATE value at all); otherwise the DATE
+    // value is the better source of bounds.
+    const dateNode = childOf(node, tag);
+    const phrase = dateNode ? childValue(dateNode, "PHRASE") : null;
+    const value = childValue(node, tag);
+    const raw =
+      phrase && (!value || parseHistoricalDateDetailed(phrase).kind !== "unparsed")
+        ? phrase
+        : value;
     if (!raw) return null;
     // The Gregorian escape is GEDCOM's default calendar spelled out — safe to
-    // drop. Any other calendar (`@#DJULIAN@`, ...) stays, and stays unparsed.
+    // drop. A Julian escape stays in the wording and is parsed (bounds are
+    // converted to Gregorian); Hebrew and French Republican stay unparsed.
     const original = raw.replace(/^@#DGREGORIAN@\s*/i, "");
     if (!original) return null;
     if (parseHistoricalDateDetailed(original).kind === "unparsed") {
@@ -990,7 +1198,13 @@ export function buildGedcomImportPlan(
           associateRef = pointer;
         }
         if ((!associateRef && !associateName) || associateRef === ownerRef) return [];
-        const roleText = childValue(asso, "RELA") ?? childValue(asso, "ROLE");
+        // GEDCOM 7: `ROLE OTHER` carries the actual role in a PHRASE.
+        const roleNode = childOf(asso, "ROLE");
+        const roleText =
+          childValue(asso, "RELA") ??
+          (roleNode?.value.trim().toUpperCase() === "OTHER"
+            ? (childValue(roleNode, "PHRASE") ?? "other")
+            : childValue(asso, "ROLE"));
         const role =
           (roleText ? vocab.matchText("association_role", roleText) : null) ??
           vocab.match("association_role", ROLE_KEYS[roleText?.toLowerCase() ?? ""] ?? []);
@@ -1027,7 +1241,8 @@ export function buildGedcomImportPlan(
     const completed =
       childValue(todo, "_CDATE") ?? childValue(todo, "_COMPLETED") ?? childValue(todo, "_DONE");
     const description = joinNotes([
-      pointer ? null : todo.value.trim() || null,
+      // See `resolveNote` for `_MARKDOWN`.
+      childValue(todo, "_MARKDOWN")?.trim() || (pointer ? null : todo.value.trim() || null),
       childValue(todo, "DESC"),
       ...childrenOf(todo, "TEXT").map((text) => text.value.trim()),
       ...childrenOf(todo, "NOTE").map(resolveNote),
@@ -1055,6 +1270,33 @@ export function buildGedcomImportPlan(
       resolved:
         !!completed || /^(done|completed?|closed|finished|resolved|y|yes)$/i.test(statusText ?? ""),
     };
+  };
+
+  /**
+   * A person's ids elsewhere. FamilySearch writes `_FSFTID` in 5.5.1 and an
+   * `EXID` whose TYPE names familysearch.org in GEDCOM 7 — both become one
+   * "familysearch" id (the EXID's TYPE kept), so the person page can link it.
+   */
+  const readExternalIds = (record: GedcomNode): GedcomImportPerson["externalIds"] => {
+    const ids: GedcomImportPerson["externalIds"] = [];
+    const add = (system: PersonExternalIdSystem, value: string, type: string | null) => {
+      const trimmed = singleLine(value.trim());
+      if (!trimmed || ids.some((id) => id.system === system && id.value === trimmed)) return;
+      ids.push({ system, value: trimmed, type });
+    };
+    for (const node of childrenOf(record, "_FSFTID")) add("familysearch", node.value, null);
+    for (const node of childrenOf(record, "_APID")) add("ancestry", node.value, null);
+    for (const node of childrenOf(record, "REFN")) {
+      warnings.skipUnhandled(node, new Set(["TYPE"]));
+      add("refn", node.value, childValue(node, "TYPE"));
+    }
+    // `_EXID` is this app's own 5.5.1 spelling of a generic EXID.
+    for (const node of [...childrenOf(record, "EXID"), ...childrenOf(record, "_EXID")]) {
+      warnings.skipUnhandled(node, new Set(["TYPE"]));
+      const type = childValue(node, "TYPE");
+      add(/familysearch/i.test(type ?? "") ? "familysearch" : "exid", node.value, type);
+    }
+    return ids;
   };
 
   const unmappedEventTypes = new Map<string, GedcomImportPlan["unmappedEventTypes"][number]>();
@@ -1166,6 +1408,11 @@ export function buildGedcomImportPlan(
     "ASSO",
     "_ASSO",
     "_TODO",
+    "_FSFTID",
+    "_APID",
+    "REFN",
+    "EXID",
+    "_EXID",
     ...Object.keys(INDIVIDUAL_EVENT_TAGS),
   ]);
   const nameHandled = new Set([
@@ -1205,13 +1452,19 @@ export function buildGedcomImportPlan(
         // separate fact row to cite, so its evidence goes on the person.
         personCitations.push(...mapCitations(node));
       } else {
-        const typeText = childValue(node, "TYPE");
+        // GEDCOM 7: an unlisted type is `TYPE OTHER` with the words in a PHRASE.
+        const typeNode = childOf(node, "TYPE");
+        const typeText =
+          typeNode?.value.trim().toUpperCase() === "OTHER"
+            ? (childValue(typeNode, "PHRASE") ?? "other")
+            : childValue(node, "TYPE");
         const nameType =
+          (typeText ? vocab.matchText("name_variant_type", typeText) : null) ??
           vocab.match("name_variant_type", [
-            ...(typeText ? [typeText] : []),
             ...(NAME_TYPE_KEYS[typeText?.toLowerCase() ?? ""] ?? []),
             "other",
-          ]) ?? vocab.first("name_variant_type");
+          ]) ??
+          vocab.first("name_variant_type");
         if (nameType) {
           names.push({
             nameType,
@@ -1327,6 +1580,7 @@ export function buildGedcomImportPlan(
       researchNotes: childrenOf(record, "_TODO")
         .map(mapTodo)
         .filter((note): note is NonNullable<typeof note> => note !== null),
+      externalIds: readExternalIds(record),
     });
   }
 
@@ -1516,6 +1770,7 @@ export function buildGedcomImportPlan(
     parentLinks,
     spouseLinks,
     sources,
+    repositories,
     places: [...placeCoordinates].map(([name, { latitude, longitude }]) => ({
       name,
       latitude,
@@ -1680,9 +1935,4 @@ function nullableSingleLine(text: string | null): string | null {
 function joinNotes(parts: (string | null)[]): string | null {
   const present = parts.map((part) => part?.trim()).filter((part): part is string => !!part);
   return present.length > 0 ? present.join("\n\n") : null;
-}
-
-function hasNonAscii(node: GedcomNode): boolean {
-  // eslint-disable-next-line no-control-regex
-  return /[^\x00-\x7f]/.test(node.value) || node.children.some(hasNonAscii);
 }

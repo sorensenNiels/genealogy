@@ -1,5 +1,6 @@
 import { RadioButton, RadioField, RadioGroup as RACRadioGroup } from "react-aria-components";
 
+import { useReadOnly } from "../lib/read-only";
 import { cn } from "../lib/utils";
 
 export interface ColorSwatchPickerProps {
@@ -25,8 +26,10 @@ export function ColorSwatchPicker({
   colors,
   className,
 }: ColorSwatchPickerProps) {
+  const isReadOnly = useReadOnly();
   return (
     <RACRadioGroup
+      {...(isReadOnly ? { isReadOnly: true } : {})}
       value={value}
       onChange={onChange}
       orientation="horizontal"
