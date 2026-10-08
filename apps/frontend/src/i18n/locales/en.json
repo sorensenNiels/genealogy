@@ -261,12 +261,9 @@
     "pickPersonPrefix": "Pick a person to center their tree on — or open \"View in tree\" from a row in the",
     "personList": "person list",
     "deceased": "Deceased",
-    "centerTreeOn": "Center tree on {{name}}",
-    "loadAncestorsOf": "Load {{name}}'s ancestors",
     "loadAncestors": "Load ancestors",
     "loading": "Loading…",
     "loadErrorTree": "Could not load tree: {{message}}",
-    "arrangingTree": "Arranging tree…",
     "addLabel": "+ Add {{kind}}",
     "addTitle": "Add {{kind}}",
     "searchForKind": "Search for {{kind}}",
@@ -290,8 +287,9 @@
       "parent": "parent"
     },
     "view": {
-      "label": "Show",
-      "both": "Both",
+      "label": "Chart",
+      "hourglass": "Hourglass",
+      "relatives": "Relatives",
       "ancestors": "Ancestors",
       "descendants": "Descendants"
     },
@@ -299,7 +297,15 @@
     "removeDescription": "Only this relationship is removed — both people, and any marriage record, are kept.",
     "removeAction": "Remove",
     "removeAria": "Remove {{name}} as {{relation}}",
-    "doubleClickToCenter": "Double-click to center the tree on this person"
+    "orientation": {
+      "label": "Direction",
+      "vertical": "Top-down",
+      "horizontal": "Left to right"
+    },
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "fitToView": "Fit to view",
+    "chartHint": "Click a person to show them in the panel; double-click to center the tree on them."
   },
   "tools": {
     "title": "Tools",

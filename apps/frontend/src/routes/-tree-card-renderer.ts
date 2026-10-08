@@ -1,0 +1,264 @@
+import type { select, Selection } from "d3-selection";
+import type * as Topola from "topola";
+import type {
+  FamDetails,
+  IndiDetails,
+  Renderer,
+  RendererOptions,
+  TreeEntry,
+  TreeNode,
+  TreeNodeSelection,
+} from "topola";
+
+import type { TreeCard } from "../lib/topola-data";
+
+/** What a card shows for one person — built by the tree page from our own rows (`treeCard`), not from topola's GEDCOM fields. */
+export type CardInfo = TreeCard;
+
+/** The card itself. Fixed, so topola never has to measure text (see `TopolaChart`). */
+export const CARD_WIDTH = 248;
+export const CARD_HEIGHT = 72;
+/**
+ * Each card reports a box this much bigger on every side than it draws.
+ * Topola's own gaps between boxes are fixed (15px across, 34px between
+ * generations) and not configurable, and with them cards sat almost on top
+ * of each other; the padding is how we get room to breathe. Lines still
+ * meet the cards: they run to the box centres, under the opaque cards.
+ */
+const PAD_X = 14;
+const PAD_Y = 10;
+const PHOTO_SIZE = 52;
+const INSET = 10;
+/** Photo on the left, text after it. */
+const TEXT_X = INSET + PHOTO_SIZE + 12;
+const TEXT_WIDTH = CARD_WIDTH - TEXT_X - INSET;
+/** The gender badge over the photo's bottom-right corner. */
+const BADGE_RADIUS = 9;
+/** Shared by every card — clip paths are in each card's own coordinates, so one definition serves all. */
+export const TEXT_CLIP_ID = "tree-card-text-clip";
+export const PHOTO_CLIP_ID = "tree-card-photo-clip";
+export const CARD_RADIUS = 10;
+export const PHOTO_X = INSET;
+export const PHOTO_Y = (CARD_HEIGHT - PHOTO_SIZE) / 2;
+export const TEXT_CLIP = { x: TEXT_X, y: 0, width: TEXT_WIDTH, height: CARD_HEIGHT };
+export const PHOTO_CLIP = { x: PHOTO_X, y: PHOTO_Y, width: PHOTO_SIZE, height: PHOTO_SIZE };
+
+/** Rough ellipsis before the clip path takes over, so a long name ends in "…" rather than mid-letter. */
+function truncate(text: string, maxChars: number): string {
+  return text.length > maxChars ? `${text.slice(0, maxChars - 1).trimEnd()}…` : text;
+}
+
+const GENDER_CLASS = { M: "male", F: "female", U: "unknown" } as const;
+
+interface CardDatum {
+  indi: TreeEntry;
+  generation: number | undefined;
+  x: number;
+  y: number;
+}
+
+type TopolaModule = typeof Topola;
+type SelectFn = typeof select;
+
+/**
+ * Builds topola's renderer class for our cards. A factory because topola is
+ * only loaded in the browser (a dynamic import in `TopolaChart`), so its
+ * `CompositeRenderer` base class isn't available at module load. The base
+ * class does the sizing bookkeeping and the anchor points lines attach to;
+ * this only says how big a card is and how to draw it.
+ */
+export function createCardRendererClass(
+  topola: TopolaModule,
+  select: SelectFn,
+  cardFor: (id: string) => CardInfo | undefined,
+) {
+  return class CardRenderer extends topola.CompositeRenderer implements Renderer {
+    constructor(readonly rendererOptions: RendererOptions<IndiDetails, FamDetails>) {
+      super(rendererOptions);
+    }
+
+    getPreferredIndiSize(): [number, number] {
+      return [CARD_WIDTH + PAD_X * 2, CARD_HEIGHT + PAD_Y * 2];
+    }
+
+    // Styling lives in styles.css under `.topola-chart`, with the theme tokens.
+    getCss(): string {
+      return "";
+    }
+
+    render(enter: TreeNodeSelection, update: TreeNodeSelection): void {
+      const horizontal = Boolean(this.rendererOptions.horizontal);
+      const nodes = enter.merge(update);
+      // Redrawn from scratch each render: cheap at tree sizes, and a card's
+      // content (a name just edited, a photo just set) is always current.
+      nodes.selectAll("g.cards").remove();
+      const cards = nodes.append("g").attr("class", "cards");
+
+      // A short marriage line in the gap between partners; the line down to
+      // their children starts from its middle.
+      cards
+        .filter((node) => Boolean(node.data.indi && node.data.spouse))
+        .append("line")
+        .attr("class", "marriage")
+        .attr("x1", (node) =>
+          horizontal ? PAD_X + CARD_WIDTH / 2 : node.data.indi!.width! - PAD_X,
+        )
+        .attr("x2", (node) =>
+          horizontal ? PAD_X + CARD_WIDTH / 2 : node.data.indi!.width! + PAD_X,
+        )
+        .attr("y1", (node) =>
+          horizontal ? node.data.indi!.height! - PAD_Y : PAD_Y + CARD_HEIGHT / 2,
+        )
+        .attr("y2", (node) =>
+          horizontal ? node.data.indi!.height! + PAD_Y : PAD_Y + CARD_HEIGHT / 2,
+        );
+
+      const card = cards
+        .selectAll<SVGGElement, CardDatum>("g.indi")
+        .data((node) => cardData(node.data, horizontal))
+        .enter()
+        .append("g")
+        .attr("class", (datum) => `indi ${GENDER_CLASS[cardFor(datum.indi.id)?.gender ?? "U"]}`)
+        .attr("transform", (datum) => `translate(${datum.x + PAD_X}, ${datum.y + PAD_Y})`)
+        .on("click", (_event, datum) =>
+          this.rendererOptions.indiCallback?.({
+            id: datum.indi.id,
+            generation: datum.generation ?? 0,
+          }),
+        );
+
+      card.each(function (datum) {
+        drawCard(select(this), cardFor(datum.indi.id));
+      });
+    }
+  };
+}
+
+/** The (one or two) people in a topola node, with their offsets inside it. */
+function cardData(node: TreeNode, horizontal: boolean): CardDatum[] {
+  const result: CardDatum[] = [];
+  if (node.indi) result.push({ indi: node.indi, generation: node.generation, x: 0, y: 0 });
+  if (node.spouse) {
+    const offset = node.indi ? (horizontal ? node.indi.height! : node.indi.width!) : 0;
+    result.push({
+      indi: node.spouse,
+      generation: node.generation,
+      x: horizontal ? 0 : offset,
+      y: horizontal ? offset : 0,
+    });
+  }
+  return result;
+}
+
+function drawCard(
+  card: Selection<SVGGElement, CardDatum, null, undefined>,
+  info: CardInfo | undefined,
+) {
+  card
+    .append("rect")
+    .attr("class", "card-bg")
+    .attr("width", CARD_WIDTH)
+    .attr("height", CARD_HEIGHT)
+    .attr("rx", CARD_RADIUS);
+  const text = card.append("g").attr("clip-path", `url(#${TEXT_CLIP_ID})`);
+  const name = info?.name ?? "";
+  const lines = [info?.lifespan, info?.place].filter((line): line is string => Boolean(line));
+  // Vertically centre the block: one name line plus up to two detail lines.
+  const top = lines.length === 0 ? 41 : lines.length === 1 ? 32 : 25;
+  text
+    .append("text")
+    .attr("class", "card-name")
+    .attr("x", TEXT_X)
+    .attr("y", top)
+    .text(truncate(name, 22));
+  lines.forEach((line, index) => {
+    text
+      .append("text")
+      .attr("class", index === 0 ? "card-meta" : "card-place")
+      .attr("x", TEXT_X)
+      .attr("y", top + 18 + index * 16)
+      .text(truncate(line, 26));
+  });
+
+  if (info?.photoUrl) {
+    card
+      .append("image")
+      .attr("x", PHOTO_X)
+      .attr("y", PHOTO_Y)
+      .attr("width", PHOTO_SIZE)
+      .attr("height", PHOTO_SIZE)
+      .attr("preserveAspectRatio", "xMidYMid slice")
+      .attr("clip-path", `url(#${PHOTO_CLIP_ID})`)
+      .attr("href", info.photoUrl);
+  } else {
+    card
+      .append("rect")
+      .attr("class", "card-initials-bg")
+      .attr("x", PHOTO_X)
+      .attr("y", PHOTO_Y)
+      .attr("width", PHOTO_SIZE)
+      .attr("height", PHOTO_SIZE)
+      .attr("rx", CARD_RADIUS);
+    card
+      .append("text")
+      .attr("class", "card-initials")
+      .attr("x", PHOTO_X + PHOTO_SIZE / 2)
+      .attr("y", PHOTO_Y + PHOTO_SIZE / 2)
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "central")
+      .text(info?.initials ?? "");
+  }
+  if (info?.isDeceased) drawMourningBand(card);
+  if (info && info.gender !== "U") drawGenderBadge(card, info.gender);
+  card
+    .append("rect")
+    .attr("class", "card-border")
+    .attr("width", CARD_WIDTH)
+    .attr("height", CARD_HEIGHT)
+    .attr("rx", CARD_RADIUS);
+}
+
+/**
+ * A black band across the photo's top-left corner — the mourning ribbon on
+ * an old memorial photograph — for someone who has died. Clipped to the
+ * photo's rounded square, so it runs edge to edge across the corner.
+ */
+function drawMourningBand(card: Selection<SVGGElement, CardDatum, null, undefined>) {
+  const reach = 22;
+  card
+    .append("line")
+    .attr("class", "card-mourning")
+    .attr("x1", PHOTO_X - 4)
+    .attr("y1", PHOTO_Y + reach)
+    .attr("x2", PHOTO_X + reach)
+    .attr("y2", PHOTO_Y - 4)
+    .attr("clip-path", `url(#${PHOTO_CLIP_ID})`);
+}
+
+/**
+ * Lucide's `mars`/`venus` icons (24×24, stroked), so the badge matches the
+ * icons used everywhere else in the app. D3 draws the cards, so the icon
+ * paths are copied here rather than rendered by lucide-react.
+ */
+const GENDER_ICON_PATHS = {
+  M: ["M16 3h5v5", "m21 3-6.75 6.75", "M4 14a6 6 0 1 0 12 0a6 6 0 1 0-12 0"],
+  F: ["M12 15v7", "M9 19h6", "M6 9a6 6 0 1 0 12 0a6 6 0 1 0-12 0"],
+} as const;
+
+/** A small gender-coloured disc over the photo's bottom-right corner, ringed in the card colour so it reads as cut out of the photo. */
+function drawGenderBadge(
+  card: Selection<SVGGElement, CardDatum, null, undefined>,
+  gender: "M" | "F",
+) {
+  const cx = PHOTO_X + PHOTO_SIZE - 3;
+  const cy = PHOTO_Y + PHOTO_SIZE - 3;
+  const badge = card.append("g").attr("class", "card-gender");
+  badge.append("circle").attr("cx", cx).attr("cy", cy).attr("r", BADGE_RADIUS);
+  // 24-unit icon scaled to 11px, centred on the disc.
+  const scale = 11 / 24;
+  const icon = badge
+    .append("g")
+    .attr("class", "card-gender-icon")
+    .attr("transform", `translate(${cx - 5.5}, ${cy - 5.5}) scale(${scale})`);
+  for (const d of GENDER_ICON_PATHS[gender]) icon.append("path").attr("d", d);
+}

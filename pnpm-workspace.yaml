@@ -110,15 +110,21 @@ catalog:
   "@mdxeditor/editor": 4.2.5
   react-markdown: 10.1.0
 
-  # --- tree view (see "Tree & visualization" in FEATURES.md) ---
-  # @xyflow/react is the current package name for what's commonly still called
-  # "React Flow" (the old `reactflow` package is its predecessor, superseded by
-  # this scoped one). elkjs computes node positions (layered/hierarchical
-  # layout) off-thread from React Flow's own rendering. Checked 2026-09-23 per
-  # the "Recommending or adding a library" rule: @xyflow/react last published
-  # 2026-09-01, elkjs 2026-07-17 — both actively maintained.
-  "@xyflow/react": 12.11.6
-  elkjs: 0.12.0
+  # --- tree view (see "Tree view: topola" in TECH_STACK.md) ---
+  # topola draws the genealogy charts (hourglass, relatives, ancestors,
+  # descendants) as SVG via D3. It has no pan/zoom of its own, so d3-zoom
+  # adds that, with d3-selection to attach it (topola already depends on
+  # d3-selection 3). Checked 2026-10-08 per the "Recommending or adding a
+  # library" rule: topola last published 2026-09-04 (v3.10.4), last commit
+  # 2026-10-03, 17 open issues — active, but essentially one maintainer.
+  # d3-zoom/d3-selection last published 2022: D3 considers them finished,
+  # not abandoned, and they are among the most-used packages on npm.
+  # React Flow + elkjs were removed in favour of these — see TECH_STACK.md.
+  topola: 3.10.4
+  d3-zoom: 3.0.0
+  d3-selection: 3.0.0
+  "@types/d3-zoom": 3.0.9
+  "@types/d3-selection": 3.0.12
 
   # --- auth ---
   better-auth: 1.7.5

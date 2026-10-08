@@ -261,12 +261,9 @@
     "pickPersonPrefix": "Vælg en person at centrere slægtstræet om — eller åbn \"Vis i slægtstræ\" fra en række i",
     "personList": "personlisten",
     "deceased": "Afdød",
-    "centerTreeOn": "Centrér slægtstræ om {{name}}",
-    "loadAncestorsOf": "Indlæs {{name}}s forfædre",
     "loadAncestors": "Indlæs forfædre",
     "loading": "Indlæser…",
     "loadErrorTree": "Kunne ikke indlæse slægtstræ: {{message}}",
-    "arrangingTree": "Arrangerer slægtstræ…",
     "addLabel": "+ Tilføj {{kind}}",
     "addTitle": "Tilføj {{kind}}",
     "searchForKind": "Søg efter {{kind}}",
@@ -290,8 +287,9 @@
       "parent": "forælder"
     },
     "view": {
-      "label": "Vis",
-      "both": "Begge",
+      "label": "Diagram",
+      "hourglass": "Timeglas",
+      "relatives": "Slægtninge",
       "ancestors": "Aner",
       "descendants": "Efterkommere"
     },
@@ -299,7 +297,15 @@
     "removeDescription": "Kun denne relation fjernes — begge personer og en eventuel vielsesregistrering bevares.",
     "removeAction": "Fjern",
     "removeAria": "Fjern {{name}} som {{relation}}",
-    "doubleClickToCenter": "Dobbeltklik for at centrere træet på denne person"
+    "orientation": {
+      "label": "Retning",
+      "vertical": "Oppefra og ned",
+      "horizontal": "Venstre mod højre"
+    },
+    "zoomIn": "Zoom ind",
+    "zoomOut": "Zoom ud",
+    "fitToView": "Tilpas til visning",
+    "chartHint": "Klik på en person for at vise dem i panelet; dobbeltklik for at centrere træet om dem."
   },
   "tools": {
     "title": "Værktøjer",

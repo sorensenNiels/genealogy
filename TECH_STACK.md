@@ -26,7 +26,7 @@ each piece was added (September–October 2026).
 | Markdown notes                  | MDXEditor / react-markdown             | 4.2.5 / 10.1.0             |
 | Internationalization            | i18next + react-i18next                | 26.4.2 / 17.0.15           |
 | Authentication                  | better-auth                            | 1.7.5                      |
-| Tree view                       | React Flow (`@xyflow/react`) + elkjs   | 12.11.6 / 0.12.0           |
+| Tree view                       | topola + d3-zoom                       | 3.10.4 / 3.0.0             |
 | Photo library                   | Immich (self-hosted, separate service) | 3.2.2                      |
 
 ## Repository shape
@@ -596,46 +596,68 @@ even when rendered without any portal. `stopPropagation` doesn't cover the
 native-submission case, so `SaveButton` lets a caller override `type` to
 `"button"` for exactly this.
 
-### Tree view: React Flow + elkjs, with elk doing only half the job
+### Tree view: topola, with our data shaped into GEDCOM families
 
-The tree view (`/tree`) renders with React Flow (`@xyflow/react` — the package
-"React Flow" now ships under; `reactflow` is its predecessor) for the canvas,
-and elkjs for layout. Both actively maintained when checked.
+The tree view (`/tree`) draws with [topola](https://github.com/PeWu/topola), a
+genealogy-chart library on D3, plus `d3-zoom` for pan/zoom (topola has none).
+It offers the four charts topola does well — hourglass (the default),
+relatives (adds siblings, aunts/uncles and cousins, as far as they're
+loaded), ancestors and descendants — each top-down or left-to-right (`?view=`
+and `?orientation=` in the URL, defaults left out).
 
-elk does _not_ decide row placement, despite that looking like its job. elk's
-layered algorithm can only place a node relative to its edges, and always
-treats an edge as "target is at least one layer below source" — there's no
-same-layer edge. Feeding it a spouse edge (to keep a couple on one row) either
-gets ignored or shifts one side down a layer. elk's `partitioning` feature looks
-like the fix but isn't: verified empirically that it only constrains _ordering
-between_ partitions, not that same-partition nodes share a layer.
+**Why it replaced React Flow + elkjs (October 2026).** React Flow is a
+general node-and-edge canvas; nothing in it knows about generations or
+couples, so all the genealogy layout was ours (hand-assigned rows, couples
+glued into one elk node, union points for children's lines) and the result
+still couldn't become a pedigree, hourglass or relatives chart. Topola is
+built for exactly those. Topola's built-in box renderers were tried first and
+rejected on sight (cramped, centred text, pastel GEDCOM-viewer look), so it
+only does the layout and the lines; the cards are ours (below). The old React
+cards' on-card "load ancestors" badge is gone — loading ancestors/descendants
+lives in the side panel, which already had it.
+Maintenance when adopted: v3.10.4 on 2026-09-04, last commit 2026-10-03,
+active but essentially one maintainer — a risk to watch.
+`family-chart` (Ancestry-style re-centring) was the other candidate; last
+release October 2025 and pre-1.0, so riskier.
 
-So row assignment is done by hand, before elk runs:
-`computeGenerations` (`apps/frontend/src/lib/tree-layout.ts`) floods outward
-from the root person — +1 down a `PARENT_OF` edge, -1 up one, +0 across a
-`SPOUSE_OF` edge — and that number becomes `y` directly.
+**Our data → topola** (`apps/frontend/src/lib/topola-data.ts`, unit-tested).
+Topola thinks in GEDCOM families: a couple plus their children, and each
+person has at most one family-as-child. Every pair of partners — married, or
+simply both parents of the same child — becomes one family keyed by the two
+ids, so a marriage and the children it produced are the same family; a lone
+parent is a one-partner family; a childless couple still gets one so they
+sit together. Where a child has several parent sets (birth, adopted, step,
+foster), the chart draws one: birth first, then "unknown" (what most
+imported and quickly-added links carry), then adopted, then anything else.
+The side panel still lists every parent. Topola only has husband/wife
+slots; man/woman go where expected, otherwise the order is just stable — box
+colour comes from each person's own sex, not the slot. Dates are passed as
+our own localized `formatDisplayDate` text, since topola only knows exact
+GEDCOM dates and has no Danish qualifiers.
 
-**Couples are one block, and their children hang from one line.** Partners on
-the same row (a whole chain, for someone remarried) are given to elk as a
-single node as wide as all their cards, with every `PARENT_OF` edge fed
-between blocks — so elk can't pull a couple apart, and only decides
-left-to-right order (crossing minimization) between blocks. Inside a block,
-each partner is placed on the side nearer their own parents. On the canvas,
-each couple gets an invisible union node at the middle of the marriage line,
-and a child of that couple gets one line from it (the usual genealogy-chart
-shape) instead of a line from each parent, which crossed under the couple; a
-parent who isn't part of such a couple keeps a direct line. Before blocks,
-each partner was centred under their own parents and couples drifted apart,
-joined by a long marriage line.
+**The wrapper** (`apps/frontend/src/routes/-topola-chart.tsx`). Topola is
+CommonJS-only and needs the DOM, so it's loaded with a dynamic `import()` in
+an effect — never during SSR. It draws into an `<svg>` it finds by selector
+and sets that svg's size and its `<g>`'s translate itself, so d3-zoom sits
+on an outer svg with its own transform layer. The chart is rebuilt only when
+the chart type or direction changes; a data change (load more, add, remove)
+is `setData` + `render`, so topola animates it and the user's pan/zoom stays.
 
-**elk must lay out in our rows, as one graph — or cards overlap.** elk only
-keeps nodes apart within its _own_ layers. Left to its defaults it (a) works
-out layers from the edges (longest path), and (b) lays each disconnected piece
-out separately and packs the pieces side by side. Both break as soon as an
-in-law's parents are loaded — their cards landed on top of the main tree's.
-`layoutTree` therefore passes each block's row as its starting `y` with
-`INTERACTIVE` layering, and sets `separateConnectedComponents: false`.
-`separateRows` is a final sweep that nudges apart anything still touching.
+**The cards** (`apps/frontend/src/routes/-tree-card-renderer.ts`) are a
+topola renderer of our own, extending its `CompositeRenderer` (which does the
+size bookkeeping and the points lines attach to), drawn with D3 since topola
+calls it with D3 selections. A card is fixed-size: the photo (or tinted initials)
+on the left with a ♂/♀ badge over one corner and, for someone deceased, a
+black mourning band across the other, then a left-aligned name,
+`* 1850 † 1921` and a place; the text comes from our own rows
+(`treeCard` in `topola-data.ts`), not topola's GEDCOM fields. Fixed size also
+sidesteps topola's text measuring, which reads the first `<svg>` in the
+document (often a hidden icon, which measures 0). Two layout limits shaped
+it: topola's gaps between boxes are hard-coded (15px across, 34px between
+generations), so each card reports a box padded on every side and draws
+inside it — that padding is the spacing; and lines run to box centres, so
+cards are opaque and drawn over them. Colours are in `styles.css` under
+`.topola-chart`, from the theme tokens.
 
 On the data side, `treeAround` (`packages/db/src/graph.ts`) walks one
 generation at a time via `parentsOf`/`childrenOf`, rather than a single
@@ -664,11 +686,11 @@ merges the result into local state rather than refetching the whole tree.
 "+ Add relative", "Load more" and the panel's remove ✕ each patch local state
 (`ExtraTreeData` and `RemovedEdges`, combined in `mergeTree`) instead of
 refetching `person.tree`, which would drop everything "Load more" pulled in and
-reshuffle the layout. After a removal, `keepConnected` drops anyone no longer
-connected to the root — otherwise `computeGenerations` has no row for them and
-they'd pile onto the root's. The ancestors/descendants toggle (`?view=` in the
-URL) is a pure filter over that merged tree (`filterByView`) — the panel keeps
-reading the whole tree, so a hidden spouse or child still shows there.
+lose the user's pan/zoom. After a removal, `keepConnected` drops anyone no
+longer connected to the root. Which part of the merged tree is drawn is up to
+the chart type (an ancestor chart simply doesn't walk down); the panel always
+reads the whole merged tree, so a spouse or child the chart leaves out still
+shows there.
 
 ### Long-running work: BullMQ + a shared Redis
 

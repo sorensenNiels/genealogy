@@ -20,7 +20,7 @@ What the genealogy app can do today (✅). Planned work (🚧) and undecided ide
 
 ## Tree & visualization
 
-- ✅ Tree view (`/tree`): ancestors and descendants around one person, expandable generation-by-generation, add a relative (parent, spouse, child or sibling) directly from the tree, a docked detail panel instead of navigating away. See "Tree view: React Flow + elkjs" in TECH_STACK.md for the layout design.
+- ✅ Tree view (`/tree`): ancestors and descendants around one person, expandable generation-by-generation, add a relative (parent, spouse, child or sibling) directly from the tree, a docked detail panel instead of navigating away. Drawn with topola: hourglass, relatives (siblings, aunts/uncles, cousins), ancestors or descendants charts, top-down or left to right, with pan/zoom; click a person for the panel, double-click to centre on them. See "Tree view: topola" in TECH_STACK.md.
 - ✅ Show both sides, ancestors only, or descendants only (a toggle on the canvas, kept in the URL).
 - ✅ Remove a parent, spouse or child relationship from the tree's side panel (confirm first; people and marriage records are kept).
 
