@@ -17,7 +17,7 @@ import {
 import { ProgressBar } from "@genealogy/ui/components/progress-bar";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { cn } from "@genealogy/ui/lib/utils";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CameraIcon, Network, Trash2Icon } from "lucide-react";
 import { useRef, useState } from "react";
@@ -26,9 +26,9 @@ import { useTranslation } from "react-i18next";
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { publicBackendUrl } from "../../lib/env";
 import { formatDisplayDate } from "../../lib/format-date";
+import { useImmichAvailable } from "../../lib/immich-status";
 import { usePermissions } from "../../lib/permissions";
 import { genderLabel, initials, relationshipToRootLabel } from "../../lib/person-display";
-import { isImmichConfigured } from "../../server/functions/immich.functions";
 import { removePerson } from "../../server/functions/person.functions";
 import { MergePersonDialog } from "./-merge-person-dialog";
 import { SetPhotoFromImmichDialog } from "./-set-photo-from-immich-dialog";
@@ -220,10 +220,7 @@ function PersonPhoto({
   // Immich is opt-in infrastructure — same "hidden entirely, not just empty"
   // treatment as `PersonPhotosCard`: no "Choose from Immich" menu item when
   // there's nothing to choose from.
-  const immichConfigured = useQuery({
-    queryKey: ["immich", "isConfigured"],
-    queryFn: () => isImmichConfigured(),
-  });
+  const immichAvailable = useImmichAvailable();
   const photoUrl = person.photoPath ? `${publicBackendUrl}/uploads/${person.photoPath}` : null;
   const dimensionClass = size === "lg" ? "size-24" : "size-16";
   const roundingClass = size === "lg" ? "rounded-xl" : "rounded-full";
@@ -279,7 +276,7 @@ function PersonPhoto({
           event.target.value = "";
         }}
       />
-      {immichConfigured.data ? (
+      {immichAvailable ? (
         <DropdownMenu>
           <Button
             variant="ghost"
@@ -326,7 +323,7 @@ function PersonPhoto({
       {photoUrl && (
         <RemoveButton itemLabel={t("person.photo.thisPhoto")} onConfirm={() => void remove()} />
       )}
-      {immichConfigured.data && (
+      {immichAvailable && (
         <SetPhotoFromImmichDialog
           personId={person.id}
           isOpen={immichPickerOpen}

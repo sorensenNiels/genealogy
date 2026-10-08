@@ -41,6 +41,7 @@ import { I18nextProvider, useTranslation } from "react-i18next";
 
 import { createI18nInstance, type SupportedLanguage } from "../i18n/create-i18n-instance";
 import { authClient, useSession } from "../lib/auth-client";
+import { useImmichAvailable } from "../lib/immich-status";
 import { roleOf, usePermissions } from "../lib/permissions";
 import {
   deleteAllNotifications,
@@ -244,9 +245,7 @@ function RootLayout() {
             <Link to="/tree" className={NAV_LINK_CLASS} activeProps={NAV_LINK_ACTIVE_PROPS}>
               {t("nav.tree")}
             </Link>
-            <Link to="/photos" className={NAV_LINK_CLASS} activeProps={NAV_LINK_ACTIVE_PROPS}>
-              {t("nav.photos")}
-            </Link>
+            <PhotosNavLink />
           </span>
           <span className="ml-auto flex items-center gap-3">
             <NotificationsBell />
@@ -401,6 +400,27 @@ function NotificationsBell() {
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/**
+ * Only shown while Immich is available — it's optional infrastructure on
+ * its own server, and every photo/album feature is turned off without it
+ * (see `useImmichStatus`). The status query is a signed-in-only procedure,
+ * so it isn't even asked until there's a session.
+ */
+function PhotosNavLink() {
+  const { data: session } = useSession();
+  return session ? <PhotosNavLinkWhenAvailable /> : null;
+}
+
+function PhotosNavLinkWhenAvailable() {
+  const { t } = useTranslation();
+  if (!useImmichAvailable()) return null;
+  return (
+    <Link to="/photos" className={NAV_LINK_CLASS} activeProps={NAV_LINK_ACTIVE_PROPS}>
+      {t("nav.photos")}
+    </Link>
   );
 }
 

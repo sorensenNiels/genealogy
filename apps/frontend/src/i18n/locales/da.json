@@ -228,9 +228,6 @@
     "photoCount_one": "{{count}} foto",
     "photoCount_other": "{{count}} fotos",
     "loading": "Indlæser…",
-    "notConfiguredPrefix": "Immich er ikke sat op endnu. Start det med",
-    "notConfiguredMiddle": ", opret en API-nøgle i dets eget webinterface, og sæt",
-    "notConfiguredSuffix": "i backendens miljøvariabler.",
     "filters": "Filtre",
     "reset": "Nulstil",
     "name": "Navn",
@@ -467,7 +464,9 @@
     "unreachable": "Ikke tilgængelig: {{message}}",
     "checkedAt": "{{status}} — kontrolleret kl. {{time}}",
     "peopleTitle": "Personer",
-    "peopleDescription": "Personer registreret i dette slægtstræ."
+    "peopleDescription": "Personer registreret i dette slægtstræ.",
+    "immichTitle": "Fotobibliotek",
+    "immichDescription": "Immich, på sin egen server. Fotos og albummer afhænger af den."
   },
   "notes": {
     "title": "Mine noter",
@@ -903,5 +902,17 @@
     "unusable": "Linket er udløbet, trukket tilbage eller ufuldstændigt. Bed den, der inviterede dig, om et nyt.",
     "acceptedTitle": "Allerede accepteret",
     "accepted": "Invitationen er allerede brugt til at oprette en konto."
+  },
+  "immich": {
+    "notConfigured": "Immich er ikke sat op. Opret en API-nøgle i Immichs eget webinterface, og sæt derefter IMMICH_URL og IMMICH_API_KEY i backendens miljøvariabler.",
+    "unavailable": "Immich-serveren kan ikke bruges lige nu.",
+    "reasonUnreachable": "Kan ikke nå Immich-serveren ({{detail}}).",
+    "reasonTimeout": "Immich-serveren svarede ikke i tide.",
+    "reasonUnauthorized": "Immich afviste API-nøglen — tjek IMMICH_API_KEY.",
+    "reasonError": "Immich svarede med en fejl ({{detail}}).",
+    "featuresOff": "Fotos og albummer er slået fra, indtil den er tilgængelig.",
+    "connected": "Forbundet — Immich {{version}}",
+    "checkedAt": "Tjekket kl. {{time}}",
+    "checkAgain": "Tjek igen"
   }
 }

@@ -12,7 +12,7 @@ import { FileDropZone } from "@genealogy/ui/components/file-drop-zone";
 import { Input } from "@genealogy/ui/components/input";
 import { SectionCard } from "@genealogy/ui/components/section-card";
 import { cn } from "@genealogy/ui/lib/utils";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect, useSearch } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import {
@@ -26,17 +26,14 @@ import {
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useImmichAvailable } from "../lib/immich-status";
 import { createBackup } from "../server/functions/backup.functions";
 import {
   exportGedcom,
   importGedcom,
   previewGedcomImport,
 } from "../server/functions/gedcom.functions";
-import {
-  enqueueAllAlbumsZip,
-  isImmichConfigured,
-  rescanImmichFaces,
-} from "../server/functions/immich.functions";
+import { enqueueAllAlbumsZip, rescanImmichFaces } from "../server/functions/immich.functions";
 import { checkDataIntegrity, checkGraphConsistency } from "../server/functions/integrity.functions";
 
 const TOOLS = [
@@ -81,12 +78,9 @@ function ToolsRoute() {
   const { tool = TOOLS[0] } = useSearch({ from: "/tools" });
   // Immich is opt-in infrastructure — same "hidden entirely, not just empty"
   // treatment as `PersonPhotosCard`: no reason to offer a face-rescan tool
-  // for infrastructure that isn't configured.
-  const immichConfigured = useQuery({
-    queryKey: ["immich", "isConfigured"],
-    queryFn: () => isImmichConfigured(),
-  });
-  const visibleTools = TOOLS.filter((option) => option !== "immich-faces" || immichConfigured.data);
+  // for infrastructure that isn't available.
+  const immichAvailable = useImmichAvailable();
+  const visibleTools = TOOLS.filter((option) => option !== "immich-faces" || immichAvailable);
 
   return (
     <div className="space-y-6">
@@ -111,7 +105,7 @@ function ToolsRoute() {
         </SectionCard>
         {tool === "backup" && <BackupPanel />}
         {tool === "restore" && <RestorePanel />}
-        {tool === "immich-faces" && immichConfigured.data && <FaceRescanPanel />}
+        {tool === "immich-faces" && immichAvailable && <FaceRescanPanel />}
         {tool === "gedcom-export" && <GedcomExportPanel />}
         {tool === "gedcom-import" && <GedcomImportPanel />}
         {tool === "data-integrity" && <DataIntegrityPanel />}
@@ -129,13 +123,9 @@ function BackupPanel() {
   // user their file is ready.
   const createBackupMutation = useMutation({ mutationFn: createBackup });
   const albumZipMutation = useMutation({ mutationFn: enqueueAllAlbumsZip });
-  // Same query key `ToolsRoute` already fetches, so this reuses that cache
-  // rather than firing a second request — Immich is opt-in infrastructure,
-  // so the photo-backup button only makes sense to offer when it's there.
-  const immichConfigured = useQuery({
-    queryKey: ["immich", "isConfigured"],
-    queryFn: () => isImmichConfigured(),
-  });
+  // Shares `ToolsRoute`'s cached status query — Immich is optional
+  // infrastructure, so the photo-backup button only makes sense when it's up.
+  const immichAvailable = useImmichAvailable();
 
   return (
     <SectionCard title={toolLabels(t).backup}>
@@ -153,7 +143,7 @@ function BackupPanel() {
         )}
       </div>
 
-      {immichConfigured.data && (
+      {immichAvailable && (
         <div className="mt-6 border-t pt-6">
           <p className="text-sm text-muted-foreground">{t("tools.albumZipDescription")}</p>
           <div className="mt-4">

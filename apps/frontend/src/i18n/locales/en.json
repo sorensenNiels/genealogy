@@ -228,9 +228,6 @@
     "photoCount_one": "{{count}} photo",
     "photoCount_other": "{{count}} photos",
     "loading": "Loading…",
-    "notConfiguredPrefix": "Immich isn't set up yet. Start it with",
-    "notConfiguredMiddle": ", create an API key in its own web UI, and set",
-    "notConfiguredSuffix": "in the backend's environment.",
     "filters": "Filters",
     "reset": "Reset",
     "name": "Name",
@@ -467,7 +464,9 @@
     "unreachable": "Unreachable: {{message}}",
     "checkedAt": "{{status}} — checked at {{time}}",
     "peopleTitle": "People",
-    "peopleDescription": "Individuals recorded in this tree."
+    "peopleDescription": "Individuals recorded in this tree.",
+    "immichTitle": "Photo library",
+    "immichDescription": "Immich, on its own server. Photos and albums depend on it."
   },
   "notes": {
     "title": "My Notes",
@@ -903,5 +902,17 @@
     "unusable": "The link has expired, been withdrawn, or isn't complete. Ask the person who invited you for a new one.",
     "acceptedTitle": "Already accepted",
     "accepted": "This invitation has already been used to create an account."
+  },
+  "immich": {
+    "notConfigured": "Immich isn't set up. Create an API key in Immich's own web UI, then set IMMICH_URL and IMMICH_API_KEY in the backend's environment.",
+    "unavailable": "The Immich server can't be used right now.",
+    "reasonUnreachable": "Can't reach the Immich server ({{detail}}).",
+    "reasonTimeout": "The Immich server didn't answer in time.",
+    "reasonUnauthorized": "Immich rejected the API key — check IMMICH_API_KEY.",
+    "reasonError": "Immich answered with an error ({{detail}}).",
+    "featuresOff": "Photos and albums are turned off until it's available.",
+    "connected": "Connected — Immich {{version}}",
+    "checkedAt": "Checked at {{time}}",
+    "checkAgain": "Check again"
   }
 }

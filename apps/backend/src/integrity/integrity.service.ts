@@ -42,7 +42,7 @@ export interface DanglingImmichLink {
 export interface DataIntegrityReport {
   danglingCitations: DanglingCitation[];
   possibleDuplicates: DuplicatePersonGroup[];
-  /** Omitted entirely (not just empty) when Immich isn't configured — there's nothing to check. */
+  /** Null (not just empty) when Immich isn't available — nothing to check against. */
   danglingImmichLinks: DanglingImmichLink[] | null;
 }
 
@@ -70,7 +70,11 @@ export class IntegrityService {
     const [danglingCitations, possibleDuplicates, danglingImmichLinks] = await Promise.all([
       this.findDanglingCitations(),
       this.findPossibleDuplicates(),
-      this.immich.isConfigured() ? this.immich.listDanglingLinks() : Promise.resolve(null),
+      // `isAvailable`, not `isConfigured`: with Immich down, every lookup
+      // would throw and take the whole report with it.
+      this.immich
+        .isAvailable()
+        .then((available) => (available ? this.immich.listDanglingLinks() : null)),
     ]);
     return { danglingCitations, possibleDuplicates, danglingImmichLinks };
   }

@@ -28,6 +28,7 @@ import { AddAssetsDialog } from "./-add-assets-dialog";
 import { AlbumCover } from "./-album-cover";
 import { albumActionsForKind } from "./-album-kind";
 import { AssetViewer } from "./-asset-viewer";
+import { RequireImmich } from "./-immich-unavailable";
 import { UploadDialog } from "./-upload-dialog";
 
 export const Route = createFileRoute("/photos/$albumId")({
@@ -35,6 +36,14 @@ export const Route = createFileRoute("/photos/$albumId")({
 });
 
 function AlbumRoute() {
+  return (
+    <RequireImmich>
+      <AlbumPage />
+    </RequireImmich>
+  );
+}
+
+function AlbumPage() {
   const { t, i18n } = useTranslation();
   const language = toSupportedLanguage(i18n.language);
   const { albumId } = Route.useParams();

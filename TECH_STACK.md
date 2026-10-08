@@ -732,10 +732,22 @@ another). Built against Immich v3.2.2; v3.2.4 verified compatible.
 The proxy architecture extends to Immich unchanged in shape.
 `apps/backend/src/immich/immich.service.ts` is the only thing holding
 `IMMICH_API_KEY`; `IMMICH_URL`/`IMMICH_API_KEY` are optional config
-(`apps/backend/src/config/env.ts`), so the app boots without Immich and every
-route and card checks `isImmichConfigured` first — hiding itself
-(`PersonPhotosCard`) or showing a setup message (`/photos`'s `NotConfigured`),
-never a broken request. tRPC (`immich.router.ts`) carries JSON; binary
+(`apps/backend/src/config/env.ts`), so the app boots without Immich.
+
+Configured isn't the same as usable, since Immich lives on another server
+that can be down. `ImmichService.status()` probes it — `/server/version`
+(answers at all?) then `/users/me` (key accepted? only a 401 counts as no; a
+403 is a valid key without `user.read`) — with a 3 s timeout, and caches the
+result for 30 s so a down server costs one timeout per 30 s, not one per page.
+Every photo and album feature in the UI gates on that one `["immich",
+"status"]` query via `useImmichStatus`/`useImmichAvailable`
+(`apps/frontend/src/lib/immich-status.ts`): the Photos nav link, the person
+page's Photos card and "Choose from Immich", the Tools page's face rescan and
+album zip, and the data-integrity dangling-link check (which would otherwise
+fail the whole report). A typed-in `/photos` URL gets `RequireImmich`'s
+explanation instead of a broken page. The Overview page shows the status with
+a "Check again" that bypasses the cache. Uploaded profile photos aren't
+Immich-backed and stay on regardless. tRPC (`immich.router.ts`) carries JSON; binary
 thumbnails, previews, originals, uploads and zip downloads go through a REST
 controller (`immich-asset.controller.ts`, manual session check), mirrored on
 the frontend by raw proxy API routes (`routes/api/immich/**`) that forward bytes

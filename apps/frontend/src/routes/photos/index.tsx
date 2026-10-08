@@ -28,16 +28,16 @@ import { useViewMode } from "@genealogy/ui/hooks/use-view-mode";
 import { ReadOnlyProvider } from "@genealogy/ui/lib/read-only";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ImageIcon, LayoutGridIcon, ListIcon, BookOpenIcon } from "lucide-react";
+import { LayoutGridIcon, ListIcon, BookOpenIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { formatDisplayDate, historicalDatePreview } from "../../lib/format-date";
+import { useImmichAvailable } from "../../lib/immich-status";
 import { usePermissions } from "../../lib/permissions";
 import {
   getSourceAlbumsForAssets,
-  isImmichConfigured,
   listAlbumAssets,
   listImmichAlbums,
 } from "../../server/functions/immich.functions";
@@ -49,6 +49,7 @@ import {
 } from "./-album-categories";
 import { AlbumCover } from "./-album-cover";
 import { EditAlbumDialog, type AlbumWithMetadata } from "./-edit-album-dialog";
+import { RequireImmich } from "./-immich-unavailable";
 import { NewAlbumDialog } from "./-new-album-dialog";
 
 type AlbumSort = "name" | "date" | "assetCount";
@@ -62,16 +63,13 @@ export const Route = createFileRoute("/photos/")({
 
 function PhotosPage() {
   const { t } = useTranslation();
-  const configured = useQuery({
-    queryKey: ["immich", "isConfigured"],
-    queryFn: () => isImmichConfigured(),
-  });
+  const immichAvailable = useImmichAvailable();
   // Unfiltered, separate from AlbumsSection's own (possibly filtered) query —
   // this is a library-wide stat for the subtitle, not a live filtered count.
   const albums = useQuery({
     queryKey: ["immich", "listAlbums", {}],
     queryFn: () => listImmichAlbums({ data: {} }),
-    enabled: configured.data === true,
+    enabled: immichAvailable,
   });
   const albumCount = albums.data?.length;
   const photoCount = albums.data?.reduce((total, album) => total + album.assetCount, 0);
@@ -80,37 +78,18 @@ function PhotosPage() {
     <div className="space-y-8">
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold">{t("photosPage.title")}</h1>
-        <p className="text-sm text-muted-foreground">
-          {albumCount !== undefined && photoCount !== undefined
-            ? `${t("photosPage.albumCount", { count: albumCount })}, ${t("photosPage.photoCount", { count: photoCount })}`
-            : t("photosPage.loading")}
-        </p>
+        {immichAvailable && (
+          <p className="text-sm text-muted-foreground">
+            {albumCount !== undefined && photoCount !== undefined
+              ? `${t("photosPage.albumCount", { count: albumCount })}, ${t("photosPage.photoCount", { count: photoCount })}`
+              : t("photosPage.loading")}
+          </p>
+        )}
       </div>
 
-      {configured.isPending ? (
-        <p className="text-sm text-muted-foreground">{t("photosPage.loading")}</p>
-      ) : configured.data ? (
+      <RequireImmich>
         <AlbumsSection />
-      ) : (
-        <NotConfigured />
-      )}
-    </div>
-  );
-}
-
-function NotConfigured() {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-center">
-      <ImageIcon className="size-8 text-muted-foreground" aria-hidden="true" />
-      <p className="max-w-sm text-sm text-muted-foreground">
-        {t("photosPage.notConfiguredPrefix")}{" "}
-        <code className="rounded bg-muted px-1 py-0.5 text-xs">docker compose up -d</code>
-        {t("photosPage.notConfiguredMiddle")}{" "}
-        <code className="rounded bg-muted px-1 py-0.5 text-xs">IMMICH_URL</code>/
-        <code className="rounded bg-muted px-1 py-0.5 text-xs">IMMICH_API_KEY</code>{" "}
-        {t("photosPage.notConfiguredSuffix")}
-      </p>
+      </RequireImmich>
     </div>
   );
 }

@@ -44,7 +44,9 @@ export class ImmichRouter {
   /** Built by a method rather than a field initializer — same reason as every other router in this app. */
   build() {
     return router({
-      isConfigured: protectedProcedure.query(() => this.immich.isConfigured()),
+      status: protectedProcedure
+        .input(z.object({ refresh: z.boolean().default(false) }).optional())
+        .query(({ input }) => this.immich.status(input?.refresh)),
 
       listPeople: protectedProcedure
         .input(listPeopleInput)

@@ -152,6 +152,26 @@ function resolveDate(date: HistoricalDate | null | undefined): HistoricalDate | 
   return { ...date, ...parseHistoricalDate(date.original) };
 }
 
+/** How long a `status()` probe result is reused — see that method. */
+const STATUS_TTL_MS = 30_000;
+/** Covers both probe calls together; a LAN Immich answers in milliseconds. */
+const STATUS_TIMEOUT_MS = 3_000;
+
+/** Result of `ImmichService.status` — whether the photo/album features can run. */
+export interface ImmichStatus {
+  /** `IMMICH_URL` and `IMMICH_API_KEY` are both set. */
+  configured: boolean;
+  /** Configured, answering, and accepting the API key. */
+  available: boolean;
+  /** Immich's own version (e.g. "v1.135.3") whenever it answered at all. */
+  version: string | null;
+  /** Why it isn't available; null when it is, or when it isn't configured. A code, not prose, so the frontend can translate it. */
+  reason: "unreachable" | "timeout" | "unauthorized" | "error" | null;
+  /** Technical detail for `reason` (an error code or HTTP status), untranslated. */
+  detail: string | null;
+  checkedAt: Date;
+}
+
 export interface ImmichBinary {
   buffer: Buffer;
   contentType: string;
@@ -221,10 +241,104 @@ export class ImmichService {
     private readonly notifications: NotificationService,
   ) {}
 
+  /** Last probe, shared by every caller within `STATUS_TTL_MS` — see `status`. */
+  private statusCache: { at: number; promise: Promise<ImmichStatus> } | null = null;
+
   isConfigured(): boolean {
     return Boolean(
       this.config.get<string>("IMMICH_URL") && this.config.get<string>("IMMICH_API_KEY"),
     );
+  }
+
+  /**
+   * Whether Immich is actually usable right now, not just configured —
+   * Immich runs on its own server (see DEVELOPMENT_ENVIRONMENT.md), so
+   * env vars being set says nothing about whether it's up. Every photo and
+   * album feature in the UI is gated on `available`.
+   *
+   * Cached for `STATUS_TTL_MS`: the UI asks on nearly every page (nav link,
+   * person page, Tools), and a down Immich would otherwise cost a full
+   * timeout per ask. The in-flight promise is what's cached, so concurrent
+   * callers share one probe. `refresh` skips the cache (Overview's "Check
+   * again").
+   */
+  status(refresh = false): Promise<ImmichStatus> {
+    const now = Date.now();
+    if (!refresh && this.statusCache && now - this.statusCache.at < STATUS_TTL_MS) {
+      return this.statusCache.promise;
+    }
+    const promise = this.probe();
+    this.statusCache = { at: now, promise };
+    return promise;
+  }
+
+  async isAvailable(): Promise<boolean> {
+    return (await this.status()).available;
+  }
+
+  /**
+   * Two calls: `/server/version` (unauthenticated) proves Immich answers and
+   * gives its version; `/users/me` proves the key is accepted. Only a 401
+   * there counts as a bad key — a 403 means the key is valid but was
+   * created without `user.read`, which nothing else in this app needs.
+   * Never throws; every failure becomes a `reason`.
+   */
+  private async probe(): Promise<ImmichStatus> {
+    const checkedAt = new Date();
+    const url = this.config.get<string>("IMMICH_URL");
+    const apiKey = this.config.get<string>("IMMICH_API_KEY");
+    const result = (fields: Partial<ImmichStatus>): ImmichStatus => ({
+      configured: true,
+      available: false,
+      version: null,
+      reason: null,
+      detail: null,
+      checkedAt,
+      ...fields,
+    });
+    if (!url || !apiKey) return result({ configured: false });
+
+    try {
+      const signal = AbortSignal.timeout(STATUS_TIMEOUT_MS);
+      const versionResponse = await fetch(`${url}/api/server/version`, {
+        signal,
+        headers: { accept: "application/json" },
+      });
+      if (!versionResponse.ok) {
+        return result({
+          reason: "error",
+          detail: `${versionResponse.status} ${versionResponse.statusText}`,
+        });
+      }
+      const v = (await versionResponse.json()) as { major: number; minor: number; patch: number };
+      const version = `v${v.major}.${v.minor}.${v.patch}`;
+
+      const meResponse = await fetch(`${url}/api/users/me`, {
+        signal,
+        headers: { accept: "application/json", "x-api-key": apiKey },
+      });
+      if (meResponse.status === 401) return result({ version, reason: "unauthorized" });
+      if (!meResponse.ok && meResponse.status !== 403) {
+        return result({
+          version,
+          reason: "error",
+          detail: `${meResponse.status} ${meResponse.statusText}`,
+        });
+      }
+      return result({ available: true, version });
+    } catch (error) {
+      if (error instanceof Error && error.name === "TimeoutError") {
+        return result({ reason: "timeout" });
+      }
+      // Node's fetch throws a bare "fetch failed" TypeError; the useful part
+      // (ECONNREFUSED, ENOTFOUND, ...) is on `cause`. IMMICH_URL itself is
+      // deliberately left out of `detail` — it's server-side config that
+      // never goes to the browser (see env.ts).
+      const cause = error instanceof Error ? (error.cause as { code?: string } | undefined) : null;
+      const detail = cause?.code ?? (error instanceof Error ? error.message : String(error));
+      this.logger.warn(`Immich unreachable: ${detail}`);
+      return result({ reason: "unreachable", detail });
+    }
   }
 
   private requireConfig(): { url: string; apiKey: string } {

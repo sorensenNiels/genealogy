@@ -7,9 +7,9 @@ import { XIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useImmichAvailable } from "../../lib/immich-status";
 import { usePermissions } from "../../lib/permissions";
 import {
-  isImmichConfigured,
   linkImmichPerson,
   listLinkedImmichPeople,
   listPersonPhotos,
@@ -25,15 +25,11 @@ import { ImmichPersonPicker } from "./-immich-person-picker";
  * section of that page living there: that file is already large, and this
  * one is fully self-contained (its own data, its own dialog). The leading
  * `-` keeps TanStack Start's file-based router from treating it as a route.
- * Hidden entirely, not just empty, when Immich isn't configured — no reason
+ * Hidden entirely, not just empty, when Immich isn't available — no reason
  * to show a "Photos" card that can only ever say "not set up".
  */
 export function PersonPhotosCard({ personId }: { personId: string }) {
-  const configured = useQuery({
-    queryKey: ["immich", "isConfigured"],
-    queryFn: () => isImmichConfigured(),
-  });
-  if (!configured.data) return null;
+  if (!useImmichAvailable()) return null;
   return <PersonPhotosCardContent personId={personId} />;
 }
 

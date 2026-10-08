@@ -22,9 +22,9 @@ import { z } from "zod";
 
 import { trpcProxy } from "../trpc-proxy-client";
 
-export const isImmichConfigured = createServerFn({ method: "GET" }).handler(() =>
-  trpcProxy.immich.isConfigured.query(),
-);
+export const getImmichStatus = createServerFn({ method: "GET" })
+  .validator(z.object({ refresh: z.boolean() }).optional())
+  .handler(({ data }) => trpcProxy.immich.status.query(data));
 
 const listPeopleInput = z.object({
   page: z.number().int().min(1).default(1),

@@ -26,7 +26,8 @@ What the genealogy app can do today (✅). Planned work (🚧) and undecided ide
 
 ## Photos
 
-- ✅ Family photo library via [Immich](https://immich.app) (self-hosted alongside this app): albums, upload, add-existing-photos, a queued "download all" (zipped, notified when ready — see below), face detection/clustering linked to genealogy people, tag/unlink a face from the photo viewer, a person's own Photos card. See "Photos & albums: Immich" in TECH_STACK.md.
+- ✅ Family photo library via [Immich](https://immich.app) (self-hosted on its own server): albums, upload, add-existing-photos, a queued "download all" (zipped, notified when ready — see below), face detection/clustering linked to genealogy people, tag/unlink a face from the photo viewer, a person's own Photos card. See "Photos & albums: Immich" in TECH_STACK.md.
+- ✅ Immich is optional: when it isn't configured or can't be reached, every photo and album feature is turned off (no Photos menu item, no Photos card), and the Overview page shows Immich's status and why it's off.
 - ✅ Set a person's profile photo from an existing Immich photo, with a circular crop.
 - ✅ Local album metadata (date, place) plus a filters panel (name/kind/place/date range/missing-info) and sort, for cutting through a large album collection.
 - ✅ Physical albums (a real scanned album: grows by upload, with a cover color/style, where-found and scan notes) and virtual albums (curated collections of photos that already live in a physical album, showing their source).
