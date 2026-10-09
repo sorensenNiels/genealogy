@@ -77,6 +77,11 @@
   stroke-width: 7px;
   filter: drop-shadow(0 0 0.5px rgb(255 255 255 / 0.7));
 }
+/* While exporting (lib/tree-export.ts reads computed styles), transitions
+   are off so a class taken off for the export shows at once. */
+.topola-chart.is-exporting * {
+  transition: none !important;
+}
 /* The "+" on a card's edge that loads parents/children. */
 .topola-chart .card-expand {
   cursor: pointer;

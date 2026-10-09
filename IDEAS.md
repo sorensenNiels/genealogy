@@ -170,28 +170,9 @@ _Seeing patterns_
   those `g.indi` and to the `path.link` elements between them (topola's link
   ids are `parentNodeId:childNodeId`).
 
-_Doing things from the tree_
-
-- 💡 🆕 **Right-click menu on a card.** Add parent / child / spouse, open
-  profile, centre here — faster than the side panel when building a tree.
-  React Aria `Menu` in a popover at the pointer; reuse `AddRelativeButton`'s
-  link/create logic (lift it out of the button). Editors only
-  (`usePermissions().canEdit`); Viewers get just "open" and "centre".
-- 💡 🆕 **Export the current view.** Download the visible chart as SVG, PNG or
-  PDF. The chart is already SVG: serialize the inner svg with the
-  `.topola-chart` CSS inlined (cards are styled by class and theme tokens,
-  which won't exist in the exported file — resolve them with
-  `getComputedStyle`) and photos embedded as data URLs. PNG via a canvas. A
-  first step towards "Printable chart exports" above.
-- 💡 🆕 **Remember where I was.** Reopen the tree on the last person, chart,
-  direction and zoom, per member. Person/chart/direction could go on
-  `user_profiles` (or just `localStorage`, since it's per browser anyway);
-  the tree route's `beforeLoad` already redirects to the member's own person
-  when no `personId` is given — prefer the last-viewed one there.
-
 _Suggested order_ (from the October 2026 review): the "getting around a big
-tree" ideas (smooth re-centring, find, minimap, expand from the card,
-keyboard navigation) shipped first — see FEATURES.md. Research badges next.
+tree" and "doing things from the tree" ideas have shipped — see FEATURES.md.
+Research badges next.
 
 ## Photos
 

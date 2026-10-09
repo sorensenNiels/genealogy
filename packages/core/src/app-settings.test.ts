@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { defaultTreeSettings, parseTreeSettings, treeSettingsSchema } from "./app-settings.js";
+import {
+  defaultTreeSettings,
+  lastTreeViewSchema,
+  parseTreeSettings,
+  treeSettingsSchema,
+} from "./app-settings.js";
 
 describe("treeSettingsSchema", () => {
   it("fills every field from its default, so a never-saved section is complete", () => {
@@ -32,5 +37,26 @@ describe("parseTreeSettings", () => {
   it("reads anything that isn't an object as all defaults", () => {
     expect(parseTreeSettings(null)).toEqual(defaultTreeSettings);
     expect(parseTreeSettings("nonsense")).toEqual(defaultTreeSettings);
+  });
+});
+
+describe("lastTreeViewSchema", () => {
+  const personId = "8a1d0b5e-3f6c-4c8e-9b2a-1f0e7d6c5b4a";
+
+  it("accepts a stored last view", () => {
+    expect(
+      lastTreeViewSchema.safeParse({ personId, view: "relatives", orientation: "horizontal" })
+        .success,
+    ).toBe(true);
+  });
+
+  it("rejects a removed chart or a never-saved row, so nothing is remembered", () => {
+    expect(
+      lastTreeViewSchema.safeParse({ personId, view: "hourglass", orientation: "vertical" })
+        .success,
+    ).toBe(false);
+    expect(
+      lastTreeViewSchema.safeParse({ personId: null, view: null, orientation: null }).success,
+    ).toBe(false);
   });
 });

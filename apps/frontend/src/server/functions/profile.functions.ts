@@ -1,4 +1,4 @@
-import { updateProfileSchema } from "@genealogy/core";
+import { lastTreeViewSchema, updateProfileSchema } from "@genealogy/core";
 import { createServerFn } from "@tanstack/react-start";
 import { setCookie } from "@tanstack/react-start/server";
 
@@ -27,6 +27,14 @@ export const getMyLanguage = createServerFn({ method: "GET" }).handler(async () 
   setCookie(LANGUAGE_COOKIE, language, { path: "/", maxAge: 60 * 60 * 24 * 365 });
   return language;
 });
+
+export const getLastTreeView = createServerFn({ method: "GET" }).handler(() =>
+  trpcProxy.profile.lastTreeView.query(),
+);
+
+export const saveLastTreeView = createServerFn({ method: "POST" })
+  .validator(lastTreeViewSchema)
+  .handler(({ data }) => trpcProxy.profile.saveLastTreeView.mutate(data));
 
 export const updateProfile = createServerFn({ method: "POST" })
   .validator(updateProfileSchema)

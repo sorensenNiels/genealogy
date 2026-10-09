@@ -274,6 +274,13 @@
       "when": 1791489756121,
       "tag": "0038_app_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791519501319,
+      "tag": "0039_last_tree_view",
+      "breakpoints": true
     }
   ]
 }

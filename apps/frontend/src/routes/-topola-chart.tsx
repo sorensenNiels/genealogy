@@ -14,6 +14,7 @@ import {
 import { useTranslation } from "react-i18next";
 import type { ChartHandle, JsonGedcomData } from "topola";
 
+import { exportTree, type TreeExportFormat } from "../lib/tree-export";
 import { ARROW_DIRECTIONS, nearestCard } from "../lib/tree-navigation";
 import {
   CARD_HEIGHT,
@@ -36,6 +37,14 @@ export type ChartKind = TreeChartKind;
 export interface TreeChartApi {
   /** Pans (zooming in if far out) to a person's card and returns true; false when they aren't drawn in this chart. */
   focusPerson: (id: string) => boolean;
+  /** The whole chart as a file — see `lib/tree-export.ts`. Rejects if the chart isn't drawn yet. */
+  exportChart: (format: TreeExportFormat) => Promise<Blob>;
+}
+
+/** A point inside the chart's own box, in CSS pixels from its top-left corner. */
+export interface ChartPoint {
+  x: number;
+  y: number;
 }
 
 const MIN_SCALE = 0.1;
@@ -119,6 +128,7 @@ export function TopolaChart({
   onSelect,
   onCenter,
   onExpand,
+  onContextMenu,
 }: {
   data: JsonGedcomData;
   /** What each person's card shows, by id. */
@@ -135,12 +145,15 @@ export function TopolaChart({
   onSelect: (id: string) => void;
   onCenter: (id: string) => void;
   onExpand: (id: string, direction: ExpandDirection) => void;
+  /** Open the card menu for a person, at this point in the chart (right-click, or the menu key on the selected card). */
+  onContextMenu: (id: string, point: ChartPoint) => void;
 }) {
   const { t, i18n } = useTranslation();
   // useId's ":r1:" form isn't a valid CSS id selector, which topola needs.
   const svgId = `topola-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const helpId = `${svgId}-help`;
   const outerRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<ChartHandle | null>(null);
   const controlsRef = useRef<ChartControls | null>(null);
   // What the card renderer draws from. Updated just before each render (in
@@ -156,9 +169,32 @@ export function TopolaChart({
   const [announcement, setAnnouncement] = useState("");
 
   // Latest values for callbacks topola and d3 hold on to across renders.
-  const latest = useRef({ rootId, selectedId, expanding, data, onSelect, onCenter, onExpand, t });
+  const remember = settings.rememberLastView;
+  const latest = useRef({
+    rootId,
+    selectedId,
+    expanding,
+    data,
+    remember,
+    onSelect,
+    onCenter,
+    onExpand,
+    onContextMenu,
+    t,
+  });
   useEffect(() => {
-    latest.current = { rootId, selectedId, expanding, data, onSelect, onCenter, onExpand, t };
+    latest.current = {
+      rootId,
+      selectedId,
+      expanding,
+      data,
+      remember,
+      onSelect,
+      onCenter,
+      onExpand,
+      onContextMenu,
+      t,
+    };
   });
 
   useEffect(() => {
@@ -199,6 +235,10 @@ export function TopolaChart({
               latest.current.t(direction === "up" ? "tree.loadParentsOf" : "tree.loadChildrenOf", {
                 name: drawInputs.current.cards.get(id)?.name ?? "",
               }),
+            onContextMenu: (id, clientX, clientY) => {
+              const box = outer.getBoundingClientRect();
+              latest.current.onContextMenu(id, { x: clientX - box.left, y: clientY - box.top });
+            },
             onPositions: (positions) => {
               lastPositions = positions;
             },
@@ -222,7 +262,10 @@ export function TopolaChart({
             cancelAnimationFrame(viewFrame);
             const { x, y, k } = event.transform;
             viewFrame = requestAnimationFrame(() => setView({ x, y, k }));
-          });
+          })
+          // Remember where the view was left, relative to the centre card —
+          // see `saveZoom`.
+          .on("end", (event) => saveZoom(event.transform));
         // Double-click centres the tree on a person (below), so it mustn't
         // also zoom.
         outerSelection.call(zoomBehavior).on("dblclick.zoom", null);
@@ -264,6 +307,25 @@ export function TopolaChart({
             (options.animate ?? true) && animate,
           );
         };
+
+        /**
+         * The zoom is remembered per browser (localStorage), not on the
+         * profile: it depends on the screen size. It's stored relative to
+         * the centre card rather than as the raw transform, which would point
+         * somewhere else entirely once more people are loaded and the layout
+         * shifts.
+         */
+        function saveZoom(transform: { x: number; y: number; k: number }) {
+          if (!latest.current.remember) return;
+          const root = chartLayout.positions.get(latest.current.rootId);
+          if (!root) return;
+          const { width, height } = outer!.getBoundingClientRect();
+          writeZoom(zoomKey(latest.current.rootId, chartKind, horizontal), {
+            k: transform.k,
+            dx: root.x * transform.k + transform.x - width / 2,
+            dy: root.y * transform.k + transform.y - height / 2,
+          });
+        }
 
         // One listener on the inner svg rather than one per box: topola
         // recreates boxes on every render.
@@ -323,7 +385,22 @@ export function TopolaChart({
         render();
         drawnRoot.current = latest.current.rootId;
         const rootPosition = chartLayout.positions.get(latest.current.rootId);
-        if (settings.initialZoom === "person" && rootPosition) {
+        const remembered = latest.current.remember
+          ? readZoom(zoomKey(latest.current.rootId, chartKind, horizontal))
+          : null;
+        if (remembered && rootPosition) {
+          // Put the centre card back where it was on screen, at the same zoom.
+          const { width, height } = outer.getBoundingClientRect();
+          setTransform(
+            zoomIdentity
+              .translate(
+                width / 2 + remembered.dx - rootPosition.x * remembered.k,
+                height / 2 + remembered.dy - rootPosition.y * remembered.k,
+              )
+              .scale(remembered.k),
+            false,
+          );
+        } else if (settings.initialZoom === "person" && rootPosition) {
           centerAt(rootPosition, { scale: 1, animate: false });
         } else {
           fit();
@@ -396,6 +473,29 @@ export function TopolaChart({
         controlsRef.current.centerAt(position, { scale: Math.max(view.k, FOCUS_SCALE) });
         return true;
       },
+      exportChart: (format) => {
+        const container = containerRef.current;
+        const chart = document.querySelector<SVGSVGElement>(`#${svgId}`);
+        const defs = outerRef.current?.querySelector("defs");
+        const [width, height] = layout.size;
+        if (!container || !chart || !defs || width === 0) {
+          return Promise.reject(new Error(t("tree.export.notReady")));
+        }
+        // The export shouldn't carry the on-screen selection outline. Styles
+        // are read synchronously at the start of `exportTree`, so the class
+        // is only off for that instant; `is-exporting` turns CSS transitions
+        // off so the change is visible to the read at once.
+        const selected = [...chart.querySelectorAll("g.indi.is-selected")];
+        container.classList.add("is-exporting");
+        for (const card of selected) card.classList.remove("is-selected");
+        const file = exportTree(
+          { chart, defs, width, height, background: getComputedStyle(container).backgroundColor },
+          format,
+        );
+        for (const card of selected) card.classList.add("is-selected");
+        container.classList.remove("is-exporting");
+        return file;
+      },
     };
   });
 
@@ -425,6 +525,16 @@ export function TopolaChart({
       controls.zoomBy(0.8);
     } else if (key === "0") {
       controls.fit();
+    } else if (key === "ContextMenu" || (key === "F10" && event.shiftKey)) {
+      // The keyboard way to the card menu, at the selected card.
+      event.preventDefault();
+      const position = layout.positions.get(selectedId);
+      if (position) {
+        onContextMenu(selectedId, {
+          x: position.x * view.k + view.x,
+          y: (position.y + CARD_HEIGHT / 2) * view.k + view.y,
+        });
+      }
     } else if (key === "Home") {
       event.preventDefault();
       onSelect(rootId);
@@ -450,6 +560,7 @@ export function TopolaChart({
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       className="topola-chart relative h-full w-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+      ref={containerRef}
       role="application"
       aria-label={t("tree.chartLabel")}
       aria-describedby={helpId}
@@ -628,4 +739,40 @@ function Minimap({
       </svg>
     </div>
   );
+}
+
+interface RememberedZoom {
+  k: number;
+  /** Where the centre card was, relative to the canvas centre, in screen pixels. */
+  dx: number;
+  dy: number;
+}
+
+function zoomKey(rootId: string, chartKind: ChartKind, horizontal: boolean): string {
+  return `tree-zoom:${rootId}:${chartKind}:${horizontal ? "h" : "v"}`;
+}
+
+/** localStorage can be unavailable (private mode, blocked storage) — then nothing is remembered. */
+function readZoom(key: string): RememberedZoom | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) ?? "null") as Partial<RememberedZoom> | null;
+    if (
+      typeof value?.k === "number" &&
+      typeof value.dx === "number" &&
+      typeof value.dy === "number"
+    ) {
+      return { k: Math.min(MAX_SCALE, Math.max(MIN_SCALE, value.k)), dx: value.dx, dy: value.dy };
+    }
+  } catch {
+    // Unreadable or unavailable: start from the default zoom instead.
+  }
+  return null;
+}
+
+function writeZoom(key: string, zoom: RememberedZoom) {
+  try {
+    localStorage.setItem(key, JSON.stringify(zoom));
+  } catch {
+    // Storage full or blocked: not remembering is fine.
+  }
 }

@@ -309,7 +309,18 @@
     "loadChildrenOf": "Indlæs {{name}}s børn",
     "chartLabel": "Slægtstræ",
     "keyboardHelp": "Piletasterne flytter mellem personer, Enter centrerer træet om den valgte person, Home går tilbage til centerpersonen, plus og minus zoomer, 0 viser hele træet.",
-    "findInTree": "Find i træet…"
+    "findInTree": "Find i træet…",
+    "export": {
+      "label": "Eksportér",
+      "png": "Billede (PNG)",
+      "pdf": "PDF",
+      "svg": "Vektorbillede (SVG)",
+      "failed": "Kunne ikke eksportere: {{message}}",
+      "notReady": "Træet er ikke tegnet endnu"
+    },
+    "cardMenu": {
+      "label": "Menu for {{name}}"
+    }
   },
   "tools": {
     "title": "Værktøjer",
@@ -495,7 +506,9 @@
       "initialZoom": "Zoom når træet åbner",
       "initialZoomFit": "Hele træet",
       "initialZoomPerson": "Centerperson ved 100 %",
-      "initialZoomHelp": "\"Centerperson\" passer til store træer, hvor hele træet bliver for småt til at læse."
+      "initialZoomHelp": "\"Centerperson\" passer til store træer, hvor hele træet bliver for småt til at læse.",
+      "rememberLastView": "Husk hvor hvert medlem var",
+      "rememberLastViewHelp": "Træet åbner igen på den person, det diagram og den retning, et medlem sidst havde, på enhver enhed; zoom huskes pr. browser."
     }
   },
   "overview": {

@@ -1,4 +1,5 @@
-import type { UpdateProfile } from "@genealogy/core";
+import type { LastTreeView, UpdateProfile } from "@genealogy/core";
+import { lastTreeViewSchema } from "@genealogy/core";
 import { userProfiles, type Database, type UserProfileRow } from "@genealogy/db";
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import { eq } from "drizzle-orm";
@@ -87,5 +88,37 @@ export class ProfileService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Where this member last had the tree, or null if never saved. Read
+   * through `lastTreeViewSchema`, so a stored chart that no longer exists
+   * (or a person since deleted, which the foreign key already nulls) reads
+   * as "nothing remembered" rather than a broken link.
+   */
+  async getLastTreeView(userId: string): Promise<LastTreeView | null> {
+    const [row] = await this.db
+      .select({
+        personId: userProfiles.lastTreePersonId,
+        view: userProfiles.lastTreeView,
+        orientation: userProfiles.lastTreeOrientation,
+      })
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, userId))
+      .limit(1);
+    const parsed = lastTreeViewSchema.safeParse(row);
+    return parsed.success ? parsed.data : null;
+  }
+
+  async saveLastTreeView(userId: string, view: LastTreeView): Promise<void> {
+    const values = {
+      lastTreePersonId: view.personId,
+      lastTreeView: view.view,
+      lastTreeOrientation: view.orientation,
+    };
+    await this.db
+      .insert(userProfiles)
+      .values({ userId, ...values })
+      .onConflictDoUpdate({ target: userProfiles.userId, set: values });
   }
 }

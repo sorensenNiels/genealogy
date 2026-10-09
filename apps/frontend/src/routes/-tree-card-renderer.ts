@@ -68,6 +68,8 @@ export interface CardRendererHooks {
   settings: () => TreeSettings;
   /** A card's "+" was pressed: load that person's parents ("up") or children ("down"). */
   onExpand: (id: string, direction: ExpandDirection) => void;
+  /** A card was right-clicked, at this point on the page (`clientX`/`clientY`). */
+  onContextMenu: (id: string, clientX: number, clientY: number) => void;
   /** Tooltip for a "+" button — e.g. "Load Anders Jensen's parents". */
   expandLabel: (id: string, direction: ExpandDirection) => string;
   /**
@@ -161,7 +163,17 @@ export function createCardRendererClass(
             id: datum.indi.id,
             generation: datum.generation ?? 0,
           }),
-        );
+        )
+        // Right-click selects the card too, then opens its menu instead of
+        // the browser's.
+        .on("contextmenu", (event: MouseEvent, datum) => {
+          event.preventDefault();
+          this.rendererOptions.indiCallback?.({
+            id: datum.indi.id,
+            generation: datum.generation ?? 0,
+          });
+          hooks.onContextMenu(datum.indi.id, event.clientX, event.clientY);
+        });
 
       card.each(function (datum) {
         drawCard(select(this), cardFor(datum.indi.id), current);

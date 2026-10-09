@@ -229,7 +229,9 @@ function TreeSettingsForm({ initial }: { initial: TreeSettings }) {
       </SettingsGroup>
 
       <SettingsGroup>
-        {(["showExpandButtons", "showMinimap", "animateTransitions"] as const).map((name) => (
+        {(
+          ["showExpandButtons", "showMinimap", "animateTransitions", "rememberLastView"] as const
+        ).map((name) => (
           <form.Field key={name} name={name}>
             {(field) => (
               <SwitchSetting

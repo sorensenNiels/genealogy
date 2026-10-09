@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { personIdSchema } from "./person.js";
+
 /**
  * Site-wide display settings, edited by an admin on the Settings page and
  * stored one row per section in `app_settings` (see `@genealogy/db`).
@@ -50,7 +52,17 @@ export const treeSettingsSchema = z.object({
   animateTransitions: z.boolean().default(true),
   /** How a freshly opened tree is zoomed: the whole chart, or 100% on the centre person. */
   initialZoom: treeInitialZoomSchema.default("fit"),
+  /** Reopen the tree where each member left it: their last centre person, chart and direction (saved on their profile) and zoom (per browser). */
+  rememberLastView: z.boolean().default(true),
 });
+
+/** Where a member last had the tree — see `user_profiles.lastTree*`. */
+export const lastTreeViewSchema = z.object({
+  personId: personIdSchema,
+  view: treeChartKindSchema,
+  orientation: treeOrientationSchema,
+});
+export type LastTreeView = z.infer<typeof lastTreeViewSchema>;
 export type TreeSettings = z.infer<typeof treeSettingsSchema>;
 
 export const defaultTreeSettings: TreeSettings = treeSettingsSchema.parse({});

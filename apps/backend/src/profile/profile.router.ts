@@ -1,4 +1,4 @@
-import { updateProfileSchema } from "@genealogy/core";
+import { lastTreeViewSchema, updateProfileSchema } from "@genealogy/core";
 import { Injectable } from "@nestjs/common";
 
 import { protectedProcedure, router } from "../trpc/trpc.base.js";
@@ -24,6 +24,19 @@ export class ProfileRouter {
       updateProfile: protectedProcedure
         .input(updateProfileSchema)
         .mutation(({ input, ctx }) => this.profile.updateProfile(ctx.session.user.id, input)),
+
+      // "Remember where I was" on the tree — each member's own, so any
+      // signed-in member (Viewers too) may save theirs.
+      lastTreeView: protectedProcedure.query(({ ctx }) =>
+        this.profile.getLastTreeView(ctx.session.user.id),
+      ),
+
+      saveLastTreeView: protectedProcedure
+        .input(lastTreeViewSchema)
+        .mutation(async ({ input, ctx }) => {
+          await this.profile.saveLastTreeView(ctx.session.user.id, input);
+          return { ok: true } as const;
+        }),
     });
   }
 }

@@ -309,7 +309,18 @@
     "loadChildrenOf": "Load {{name}}'s children",
     "chartLabel": "Family tree",
     "keyboardHelp": "Arrow keys move between people, Enter centres the tree on the selected person, Home goes back to the centre person, plus and minus zoom, 0 fits the whole tree.",
-    "findInTree": "Find in tree…"
+    "findInTree": "Find in tree…",
+    "export": {
+      "label": "Export",
+      "png": "Image (PNG)",
+      "pdf": "PDF",
+      "svg": "Vector image (SVG)",
+      "failed": "Could not export: {{message}}",
+      "notReady": "The tree isn't drawn yet"
+    },
+    "cardMenu": {
+      "label": "Menu for {{name}}"
+    }
   },
   "tools": {
     "title": "Tools",
@@ -495,7 +506,9 @@
       "initialZoom": "Zoom when the tree opens",
       "initialZoomFit": "Whole tree",
       "initialZoomPerson": "Centre person at 100%",
-      "initialZoomHelp": "\"Centre person\" suits big trees, where the whole tree is too small to read."
+      "initialZoomHelp": "\"Centre person\" suits big trees, where the whole tree is too small to read.",
+      "rememberLastView": "Remember where each member was",
+      "rememberLastViewHelp": "The tree reopens on the person, chart and direction a member last had, on any device; the zoom is remembered per browser."
     }
   },
   "overview": {

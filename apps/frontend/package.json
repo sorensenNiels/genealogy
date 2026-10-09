@@ -29,6 +29,7 @@
     "d3-transition": "catalog:",
     "d3-zoom": "catalog:",
     "i18next": "catalog:",
+    "jspdf": "catalog:",
     "lucide-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

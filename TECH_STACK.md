@@ -695,6 +695,40 @@ loaded and can't fetch. They show where `parentsKnownIds` /
 `childrenKnownIds` say there's more to load and the chart would draw it, and
 run the same `expandMutation` as the side panel's "Load ancestors".
 
+**The card menu.** Right-click on a card (the renderer's `contextmenu`
+hook), or the menu key / Shift+F10 on the selected card, opens a React Aria
+menu at that point: `DropdownMenu` positions itself against its trigger, so
+an invisible trigger button is placed there. "Add father/mother/spouse/
+child" open the same dialog as the panel's buttons — `AddRelativeDialog`,
+controlled, lifted out of `AddRelativeButton` — and are offered only to
+editors and only where the panel would offer them. Siblings stay in the
+panel, which loads the parents' other children.
+
+**Export** (`apps/frontend/src/lib/tree-export.ts`) is of the whole chart,
+not just what's on screen. The chart is styled by CSS classes and theme
+tokens, which a standalone file doesn't have, so each element's computed
+style is copied inline; photos are fetched (the backend's `/uploads` has
+CORS for the frontend's origin) and embedded as data URLs, since an
+external image would also taint the canvas and block PNG. The "+" buttons
+and the selection outline are left out; the export uses the theme on
+screen. PNG is the SVG drawn on a canvas at 2× (scaled down to the
+browser's canvas limits for a big tree); PDF is that PNG on one page the
+size of the chart, via jsPDF — loaded with a dynamic import only on a PDF
+export (≈130 kB gzipped), and with `core-js` (an optional jsPDF
+dependency) kept out of `allowBuilds`, since its install script only
+prints a banner.
+
+**Remembering where each member was.** The centre person, chart and
+direction are saved to `user_profiles.lastTree*` on every change (a
+`protectedProcedure`, each member's own), because the route's `beforeLoad`
+reopens there and runs on the server for the first page load, where
+localStorage doesn't exist. Read through `lastTreeViewSchema`, so a
+removed chart or a deleted person (the foreign key nulls it) just means
+nothing is remembered. The zoom is kept per browser in localStorage
+instead — it depends on the screen — stored relative to the centre card
+rather than as a raw transform, which would point elsewhere once more
+people load. Both are off when `rememberLastView` is.
+
 **The cards** (`apps/frontend/src/routes/-tree-card-renderer.ts`) are a
 topola renderer of our own, extending its `CompositeRenderer` (which does the
 size bookkeeping and the points lines attach to), drawn with D3 since topola

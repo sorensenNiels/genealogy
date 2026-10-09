@@ -17,13 +17,24 @@ import {
   ComboboxInput,
   ComboboxItem,
 } from "@genealogy/ui/components/combobox";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@genealogy/ui/components/dialog";
+import {
+  ControlledDialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@genealogy/ui/components/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@genealogy/ui/components/dropdown-menu";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { ReadOnlyProvider } from "@genealogy/ui/lib/read-only";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
-import { Cross, Loader2, SearchIcon, UserRound, XIcon } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { Cross, DownloadIcon, Loader2, SearchIcon, UserRound, XIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage } from "../i18n/create-i18n-instance";
@@ -31,6 +42,7 @@ import { publicBackendUrl } from "../lib/env";
 import { formatDisplayDate } from "../lib/format-date";
 import { usePermissions } from "../lib/permissions";
 import { directLine, toTopolaJson, treeCard } from "../lib/topola-data";
+import { downloadFile, exportFilename, type TreeExportFormat } from "../lib/tree-export";
 import { useTreeSettings, useTreeSettingsQuery } from "../lib/tree-settings";
 import {
   createPerson,
@@ -42,8 +54,13 @@ import {
   unlinkParent,
   unlinkSpouse,
 } from "../server/functions/person.functions";
-import { getMyProfile } from "../server/functions/profile.functions";
-import { TopolaChart, type ChartKind, type TreeChartApi } from "./-topola-chart";
+import {
+  getLastTreeView,
+  getMyProfile,
+  saveLastTreeView,
+} from "../server/functions/profile.functions";
+import { getTreeSettings } from "../server/functions/settings.functions";
+import { TopolaChart, type ChartKind, type ChartPoint, type TreeChartApi } from "./-topola-chart";
 import type { ExpandDirection } from "./-tree-card-renderer";
 
 export const Route = createFileRoute("/tree")({
@@ -63,15 +80,25 @@ export const Route = createFileRoute("/tree")({
       ...(orientation.success ? { orientation: orientation.data } : {}),
     };
   },
-  // No personId in the URL yet: default to the person linked to the viewer's
-  // own account (userProfiles.personId), same as the "this is me" pick on
-  // the Profile page, so the tree opens already centered on the visitor
-  // rather than blank. If they haven't linked a person, fall through with no
-  // redirect — TreePage's own empty state (RootPicker) is the person
-  // selector the user should see before any tree loads.
+  // No personId in the URL yet: reopen where this member last had the tree
+  // ("remember where I was", unless turned off in Settings), else default to
+  // the person linked to their own account (userProfiles.personId), same as
+  // the "this is me" pick on the Profile page, so the tree opens already
+  // centered rather than blank. With neither, fall through with no redirect
+  // — TreePage's own empty state (RootPicker) is the person selector the
+  // user should see before any tree loads. Runs on the server for the first
+  // page load, which is why the last view lives on the profile and not in
+  // localStorage.
   beforeLoad: async ({ search }) => {
     if (search.personId) return;
-    const profile = await getMyProfile();
+    const [settings, lastView, profile] = await Promise.all([
+      getTreeSettings(),
+      getLastTreeView(),
+      getMyProfile(),
+    ]);
+    if (settings.rememberLastView && lastView) {
+      throw redirect({ to: "/tree", search: lastView });
+    }
     if (profile.personId) {
       throw redirect({ to: "/tree", search: { personId: profile.personId } });
     }
@@ -464,6 +491,46 @@ function FamilyTree({
   const selectedId = selection.rootId === rootId ? selection.id : rootId;
   const setSelectedId = (id: string) => setSelection({ rootId, id });
   const chartApi = useRef<TreeChartApi | null>(null);
+  // The card menu (right-click, or the menu key) and the add-relative
+  // dialog it can open — the panel's own "+ Add" buttons have their own.
+  const [cardMenu, setCardMenu] = useState<{ personId: string; point: ChartPoint } | null>(null);
+  const [addRelative, setAddRelative] = useState<{
+    subjectId: string;
+    kind: AddRelativeKind;
+  } | null>(null);
+  const [exportState, setExportState] = useState<{
+    pending: boolean;
+    error: string | null;
+  }>({ pending: false, error: null });
+
+  // "Remember where I was": every centre, chart and direction this member
+  // lands on is saved to their profile, so /tree with no person reopens
+  // here (see the route's `beforeLoad`). Fire-and-forget — failing to
+  // remember must never get in the way of using the tree.
+  const rememberLastView = treeSettings.rememberLastView;
+  useEffect(() => {
+    if (!rememberLastView) return;
+    saveLastTreeView({ data: { personId: rootId, view, orientation } }).catch(() => {});
+  }, [rememberLastView, rootId, view, orientation]);
+
+  const exportChart = async (format: TreeExportFormat) => {
+    const api = chartApi.current;
+    if (!api) return;
+    setExportState({ pending: true, error: null });
+    try {
+      const file = await api.exportChart(format);
+      const root = merged?.people.find((person) => person.id === rootId);
+      downloadFile(file, exportFilename(root ? formatPersonName(root) : "", format));
+      setExportState({ pending: false, error: null });
+    } catch (error) {
+      setExportState({
+        pending: false,
+        error: t("tree.export.failed", {
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      });
+    }
+  };
 
   const expandMutation = useMutation({
     mutationFn: async ({ nodeId, direction }: { nodeId: string; direction: "up" | "down" }) => {
@@ -588,6 +655,37 @@ function FamilyTree({
               ]}
             />
           </div>
+          <DropdownMenu>
+            <Button
+              variant="outline"
+              className="bg-card shadow-sm"
+              isDisabled={exportState.pending}
+              aria-label={t("tree.export.label")}
+            >
+              {exportState.pending ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <DownloadIcon className="size-4" aria-hidden="true" />
+              )}
+              {t("tree.export.label")}
+            </Button>
+            <DropdownMenuContent>
+              <DropdownMenuItem onAction={() => void exportChart("png")}>
+                {t("tree.export.png")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onAction={() => void exportChart("pdf")}>
+                {t("tree.export.pdf")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onAction={() => void exportChart("svg")}>
+                {t("tree.export.svg")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {exportState.error && (
+            <p className="rounded-md bg-card px-2.5 py-1.5 text-sm text-destructive shadow-sm">
+              {exportState.error}
+            </p>
+          )}
           <FindInTree
             people={merged.people}
             onFind={(personId) => {
@@ -645,6 +743,7 @@ function FamilyTree({
             onExpand={(personId, direction: ExpandDirection) =>
               expandMutation.mutate({ nodeId: personId, direction })
             }
+            onContextMenu={(personId, point) => setCardMenu({ personId, point })}
             // Double-click centres the tree on a person — the same as "Center
             // tree here" in the panel, keeping the current chart and direction.
             onCenter={(personId) => {
@@ -653,8 +752,146 @@ function FamilyTree({
             }}
           />
         )}
+        {cardMenu && (
+          <CardMenu
+            key={`${cardMenu.personId}:${cardMenu.point.x}:${cardMenu.point.y}`}
+            person={merged.people.find((person) => person.id === cardMenu.personId)}
+            point={cardMenu.point}
+            isRoot={cardMenu.personId === rootId}
+            card={cards.get(cardMenu.personId)}
+            tree={merged}
+            onClose={() => setCardMenu(null)}
+            onCenter={(personId) =>
+              void navigate({ to: "/tree", search: treeSearch(personId, view, orientation) })
+            }
+            onOpenProfile={(personId) =>
+              void navigate({ to: "/people/$personId", params: { personId } })
+            }
+            onExpand={(personId, direction) =>
+              expandMutation.mutate({ nodeId: personId, direction })
+            }
+            onAddRelative={(subjectId, kind) => setAddRelative({ subjectId, kind })}
+          />
+        )}
+        {addRelative && (
+          <AddRelativeDialog
+            subjectId={addRelative.subjectId}
+            kind={addRelative.kind}
+            onAdded={addToExtra}
+            isOpen
+            onOpenChange={(open) => {
+              if (!open) setAddRelative(null);
+            }}
+          />
+        )}
       </div>
     </div>
+  );
+}
+
+/** The birth parent of this gender — the "Father"/"Mother" slot the panel shows. */
+function birthParent(tree: MergedTree, personId: string, gender: "M" | "F") {
+  return tree.parentEdges.find(
+    (edge) =>
+      edge.childId === personId &&
+      edge.parentage === "birth" &&
+      tree.people.find((person) => person.id === edge.parentId)?.gender === gender,
+  );
+}
+
+/**
+ * The menu on a card — right-click, or the keyboard's menu key (or
+ * Shift+F10) on the selected card. Opened at the pointer: React Aria's menu
+ * positions itself against its trigger, so an invisible trigger sits at
+ * that point. Adding relatives is for editors only, and offered only where
+ * the panel would offer it (a parent slot we know is empty, children we've
+ * actually looked for); siblings stay in the panel, which knows the
+ * parents' other children.
+ */
+function CardMenu({
+  person,
+  point,
+  isRoot,
+  card,
+  tree,
+  onClose,
+  onCenter,
+  onOpenProfile,
+  onExpand,
+  onAddRelative,
+}: {
+  person: TreePersonRow | undefined;
+  point: ChartPoint;
+  isRoot: boolean;
+  card: { canLoadParents: boolean; canLoadChildren: boolean } | undefined;
+  tree: MergedTree;
+  onClose: () => void;
+  onCenter: (personId: string) => void;
+  onOpenProfile: (personId: string) => void;
+  onExpand: (personId: string, direction: ExpandDirection) => void;
+  onAddRelative: (subjectId: string, kind: AddRelativeKind) => void;
+}) {
+  const { t } = useTranslation();
+  const { canEdit } = usePermissions();
+  if (!person) return null;
+  const id = person.id;
+  const name = formatPersonName(person);
+  const parentsKnown = tree.parentsKnownIds.has(id);
+  const childrenKnown = tree.childrenKnownIds.has(id);
+  const addKinds: AddRelativeKind[] = canEdit
+    ? [
+        ...(parentsKnown && !birthParent(tree, id, "M") ? (["father"] as const) : []),
+        ...(parentsKnown && !birthParent(tree, id, "F") ? (["mother"] as const) : []),
+        "spouse",
+        ...(childrenKnown ? (["child"] as const) : []),
+      ]
+    : [];
+  const loadItems = [
+    ...(card?.canLoadParents ? [{ direction: "up" as const, label: t("tree.loadAncestors") }] : []),
+    ...(card?.canLoadChildren
+      ? [{ direction: "down" as const, label: t("tree.loadDescendants") }]
+      : []),
+  ];
+
+  return (
+    <DropdownMenu
+      isOpen
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <Button
+        aria-label={t("tree.cardMenu.label", { name })}
+        className="pointer-events-none absolute size-px p-0 opacity-0"
+        style={{ left: point.x, top: point.y }}
+      />
+      <DropdownMenuContent header={<DropdownMenuLabel>{name}</DropdownMenuLabel>}>
+        {!isRoot && (
+          <DropdownMenuItem id="center" onAction={() => onCenter(id)}>
+            {t("tree.centerTreeHere")}
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem id="profile" onAction={() => onOpenProfile(id)}>
+          {t("tree.viewFullProfile")}
+        </DropdownMenuItem>
+        {loadItems.length > 0 && <DropdownMenuSeparator />}
+        {loadItems.map((item) => (
+          <DropdownMenuItem
+            key={item.direction}
+            id={`load-${item.direction}`}
+            onAction={() => onExpand(id, item.direction)}
+          >
+            {item.label}
+          </DropdownMenuItem>
+        ))}
+        {addKinds.length > 0 && <DropdownMenuSeparator />}
+        {addKinds.map((kind) => (
+          <DropdownMenuItem key={kind} id={`add-${kind}`} onAction={() => onAddRelative(id, kind)}>
+            {t("tree.addLabel", { kind: t(`tree.kind.${kind}`) })}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -799,14 +1036,7 @@ type AddRelativeKind = "father" | "mother" | "spouse" | "child" | "sibling";
  * it (`siblingParentsOnCanvas`) — otherwise it would float unconnected — but
  * it always shows in the panel's list, which reads `person.relatives`.
  */
-function AddRelativeButton({
-  subjectId,
-  kind,
-  onAdded,
-  excludeIds,
-  siblingParentIds = [],
-  siblingParentsOnCanvas = false,
-}: {
+interface AddRelativeProps {
   subjectId: string;
   kind: AddRelativeKind;
   onAdded: (update: Partial<ExtraTreeData>) => void;
@@ -814,19 +1044,59 @@ function AddRelativeButton({
   excludeIds?: ReadonlySet<string>;
   siblingParentIds?: readonly string[];
   siblingParentsOnCanvas?: boolean;
-}) {
+}
+
+/** The panel's "+ Add father" etc.: a button that opens `AddRelativeDialog`. Editors only. */
+function AddRelativeButton(props: AddRelativeProps) {
+  const { t } = useTranslation();
+  const { canEdit } = usePermissions();
+  const [open, setOpen] = useState(false);
+  // A plain dialog rather than a FormDialog, so ReadOnlyProvider can't hide it.
+  if (!canEdit) return null;
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full justify-start"
+        onPress={() => setOpen(true)}
+      >
+        {t("tree.addLabel", { kind: t(`tree.kind.${props.kind}`) })}
+      </Button>
+      <AddRelativeDialog {...props} isOpen={open} onOpenChange={setOpen} />
+    </>
+  );
+}
+
+/**
+ * Controlled rather than trigger-based, so both the panel's button and the
+ * card menu on the chart can open it.
+ */
+function AddRelativeDialog({
+  subjectId,
+  kind,
+  onAdded,
+  excludeIds,
+  siblingParentIds = [],
+  siblingParentsOnCanvas = false,
+  isOpen,
+  onOpenChange,
+}: AddRelativeProps & { isOpen: boolean; onOpenChange: (isOpen: boolean) => void }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { canEdit } = usePermissions();
-  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const close = (next: boolean) => {
+    onOpenChange(next);
+    if (!next) setQuery("");
+  };
 
   const trimmedQuery = query.trim();
   const searchInput = { limit: 10, offset: 0, search: trimmedQuery === "" ? null : trimmedQuery };
   const search = useQuery({
     queryKey: ["person", "list", searchInput],
     queryFn: () => listPersons({ data: searchInput }),
-    enabled: open,
+    enabled: isOpen,
   });
   const options = (search.data?.items ?? []).filter(
     (candidate) => candidate.id !== subjectId && !excludeIds?.has(candidate.id),
@@ -883,8 +1153,7 @@ function AddRelativeButton({
     // The panel's Siblings list (and the person page, if open elsewhere)
     // reads this person's relatives, so refresh it after any link.
     await queryClient.invalidateQueries({ queryKey: ["person", "relatives", subjectId] });
-    setOpen(false);
-    setQuery("");
+    close(false);
   };
 
   const createAndLink = async () => {
@@ -894,59 +1163,47 @@ function AddRelativeButton({
     await link({ ...created, redacted: false });
   };
 
-  // A plain dialog rather than a FormDialog, so ReadOnlyProvider can't hide it.
   if (!canEdit) return null;
 
   return (
-    <Dialog
-      isOpen={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setQuery("");
-      }}
-    >
-      <Button variant="outline" size="sm" className="w-full justify-start">
-        {t("tree.addLabel", { kind: kindLabel })}
-      </Button>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t("tree.addTitle", { kind: kindLabel })}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <Combobox<PersonListItem>
-            aria-label={t("tree.searchForKind", { kind: kindLabel })}
-            items={options}
-            inputValue={query}
-            onInputChange={setQuery}
-            onChange={(value) => {
-              const target = options.find((candidate) => candidate.id === value);
-              if (target) void link(target);
-            }}
+    <ControlledDialogContent isOpen={isOpen} onOpenChange={close}>
+      <DialogHeader>
+        <DialogTitle>{t("tree.addTitle", { kind: kindLabel })}</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-3">
+        <Combobox<PersonListItem>
+          aria-label={t("tree.searchForKind", { kind: kindLabel })}
+          items={options}
+          inputValue={query}
+          onInputChange={setQuery}
+          onChange={(value) => {
+            const target = options.find((candidate) => candidate.id === value);
+            if (target) void link(target);
+          }}
+        >
+          <ComboboxInput placeholder={t("person.family.searchPeople")} />
+          <ComboboxContent<PersonListItem>
+            renderEmptyState={() => <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>}
           >
-            <ComboboxInput placeholder={t("person.family.searchPeople")} />
-            <ComboboxContent<PersonListItem>
-              renderEmptyState={() => <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>}
-            >
-              {(item) => (
-                <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-                  {formatPersonName(item)}
-                  {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
-                </ComboboxItem>
-              )}
-            </ComboboxContent>
-          </Combobox>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full"
-            isDisabled={createPersonMutation.isPending}
-            onPress={() => void createAndLink()}
-          >
-            {t("tree.createNewPerson")}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+            {(item) => (
+              <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
+                {formatPersonName(item)}
+                {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
+              </ComboboxItem>
+            )}
+          </ComboboxContent>
+        </Combobox>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full"
+          isDisabled={createPersonMutation.isPending}
+          onPress={() => void createAndLink()}
+        >
+          {t("tree.createNewPerson")}
+        </Button>
+      </div>
+    </ControlledDialogContent>
   );
 }
 

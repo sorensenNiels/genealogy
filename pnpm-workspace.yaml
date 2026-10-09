@@ -9,6 +9,9 @@ packages:
 # is a perf-only build, not a functional requirement. Everything else stays
 # blocked from running install scripts.
 allowBuilds:
+  # Pulled in by jspdf (optional dependency); its install script only prints
+  # a donation banner, so it stays blocked.
+  core-js: false
   esbuild: true
   msgpackr-extract: true
 
@@ -127,6 +130,12 @@ catalog:
   # topola dependency, same d3-selection; last published 2022 like the rest
   # of D3 — finished, not abandoned.
   d3-transition: 3.0.1
+  # PDF export of the tree (the chart rendered to PNG, placed on a page the
+  # size of the chart). Loaded with a dynamic import only when someone picks
+  # PDF — it's large, and its optional dependencies (html2canvas, canvg)
+  # come along. Checked 2026-10-09: v4.2.1 released 2026-03-17, last commit
+  # 2026-09-30, ~31k stars, 113 open issues; MIT — actively maintained.
+  jspdf: 4.2.1
   "@types/d3-zoom": 3.0.9
   "@types/d3-selection": 3.0.12
   "@types/d3-transition": 3.0.9

@@ -775,6 +775,16 @@ export const userProfiles = pgTable(
     // No default/not-null — absence means "no preference set yet," resolved
     // to English at the read layer (see ProfileService), not baked in here.
     language: text("language"),
+    // Where this member last had the tree ("remember where I was"), so
+    // /tree with no person reopens there — on any device, and already on
+    // the server-rendered first load. Chart and direction are plain text,
+    // validated against `treeChartKindSchema`/`treeOrientationSchema` on
+    // read, so a since-removed chart just falls back to the default.
+    lastTreePersonId: uuid("last_tree_person_id").references(() => persons.id, {
+      onDelete: "set null",
+    }),
+    lastTreeView: text("last_tree_view"),
+    lastTreeOrientation: text("last_tree_orientation"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
