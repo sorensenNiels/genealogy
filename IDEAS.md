@@ -111,6 +111,127 @@ Picked on 2026-09-28 as the next two to scope, one from each focus area:
 - 💡 🆕 **Family statistics.** Lifespans by century, most common names, family
   sizes, where people were born, surname distribution.
 
+**Tree view, after the move to topola** (October 2026). The tree is drawn by
+topola with our own card renderer — see "Tree view: topola" in TECH_STACK.md.
+Files these ideas touch: `apps/frontend/src/routes/tree.tsx` (page, side
+panel, data merging), `routes/-topola-chart.tsx` (topola + d3-zoom wrapper),
+`routes/-tree-card-renderer.ts` (the cards, drawn with D3),
+`lib/topola-data.ts` (our data → topola families, card text), and tree
+display settings in `packages/core/src/app-settings.ts` (a new setting is a
+schema field with a default plus a form field in `routes/settings.tsx`; no
+migration).
+
+_Getting around a big tree_
+
+- 💡 🆕 **Smooth re-centring.** Double-click or "Center tree here" glides the
+  chart to the new person (Ancestry-style) instead of reloading it. Today
+  `FamilyTree` is keyed by `rootId`, so a new centre remounts everything and
+  refetches `person.tree`. Instead: keep one `FamilyTree`, fetch the new
+  person's `treeAround` and merge it into the existing data (`mergeTree`
+  already merges extra people/edges), then call `handle.render({ startIndi })`
+  on the same topola handle — topola animates moves between renders
+  (`animate: true` is already on). Re-fit or pan the zoom to the new centre
+  card afterwards. `parentsKnownIds`/`childrenKnownIds` must merge too, and the
+  URL still updates so back/forward work.
+- 💡 🆕 **Find in tree.** A search box over the canvas that pans and zooms to a
+  person already drawn and selects them. Builds on: the d3-zoom behaviour in
+  `TopolaChart` (expose a `zoomTo(id)` next to `zoomBy`/`fit`; find the card
+  via its `g.indi` datum, read its position with `getBBox()`/`getCTM()`).
+  Search only the loaded people (`merged.people`), with `formatPersonName`.
+- 💡 🆕 **Minimap.** A small overview of the whole chart in a corner, with a
+  rectangle for the visible area; click or drag it to move. Builds on: the
+  chart size topola returns from `render()` (`info.size`) and the current
+  d3-zoom transform. Draw it as a scaled-down `<use>` of the chart svg or a
+  dot per card.
+- 💡 🆕 **Expand from the card.** A small "+" on a card's top edge (parents) or
+  bottom edge (children) loads them right there — the on-card "load ancestors"
+  badge the React Flow cards had. Draw it in our card renderer, not with
+  topola's own expanders: those only fold/unfold people already loaded, they
+  can't fetch. Show it when the person isn't in `parentsKnownIds` /
+  `childrenKnownIds`; on click, call the same `expandMutation` the side panel
+  uses. The renderer needs those sets (pass them like `cards`/`settings`
+  through `drawInputs`), and the click must not also select the card.
+- 💡 🆕 **Keyboard navigation.** Today the tree can only be used with a mouse.
+  Make the canvas focusable; arrow keys move the selection to a parent (up),
+  child (down), spouse/sibling (left/right); Enter opens the person, a key
+  re-centres; announce the selected person in an `aria-live` region. Build
+  the neighbour lookup from `merged` (parent/spouse edges) rather than from
+  screen positions, and pan the selected card into view (see "Find in tree").
+  Keyboard zoom: `+`/`-`/`0` on the canvas.
+
+_More on each card_
+
+- 💡 🆕 **Research badges.** Small markers on a card for "no sources", "no
+  birth date", "parents unknown" — the tree as a visual research to-do list.
+  Needs a count of citations per person in `person.tree`'s result (one
+  grouped query over `citations` for the tree's person ids, in
+  `PersonService.tree`), carried into `TreeCard`; "parents unknown" is "in
+  `parentsKnownIds` and has no parent edge". A tree setting to turn badges on
+  and off.
+- 💡 🆕 **Relationship label on cards.** Under the name in the Relatives
+  chart: "Great-grandfather", "Aunt", "2nd cousin". Depends on the
+  relationship calculator above; compute from `merged` (common ancestor via
+  parent edges) in the frontend, localized in i18n. Only for the centre
+  person's relatives, so it changes with the centre.
+- 💡 🆕 **Marriage year on the marriage line.** "⚭ 1874" on the short line
+  between partners. Needs the union's date in `person.tree`'s result (from
+  `unions`, keyed by the pair); draw it in `-tree-card-renderer.ts` where the
+  `marriage` line is drawn. Watch the gap width (`PAD_X` × 2 = 28px) — the
+  label may need to sit above the line or the gap may need widening.
+- 💡 🆕 **Hover preview.** A small pop-up on hover with a larger photo, full
+  dates and places, without changing the panel. Render it in React (a
+  positioned div over the canvas), positioned from the hovered card's screen
+  rect; the card renderer only reports hover in/out with the person id.
+  Not on touch devices; keyboard focus (see above) should show it too.
+- 💡 🆕 **Immich face as a fallback photo.** A person with no profile photo
+  but a linked Immich face shows that face on the card. Builds on:
+  `person_immich_links` and the face-thumbnail proxy
+  (`/api/immich/people/$id/thumbnail`). Only while `useImmichAvailable()` is
+  true; `person.tree` would return the first linked Immich person id per
+  person.
+
+_Seeing patterns_
+
+- 💡 🆕 **"Colour by" setting.** Tint cards by surname, century of birth,
+  birth region, or how well-sourced the person is, with a small legend. A
+  `colorBy` tree setting (structural enum, like `dateDetail`); the card
+  renderer adds a class or inline fill per card. Surname/region colours from
+  a fixed palette by hash, so they're stable between visits.
+- 💡 🆕 **Pedigree collapse on the tree.** The "Pedigree collapse
+  highlighting" idea above, on the cards: someone drawn twice (topola draws
+  them once per path) gets a small "appears 2×" marker; clicking it pans to
+  the other copy. Topola gives repeat copies distinct node ids (`id:1`,
+  `id:2`) but the same `indi.id` — count `g.indi` per person id after render.
+- 💡 🆕 **Path between two people.** Pick two people (e.g. shift-click) and
+  the chart highlights the cards and lines connecting them. Find the path in
+  `merged` (breadth-first over parent and spouse edges), then add a class to
+  those `g.indi` and to the `path.link` elements between them (topola's link
+  ids are `parentNodeId:childNodeId`).
+
+_Doing things from the tree_
+
+- 💡 🆕 **Right-click menu on a card.** Add parent / child / spouse, open
+  profile, centre here — faster than the side panel when building a tree.
+  React Aria `Menu` in a popover at the pointer; reuse `AddRelativeButton`'s
+  link/create logic (lift it out of the button). Editors only
+  (`usePermissions().canEdit`); Viewers get just "open" and "centre".
+- 💡 🆕 **Export the current view.** Download the visible chart as SVG, PNG or
+  PDF. The chart is already SVG: serialize the inner svg with the
+  `.topola-chart` CSS inlined (cards are styled by class and theme tokens,
+  which won't exist in the exported file — resolve them with
+  `getComputedStyle`) and photos embedded as data URLs. PNG via a canvas. A
+  first step towards "Printable chart exports" above.
+- 💡 🆕 **Remember where I was.** Reopen the tree on the last person, chart,
+  direction and zoom, per member. Person/chart/direction could go on
+  `user_profiles` (or just `localStorage`, since it's per browser anyway);
+  the tree route's `beforeLoad` already redirects to the member's own person
+  when no `personId` is given — prefer the last-viewed one there.
+
+_Suggested order_ (from the October 2026 review): smooth re-centring and
+expand-from-card first (they make it feel modern), then research badges
+(they make it useful); keyboard navigation alongside whichever comes first,
+since the tree can't be used without a mouse today.
+
 ## Photos
 
 - 💡 **Test Immich face clustering on old photos.** Try it on
