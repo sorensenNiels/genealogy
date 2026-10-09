@@ -504,6 +504,21 @@ given name a person has, middle ones included, unsplit and in source order —
 the `personNameSchema` comment says so directly. (A `middleName` column existed
 briefly; its migration folded any value back onto the end of `given`.)
 
+### Site-wide display settings: `app_settings`, one JSON row per section
+
+Settings that aren't dropdown lists (the first: whether the tree shows the
+gender badge) live in `app_settings` (`packages/db/src/schema.ts`) — `key`
+is a section (`"tree"`), `value` a JSON object. Each section has a Zod
+schema in `packages/core/src/app-settings.ts` where **every field has a
+default**, so a section never saved, or saved before a field existed, reads
+as a complete object; a new setting is a schema field plus a form field on
+the Settings page, never a migration. A stored value that no longer parses
+falls back to the defaults (`SettingsService.getTreeSettings`) rather than
+breaking the page. Reads are `protectedProcedure` (every member's tree needs
+them), writes `adminProcedure`, and the Settings page shows them under
+"Display", above the dropdown topics. They're site-wide, not per member — a
+per-member override would go on `user_profiles` instead.
+
 ### Configurable dropdown options, not hardcoded enums
 
 Closed-vocabulary dropdowns are backed by a single `configurableOptions` table
@@ -600,10 +615,15 @@ native-submission case, so `SaveButton` lets a caller override `type` to
 
 The tree view (`/tree`) draws with [topola](https://github.com/PeWu/topola), a
 genealogy-chart library on D3, plus `d3-zoom` for pan/zoom (topola has none).
-It offers the four charts topola does well — hourglass (the default),
-relatives (adds siblings, aunts/uncles and cousins, as far as they're
-loaded), ancestors and descendants — each top-down or left-to-right (`?view=`
-and `?orientation=` in the URL, defaults left out).
+It offers three of topola's charts — relatives (the default: ancestors and
+descendants plus siblings, aunts/uncles and cousins, as far as they're
+loaded), ancestors and descendants; hourglass was offered at first and
+dropped as a subset of relatives — each top-down or left-to-right (`?view=` and `?orientation=`
+in the URL). A link without them opens with the defaults from the Settings
+page's Tree section (`app_settings`, below), which also controls what the
+cards show; the tree page waits for those settings so it doesn't draw one
+chart and then switch. In-page links always write both params out, since
+"left out" means "the Settings default", not "what's on screen".
 
 **Why it replaced React Flow + elkjs (October 2026).** React Flow is a
 general node-and-edge canvas; nothing in it knows about generations or

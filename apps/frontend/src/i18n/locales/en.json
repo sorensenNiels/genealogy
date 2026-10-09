@@ -288,7 +288,6 @@
     },
     "view": {
       "label": "Chart",
-      "hourglass": "Hourglass",
       "relatives": "Relatives",
       "ancestors": "Ancestors",
       "descendants": "Descendants"
@@ -461,7 +460,28 @@
     "keyPlaceholder": "Key, e.g. graduation (lowercase, no spaces)",
     "labelPlaceholder": "Label, e.g. Graduation",
     "labelOnly": "Label",
-    "keyLabel": "Key"
+    "keyLabel": "Key",
+    "display": "Display",
+    "dropdowns": "Dropdown options",
+    "tree": {
+      "title": "Tree",
+      "description": "How the family tree is drawn, for every member.",
+      "showGenderBadge": "Show gender badge on photos",
+      "showGenderBadgeHelp": "A small ♂/♀ badge over the corner of each person's photo on the tree.",
+      "showPhotos": "Show photos",
+      "showPhotosHelp": "Off shows initials only — handy for printing or a privacy-minded screen.",
+      "showMourningBand": "Mourning band for the deceased",
+      "showMourningBandHelp": "A black band across the corner of a deceased person's photo.",
+      "dateDetail": "Dates on cards",
+      "dateDetailYears": "Years only",
+      "dateDetailFull": "Full dates",
+      "dateDetailHelp": "Full dates take a line each, so the place only shows when a date is missing.",
+      "defaultChart": "Chart the tree opens with",
+      "defaultOrientation": "Direction the tree opens with",
+      "defaultsHelp": "Used when a link doesn't say — the Tree menu item, \"View in tree\". Members can still switch on the tree page.",
+      "highlightDirectLine": "Highlight the direct line",
+      "highlightDirectLineHelp": "Tints the centre person's own ancestors and descendants, so they stand out from aunts, uncles and cousins."
+    }
   },
   "overview": {
     "backendTitle": "Backend",

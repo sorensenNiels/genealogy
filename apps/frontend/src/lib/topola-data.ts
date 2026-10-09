@@ -1,4 +1,4 @@
-import type { HistoricalDate } from "@genealogy/core";
+import type { HistoricalDate, TreeDateDetail } from "@genealogy/core";
 import type { JsonEvent, JsonFam, JsonGedcomData, JsonIndi } from "topola";
 
 /** The fields of a tree person this conversion reads — a structural subset of `person.tree`'s rows. */
@@ -196,39 +196,95 @@ function yearOf(date: HistoricalDate | null): string | null {
 /** What a tree card shows — see `CardInfo` in `routes/-tree-card-renderer.ts`. */
 export interface TreeCard {
   name: string;
-  lifespan: string | null;
-  place: string | null;
+  /** Up to two lines under the name — dates, then place if there's room. */
+  lines: string[];
   gender: "M" | "F" | "U";
   photoUrl: string | null;
   initials: string;
   /** Drawn as a black mourning band across the photo's corner. */
   isDeceased: boolean;
+  /** One of the centre person's own ancestors or descendants (or them). */
+  isDirectLine: boolean;
 }
 
+export interface TreeCardOptions {
+  name: string;
+  photoUrl: (photoPath: string) => string;
+  /** Our localized full-date display (`formatDisplayDate`), for `dateDetail: "full"`. */
+  formatDate: (date: HistoricalDate) => string | null;
+  dateDetail: TreeDateDetail;
+  isDirectLine: boolean;
+}
+
+/** At most this many lines fit under the name on a card. */
+const MAX_CARD_LINES = 2;
+
 /**
- * A card's text. Years only (the full dates are one click away in the
- * panel), with the genealogical `*` and `†` so it reads the same in every
- * language; a deceased person with no recorded death still gets the `†`.
+ * A card's text, with the genealogical `*` and `†` so it reads the same in
+ * every language; a deceased person with no recorded death still gets the
+ * `†`. `years` puts both years on one line and the place under it; `full`
+ * needs a line per date, so the place only shows when one is missing.
  */
-export function treeCard(
-  person: TopolaSourcePerson & { nickname?: string[] | null },
-  name: string,
-  photoUrl: (photoPath: string) => string,
-): TreeCard {
-  const born = yearOf(person.birth);
-  const died = yearOf(person.death);
-  const parts = [born ? `* ${born}` : null, died ? `† ${died}` : person.isLiving ? null : "†"];
-  const lifespan = parts.filter(Boolean).join("   ");
+export function treeCard(person: TopolaSourcePerson, options: TreeCardOptions): TreeCard {
+  const deathMark = person.isLiving ? null : "†";
+  let dates: Array<string | null>;
+  if (options.dateDetail === "full") {
+    const born = person.birth ? options.formatDate(person.birth) : null;
+    const died = person.death ? options.formatDate(person.death) : null;
+    dates = [born ? `* ${born}` : null, died ? `† ${died}` : deathMark];
+  } else {
+    const born = yearOf(person.birth);
+    const died = yearOf(person.death);
+    const lifespan = [born ? `* ${born}` : null, died ? `† ${died}` : deathMark]
+      .filter(Boolean)
+      .join("   ");
+    dates = [lifespan === "" ? null : lifespan];
+  }
+  const place = person.birthPlace ?? person.deathPlace;
+  const lines = [...dates, place]
+    .filter((line): line is string => Boolean(line))
+    .slice(0, MAX_CARD_LINES);
   const initials = [person.given, person.surname]
     .map((part) => part.trim().charAt(0).toUpperCase())
     .join("");
   return {
-    name,
-    lifespan: lifespan === "" ? null : lifespan,
-    place: person.birthPlace ?? person.deathPlace,
+    name: options.name,
+    lines,
     gender: person.gender === "M" || person.gender === "F" ? person.gender : "U",
-    photoUrl: person.photoPath ? photoUrl(person.photoPath) : null,
+    photoUrl: person.photoPath ? options.photoUrl(person.photoPath) : null,
     initials: initials === "" ? "?" : initials,
     isDeceased: !person.isLiving,
+    isDirectLine: options.isDirectLine,
   };
+}
+
+/**
+ * The centre person, everyone above them through parent links and everyone
+ * below — the direct line `highlightDirectLine` tints. Spouses and siblings
+ * aren't on it unless they're also an ancestor or descendant.
+ */
+export function directLine(
+  rootId: string,
+  parentEdges: ReadonlyArray<{ parentId: string; childId: string }>,
+): Set<string> {
+  const walk = (next: (id: string) => string[]) => {
+    const seen = new Set([rootId]);
+    const queue = [rootId];
+    while (queue.length > 0) {
+      for (const id of next(queue.shift()!)) {
+        if (!seen.has(id)) {
+          seen.add(id);
+          queue.push(id);
+        }
+      }
+    }
+    return seen;
+  };
+  const up = walk((id) =>
+    parentEdges.filter((edge) => edge.childId === id).map((edge) => edge.parentId),
+  );
+  const down = walk((id) =>
+    parentEdges.filter((edge) => edge.parentId === id).map((edge) => edge.childId),
+  );
+  return new Set([...up, ...down]);
 }

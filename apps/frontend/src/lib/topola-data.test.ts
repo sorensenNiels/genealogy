@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { chosenParents, toTopolaJson, treeCard, type TopolaSourcePerson } from "./topola-data";
+import {
+  chosenParents,
+  directLine,
+  toTopolaJson,
+  treeCard,
+  type TopolaSourcePerson,
+  type TreeCardOptions,
+} from "./topola-data";
 
 function person(id: string, gender: string, extra: Partial<TopolaSourcePerson> = {}) {
   return {
@@ -182,43 +189,75 @@ describe("toTopolaJson", () => {
   });
 });
 
+function cardOptions(overrides: Partial<TreeCardOptions> = {}): TreeCardOptions {
+  return {
+    name: "Anders Jensen",
+    photoUrl: url,
+    formatDate: (date) => `full:${date.original}`,
+    dateDetail: "years",
+    isDirectLine: false,
+    ...overrides,
+  };
+}
+
+const anders = person("dad", "M", {
+  given: "Anders",
+  surname: "Jensen",
+  isLiving: false,
+  birth: born("1850-03-03"),
+  death: born("1921-01-01"),
+  birthPlace: "Ribe",
+});
+
 describe("treeCard", () => {
-  it("shows years with * and †, the birth place, and initials", () => {
-    const card = treeCard(
-      person("dad", "M", {
-        given: "Anders",
-        surname: "Jensen",
-        isLiving: false,
-        birth: born("1850-03-03"),
-        death: born("1921-01-01"),
-        birthPlace: "Ribe",
-      }),
-      "Anders Jensen",
-      url,
-    );
-    expect(card).toEqual({
+  it("shows years with * and † on one line, then the birth place, and initials", () => {
+    expect(treeCard(anders, cardOptions({ isDirectLine: true }))).toEqual({
       name: "Anders Jensen",
-      lifespan: "* 1850   † 1921",
-      place: "Ribe",
+      lines: ["* 1850   † 1921", "Ribe"],
       gender: "M",
       photoUrl: null,
       initials: "AJ",
       isDeceased: true,
+      isDirectLine: true,
     });
   });
 
+  it("gives each full date its own line, and the place only when there's room", () => {
+    expect(treeCard(anders, cardOptions({ dateDetail: "full" })).lines).toEqual([
+      "* full:1850-03-03",
+      "† full:1921-01-01",
+    ]);
+    const living = person("y", "F", { birth: born("1990-01-01"), birthPlace: "Odense" });
+    expect(treeCard(living, cardOptions({ dateDetail: "full" })).lines).toEqual([
+      "* full:1990-01-01",
+      "Odense",
+    ]);
+  });
+
   it("marks a deceased person with no death date, and leaves a living one's empty", () => {
-    expect(treeCard(person("x", "U", { isLiving: false }), "X", url).lifespan).toBe("†");
+    expect(treeCard(person("x", "U", { isLiving: false }), cardOptions()).lines).toEqual(["†"]);
     const living = treeCard(
       person("y", "F", { given: "", surname: "", photoPath: "y.jpg" }),
-      "",
-      url,
+      cardOptions(),
     );
     expect(living).toMatchObject({
-      lifespan: null,
+      lines: [],
       initials: "?",
       photoUrl: "/uploads/y.jpg",
       isDeceased: false,
     });
+  });
+});
+
+describe("directLine", () => {
+  it("takes ancestors and descendants, not siblings or in-laws", () => {
+    const edges = [
+      { parentId: "gp", childId: "dad" },
+      { parentId: "gp", childId: "uncle" },
+      { parentId: "dad", childId: "me" },
+      { parentId: "me", childId: "kid" },
+      { parentId: "inlaw", childId: "kid" },
+    ];
+    expect(directLine("me", edges)).toEqual(new Set(["me", "dad", "gp", "kid"]));
   });
 });

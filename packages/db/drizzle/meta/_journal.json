@@ -267,6 +267,13 @@
       "when": 1791348757016,
       "tag": "0037_member_roles_invitations",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1791489756121,
+      "tag": "0038_app_settings",
+      "breakpoints": true
     }
   ]
 }

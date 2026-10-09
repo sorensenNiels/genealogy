@@ -1,4 +1,12 @@
-import { formatLifespan, formatPersonName, type Gender } from "@genealogy/core";
+import {
+  defaultTreeSettings,
+  formatLifespan,
+  formatPersonName,
+  type Gender,
+  treeChartKindSchema,
+  type TreeOrientation,
+  treeOrientationSchema,
+} from "@genealogy/core";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Button, buttonVariants } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
@@ -22,7 +30,8 @@ import { toSupportedLanguage } from "../i18n/create-i18n-instance";
 import { publicBackendUrl } from "../lib/env";
 import { formatDisplayDate } from "../lib/format-date";
 import { usePermissions } from "../lib/permissions";
-import { toTopolaJson, treeCard } from "../lib/topola-data";
+import { directLine, toTopolaJson, treeCard } from "../lib/topola-data";
+import { useTreeSettings, useTreeSettingsQuery } from "../lib/tree-settings";
 import {
   createPerson,
   getRelatives,
@@ -40,17 +49,19 @@ export const Route = createFileRoute("/tree")({
   // No zod schema here (unlike the server functions this page calls) — a
   // malformed/missing personId just falls through to the "pick a person"
   // empty state below rather than needing its own error path.
-  // `view` and `orientation` are left out of the URL for their defaults
-  // (hourglass, top-down), so existing links (the People list's "View in
-  // tree", ...) need no change. An old `view=both` link falls back to
-  // hourglass, which is what "both" drew.
-  validateSearch: (search: Record<string, unknown>): TreeSearch => ({
-    ...(typeof search.personId === "string" ? { personId: search.personId } : {}),
-    ...(typeof search.view === "string" && NON_DEFAULT_VIEWS.has(search.view)
-      ? { view: search.view as ChartKind }
-      : {}),
-    ...(search.orientation === "horizontal" ? { orientation: "horizontal" as const } : {}),
-  }),
+  // `view` and `orientation` are optional: a link without them (the People
+  // list's "View in tree", the nav link) opens with the defaults chosen on
+  // the Settings page (`treeSettings.defaultChart`/`defaultOrientation`).
+  // Anything unrecognised — an old `view=both` link — is dropped the same way.
+  validateSearch: (search: Record<string, unknown>): TreeSearch => {
+    const view = treeChartKindSchema.safeParse(search.view);
+    const orientation = treeOrientationSchema.safeParse(search.orientation);
+    return {
+      ...(typeof search.personId === "string" ? { personId: search.personId } : {}),
+      ...(view.success ? { view: view.data } : {}),
+      ...(orientation.success ? { orientation: orientation.data } : {}),
+    };
+  },
   // No personId in the URL yet: default to the person linked to the viewer's
   // own account (userProfiles.personId), same as the "this is me" pick on
   // the Profile page, so the tree opens already centered on the visitor
@@ -67,27 +78,21 @@ export const Route = createFileRoute("/tree")({
   component: TreePage,
 });
 
-const NON_DEFAULT_VIEWS: ReadonlySet<string> = new Set<ChartKind>([
-  "relatives",
-  "ancestors",
-  "descendants",
-]);
-
-type Orientation = "vertical" | "horizontal";
+type Orientation = TreeOrientation;
 
 interface TreeSearch {
   personId?: string;
   view?: ChartKind;
-  orientation?: "horizontal";
+  orientation?: Orientation;
 }
 
-/** The URL for a tree centred on `personId`, keeping the chart and direction — defaults left out, as in `validateSearch`. */
+/**
+ * The URL for a tree centred on `personId`, keeping the chart and direction
+ * the user is looking at. Both are always written out: leaving one out now
+ * means "the Settings default", which can differ from what's on screen.
+ */
 function treeSearch(personId: string, view: ChartKind, orientation: Orientation): TreeSearch {
-  return {
-    personId,
-    ...(view === "hourglass" ? {} : { view }),
-    ...(orientation === "horizontal" ? { orientation } : {}),
-  };
+  return { personId, view, orientation };
 }
 
 type TreeData = Awaited<ReturnType<typeof getTree>>;
@@ -96,7 +101,23 @@ type TreeEdgeRow = TreeData["parentEdges"][number];
 type PersonListItem = Awaited<ReturnType<typeof listPersons>>["items"][number];
 
 function TreePage() {
-  const { personId, view = "hourglass", orientation = "vertical" } = Route.useSearch();
+  const { t } = useTranslation();
+  const search = Route.useSearch();
+  // Waits for the settings so the tree doesn't draw one chart and then
+  // switch to the configured default. If they fail to load, the built-in
+  // defaults apply rather than blocking the page.
+  const settings = useTreeSettingsQuery();
+  if (settings.isPending) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        {t("tree.loading")}
+      </div>
+    );
+  }
+  const defaults = settings.data ?? defaultTreeSettings;
+  const personId = search.personId;
+  const view = search.view ?? defaults.defaultChart;
+  const orientation = search.orientation ?? defaults.defaultOrientation;
 
   return (
     // No page title/subtitle here — the tree view is the whole page, and the
@@ -309,6 +330,7 @@ function FamilyTree({
 }) {
   const { t, i18n } = useTranslation();
   const language = toSupportedLanguage(i18n.language);
+  const treeSettings = useTreeSettings();
   const { canEdit } = usePermissions();
   const navigate = useNavigate();
   const treeQuery = useQuery({
@@ -370,19 +392,25 @@ function FamilyTree({
         : null,
     [merged, language],
   );
+  const directLineIds = useMemo(
+    () => (merged ? directLine(merged.rootId, merged.parentEdges) : new Set<string>()),
+    [merged],
+  );
   const cards = useMemo(
     () =>
       new Map(
         (merged?.people ?? []).map((person) => [
           person.id,
-          treeCard(
-            person,
-            formatPersonName(person),
-            (path) => `${publicBackendUrl}/uploads/${path}`,
-          ),
+          treeCard(person, {
+            name: formatPersonName(person),
+            photoUrl: (path) => `${publicBackendUrl}/uploads/${path}`,
+            formatDate: (date) => formatDisplayDate(date, language),
+            dateDetail: treeSettings.dateDetail,
+            isDirectLine: directLineIds.has(person.id),
+          }),
         ]),
       ),
-    [merged],
+    [merged, language, treeSettings.dateDetail, directLineIds],
   );
 
   // Defaults to the root rather than nobody, so the detail panel is already
@@ -515,7 +543,6 @@ function FamilyTree({
                 void navigate({ to: "/tree", search: treeSearch(rootId, next, orientation) })
               }
               options={[
-                { value: "hourglass", label: t("tree.view.hourglass") },
                 { value: "relatives", label: t("tree.view.relatives") },
                 { value: "ancestors", label: t("tree.view.ancestors") },
                 { value: "descendants", label: t("tree.view.descendants") },
@@ -543,6 +570,7 @@ function FamilyTree({
           <TopolaChart
             data={chartData}
             cards={cards}
+            settings={treeSettings}
             rootId={rootId}
             chartKind={view}
             horizontal={orientation === "horizontal"}

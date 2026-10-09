@@ -1,5 +1,6 @@
 export * from "./album-category.js";
 export * from "./association.js";
+export * from "./app-settings.js";
 export * from "./citation.js";
 export * from "./configurable-options.js";
 export * from "./gedcom-import.js";

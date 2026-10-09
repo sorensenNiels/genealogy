@@ -1,12 +1,21 @@
 import type { AppRouter } from "@genealogy/backend";
-import { configurableTopicSchema, type ConfigurableTopic, isAdmin } from "@genealogy/core";
+import {
+  configurableTopicSchema,
+  type ConfigurableTopic,
+  isAdmin,
+  treeChartKindSchema,
+  treeOrientationSchema,
+  type TreeSettings,
+} from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
+import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
 import { DialogFooter } from "@genealogy/ui/components/dialog";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import { Input } from "@genealogy/ui/components/input";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
+import { Switch } from "@genealogy/ui/components/switch";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { cn } from "@genealogy/ui/lib/utils";
 import { useForm } from "@tanstack/react-form";
@@ -15,14 +24,17 @@ import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { TFunction } from "i18next";
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { treeSettingsQueryKey, useTreeSettingsQuery } from "../lib/tree-settings";
 import {
   addOption,
   listOptions,
   moveOption,
   removeOption,
   updateOption,
+  updateTreeSettings,
 } from "../server/functions/settings.functions";
 
 // The enum always has at least one member, so this is never actually undefined.
@@ -36,7 +48,12 @@ export const Route = createFileRoute("/settings")({
   // An unrecognized/missing topic (a stale bookmark, a typo'd URL) falls
   // back to the first topic rather than erroring — same reasoning as
   // tree.tsx's personId search param.
-  validateSearch: (search: Record<string, unknown>): { topic?: ConfigurableTopic } => {
+  // `section` picks a display-settings panel (just "tree" so far) instead of
+  // a dropdown topic; with neither, the first topic shows, as before.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { topic?: ConfigurableTopic; section?: SettingsSection } => {
+    if (search.section === "tree") return { section: "tree" };
     const result = configurableTopicSchema.safeParse(search.topic);
     return result.success ? { topic: result.data } : {};
   },
@@ -47,6 +64,12 @@ type RouterOutputs = inferRouterOutputs<AppRouter>;
 type ConfigurableOptionRow = RouterOutputs["settings"]["listOptions"][number];
 
 const LIST_OPTIONS_KEY = ["settings", "listOptions"];
+
+type SettingsSection = "tree";
+
+const NAV_LINK_CLASS =
+  "rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
+const NAV_LINK_ACTIVE_CLASS = "border-primary bg-accent font-medium text-foreground";
 
 function topicLabels(t: TFunction): Record<ConfigurableTopic, string> {
   return {
@@ -63,7 +86,7 @@ function topicLabels(t: TFunction): Record<ConfigurableTopic, string> {
 function SettingsRoute() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { topic = DEFAULT_TOPIC } = Route.useSearch();
+  const { topic = DEFAULT_TOPIC, section } = Route.useSearch();
   const options = useQuery({ queryKey: LIST_OPTIONS_KEY, queryFn: () => listOptions() });
 
   const refresh = async () => {
@@ -74,29 +97,221 @@ function SettingsRoute() {
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">{t("settings.title")}</h1>
       <div className="grid gap-6 md:grid-cols-[240px_1fr]">
-        <SectionCard title={t("settings.categories")} titleClassName="text-base" className="h-fit">
-          <nav className="flex flex-col gap-1">
-            {configurableTopicSchema.options.map((option) => (
+        <div className="flex h-fit flex-col gap-6">
+          <SectionCard title={t("settings.display")} titleClassName="text-base">
+            <nav className="flex flex-col gap-1">
               <Link
-                key={option}
                 to="/settings"
-                search={{ topic: option }}
-                className={cn(
-                  "rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-                  option === topic && "border-primary bg-accent font-medium text-foreground",
-                )}
+                search={{ section: "tree" }}
+                className={cn(NAV_LINK_CLASS, section === "tree" && NAV_LINK_ACTIVE_CLASS)}
               >
-                {topicLabels(t)[option]}
+                {t("settings.tree.title")}
               </Link>
-            ))}
-          </nav>
-        </SectionCard>
-        <TopicPanel
-          topic={topic}
-          options={(options.data ?? []).filter((option) => option.topic === topic)}
-          onChanged={refresh}
-        />
+            </nav>
+          </SectionCard>
+          <SectionCard title={t("settings.dropdowns")} titleClassName="text-base">
+            <nav className="flex flex-col gap-1">
+              {configurableTopicSchema.options.map((option) => (
+                <Link
+                  key={option}
+                  to="/settings"
+                  search={{ topic: option }}
+                  className={cn(
+                    NAV_LINK_CLASS,
+                    !section && option === topic && NAV_LINK_ACTIVE_CLASS,
+                  )}
+                >
+                  {topicLabels(t)[option]}
+                </Link>
+              ))}
+            </nav>
+          </SectionCard>
+        </div>
+        {section === "tree" ? (
+          <TreeSettingsPanel />
+        ) : (
+          <TopicPanel
+            topic={topic}
+            options={(options.data ?? []).filter((option) => option.topic === topic)}
+            onChanged={refresh}
+          />
+        )}
       </div>
+    </div>
+  );
+}
+
+function TreeSettingsPanel() {
+  const { t } = useTranslation();
+  const settings = useTreeSettingsQuery();
+  return (
+    <SectionCard title={t("settings.tree.title")} description={t("settings.tree.description")}>
+      {settings.isPending ? (
+        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+      ) : settings.isError ? (
+        <p className="text-sm text-destructive">{settings.error.message}</p>
+      ) : (
+        <TreeSettingsForm initial={settings.data} />
+      )}
+    </SectionCard>
+  );
+}
+
+/**
+ * One form for the whole section, saved together — each new tree setting is
+ * another `form.Field` here and a field with a default in
+ * `treeSettingsSchema` (`@genealogy/core`).
+ */
+function TreeSettingsForm({ initial }: { initial: TreeSettings }) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const updateMutation = useMutation({ mutationFn: updateTreeSettings });
+
+  const form = useForm({
+    defaultValues: initial,
+    onSubmit: async ({ value }) => {
+      const saved = await updateMutation.mutateAsync({ data: value });
+      queryClient.setQueryData(treeSettingsQueryKey, saved);
+      // The saved values are the new baseline, so the dirty dot clears.
+      form.reset(saved);
+    },
+  });
+  const { isDirty, isSubmitting } = useFormDirtyPending(form);
+
+  return (
+    <form
+      className="space-y-6"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <SettingsGroup>
+        {(["showPhotos", "showGenderBadge", "showMourningBand"] as const).map((name) => (
+          <form.Field key={name} name={name}>
+            {(field) => (
+              <SwitchSetting
+                label={t(`settings.tree.${name}`)}
+                help={t(`settings.tree.${name}Help`)}
+                isSelected={field.state.value}
+                onChange={field.handleChange}
+              />
+            )}
+          </form.Field>
+        ))}
+      </SettingsGroup>
+
+      <SettingsGroup>
+        <form.Field name="dateDetail">
+          {(field) => (
+            <ChoiceSetting
+              label={t("settings.tree.dateDetail")}
+              help={t("settings.tree.dateDetailHelp")}
+              value={field.state.value}
+              onChange={field.handleChange}
+              options={[
+                { value: "years", label: t("settings.tree.dateDetailYears") },
+                { value: "full", label: t("settings.tree.dateDetailFull") },
+              ]}
+            />
+          )}
+        </form.Field>
+        <form.Field name="highlightDirectLine">
+          {(field) => (
+            <SwitchSetting
+              label={t("settings.tree.highlightDirectLine")}
+              help={t("settings.tree.highlightDirectLineHelp")}
+              isSelected={field.state.value}
+              onChange={field.handleChange}
+            />
+          )}
+        </form.Field>
+      </SettingsGroup>
+
+      <SettingsGroup>
+        <form.Field name="defaultChart">
+          {(field) => (
+            <ChoiceSetting
+              label={t("settings.tree.defaultChart")}
+              value={field.state.value}
+              onChange={field.handleChange}
+              options={treeChartKindSchema.options.map((kind) => ({
+                value: kind,
+                label: t(`tree.view.${kind}`),
+              }))}
+            />
+          )}
+        </form.Field>
+        <form.Field name="defaultOrientation">
+          {(field) => (
+            <ChoiceSetting
+              label={t("settings.tree.defaultOrientation")}
+              help={t("settings.tree.defaultsHelp")}
+              value={field.state.value}
+              onChange={field.handleChange}
+              options={treeOrientationSchema.options.map((orientation) => ({
+                value: orientation,
+                label: t(`tree.orientation.${orientation}`),
+              }))}
+            />
+          )}
+        </form.Field>
+      </SettingsGroup>
+
+      {updateMutation.isError && (
+        <p className="text-sm text-destructive">{updateMutation.error.message}</p>
+      )}
+      <SaveButton isDirty={isDirty} isPending={isSubmitting}>
+        {t("common.save")}
+      </SaveButton>
+    </form>
+  );
+}
+
+/** A run of related settings, separated from the next by a rule. */
+function SettingsGroup({ children }: { children: ReactNode }) {
+  return <div className="space-y-5 border-b pb-6 last-of-type:border-b-0">{children}</div>;
+}
+
+function SwitchSetting({
+  label,
+  help,
+  isSelected,
+  onChange,
+}: {
+  label: string;
+  help: string;
+  isSelected: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <Switch isSelected={isSelected} onChange={onChange}>
+        {label}
+      </Switch>
+      <p className="pl-11 text-sm text-muted-foreground">{help}</p>
+    </div>
+  );
+}
+
+function ChoiceSetting<T extends string>({
+  label,
+  help,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  help?: string;
+  value: T;
+  onChange: (next: T) => void;
+  options: Array<{ value: T; label: string }>;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">{label}</p>
+      <ButtonRadioGroup aria-label={label} value={value} onChange={onChange} options={options} />
+      {help && <p className="text-sm text-muted-foreground">{help}</p>}
     </div>
   );
 }

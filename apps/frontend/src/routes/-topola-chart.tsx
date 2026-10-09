@@ -1,3 +1,4 @@
+import type { TreeChartKind, TreeSettings } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
 import { MaximizeIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -15,7 +16,7 @@ import {
 } from "./-tree-card-renderer";
 
 /** The charts the tree page offers — each maps to one topola chart class. */
-export type ChartKind = "hourglass" | "relatives" | "ancestors" | "descendants";
+export type ChartKind = TreeChartKind;
 
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 2;
@@ -52,6 +53,7 @@ interface ZoomControls {
 export function TopolaChart({
   data,
   cards,
+  settings,
   rootId,
   chartKind,
   horizontal,
@@ -62,6 +64,8 @@ export function TopolaChart({
   data: JsonGedcomData;
   /** What each person's card shows, by id. */
   cards: ReadonlyMap<string, CardInfo>;
+  /** Display settings from the Settings page — see `treeSettingsSchema`. */
+  settings: TreeSettings;
   rootId: string;
   chartKind: ChartKind;
   horizontal: boolean;
@@ -78,12 +82,15 @@ export function TopolaChart({
   // Marks the root and selected boxes; set once d3 has loaded. Called after
   // every topola render, since a render can recreate the boxes.
   const highlightRef = useRef<((selectedId: string) => void) | null>(null);
+  // What the card renderer draws from. Updated just before each render (below)
+  // rather than every React render, so it always matches the data drawn.
+  const drawInputs = useRef({ cards, settings });
   const [loadError, setLoadError] = useState<Error | null>(null);
 
   // Latest values for callbacks topola and d3 hold on to across renders.
-  const latest = useRef({ data, cards, rootId, selectedId, onSelect, onCenter });
+  const latest = useRef({ data, rootId, selectedId, onSelect, onCenter });
   useEffect(() => {
-    latest.current = { data, cards, rootId, selectedId, onSelect, onCenter };
+    latest.current = { data, rootId, selectedId, onSelect, onCenter };
   });
 
   useEffect(() => {
@@ -101,7 +108,6 @@ export function TopolaChart({
         if (cancelled || !outer) return;
 
         const chartType = {
-          hourglass: topola.HourglassChart,
           relatives: topola.RelativesChart,
           ancestors: topola.AncestorChart,
           descendants: topola.DescendantChart,
@@ -109,7 +115,12 @@ export function TopolaChart({
         const handle = topola.createChart({
           json: latest.current.data,
           chartType,
-          renderer: createCardRendererClass(topola, select, (id) => latest.current.cards.get(id)),
+          renderer: createCardRendererClass(
+            topola,
+            select,
+            (id) => drawInputs.current.cards.get(id),
+            () => drawInputs.current.settings,
+          ),
           svgSelector: `#${svgId}`,
           horizontal,
           animate: true,
@@ -196,10 +207,11 @@ export function TopolaChart({
   useEffect(() => {
     const handle = handleRef.current;
     if (!handle) return;
+    drawInputs.current = { cards, settings };
     handle.setData(data);
     handle.render({ startIndi: rootId });
     highlightRef.current?.(latest.current.selectedId);
-  }, [data, rootId]);
+  }, [data, cards, settings, rootId]);
 
   useEffect(() => {
     highlightRef.current?.(selectedId);

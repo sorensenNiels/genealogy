@@ -2,6 +2,7 @@ import {
   addConfigurableOptionSchema,
   configurableOptionIdSchema,
   moveConfigurableOptionSchema,
+  treeSettingsSchema,
   updateConfigurableOptionSchema,
 } from "@genealogy/core";
 import { createServerFn } from "@tanstack/react-start";
@@ -12,6 +13,14 @@ import { trpcProxy } from "../trpc-proxy-client";
 export const listOptions = createServerFn({ method: "GET" }).handler(() =>
   trpcProxy.settings.listOptions.query(),
 );
+
+export const getTreeSettings = createServerFn({ method: "GET" }).handler(() =>
+  trpcProxy.settings.treeSettings.query(),
+);
+
+export const updateTreeSettings = createServerFn({ method: "POST" })
+  .validator(treeSettingsSchema)
+  .handler(({ data }) => trpcProxy.settings.updateTreeSettings.mutate(data));
 
 export const addOption = createServerFn({ method: "POST" })
   .validator(addConfigurableOptionSchema)

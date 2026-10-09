@@ -1,5 +1,11 @@
-import type { AddConfigurableOption, UpdateConfigurableOption } from "@genealogy/core";
+import type {
+  AddConfigurableOption,
+  TreeSettings,
+  UpdateConfigurableOption,
+} from "@genealogy/core";
+import { appSettingsKeys, parseTreeSettings } from "@genealogy/core";
 import {
+  appSettings,
   citations,
   configurableOptions,
   parentageInUse,
@@ -31,6 +37,31 @@ export class SettingsService {
     @Inject(DRIZZLE) private readonly db: Database,
     @Inject(PG_POOL) private readonly pool: Pool,
   ) {}
+
+  /**
+   * The tree's display settings. A missing row (never saved), a field added
+   * since the last save, or a stored value that's no longer valid comes
+   * back as that field's default — see `parseTreeSettings` — rather than
+   * breaking the tree page.
+   */
+  async getTreeSettings(): Promise<TreeSettings> {
+    const [row] = await this.db
+      .select({ value: appSettings.value })
+      .from(appSettings)
+      .where(eq(appSettings.key, appSettingsKeys.tree));
+    return parseTreeSettings(row?.value);
+  }
+
+  async updateTreeSettings(settings: TreeSettings): Promise<TreeSettings> {
+    await this.db
+      .insert(appSettings)
+      .values({ key: appSettingsKeys.tree, value: settings })
+      .onConflictDoUpdate({
+        target: appSettings.key,
+        set: { value: settings, updatedAt: new Date() },
+      });
+    return settings;
+  }
 
   /** Every configurable option, across every topic — the table is small enough that one query beats one per topic. */
   async listOptions(): Promise<ConfigurableOptionRow[]> {

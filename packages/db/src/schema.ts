@@ -506,6 +506,20 @@ export const configurableOptions = pgTable(
 );
 
 /**
+ * Site-wide settings, one row per section (`"tree"`, ...), the value a JSON
+ * object validated by that section's Zod schema in `@genealogy/core`
+ * (`treeSettingsSchema`, ...). Key/value rather than a column per setting
+ * so a new setting is a schema default in code, not a migration; the
+ * schemas give every field a default, so a missing row or field reads as
+ * the default. Edited by admins on the Settings page.
+ */
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * Links a genealogy person to an Immich "Person" (a face-clustering result —
  * see "Photos & albums via Immich" in FEATURES.md). Many Immich person ids
  * can map to one genealogy person — the same real person photographed
@@ -781,6 +795,7 @@ export const schema = {
   sources,
   citations,
   configurableOptions,
+  appSettings,
   personImmichLinks,
   immichAlbumAssetOrder,
   albumMetadata,

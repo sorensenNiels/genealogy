@@ -46,6 +46,13 @@
 .topola-chart g.indi:hover .card-border {
   stroke: var(--ring);
 }
+/* `highlightDirectLine`: the centre person's ancestors and descendants. */
+.topola-chart g.indi.direct-line .card-bg {
+  fill: color-mix(in oklab, var(--primary) 9%, var(--card));
+}
+.topola-chart g.indi.direct-line .card-border {
+  stroke: color-mix(in oklab, var(--primary) 45%, var(--border));
+}
 .topola-chart g.indi.is-root .card-border {
   stroke: var(--primary);
   stroke-width: 2.5px;
@@ -92,10 +99,6 @@
   fill: var(--muted-foreground);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-}
-.topola-chart .card-place {
-  fill: var(--muted-foreground);
-  font-size: 11.5px;
 }
 .topola-chart .card-initials-bg {
   fill: color-mix(in oklab, var(--tree-gender) 16%, var(--card));

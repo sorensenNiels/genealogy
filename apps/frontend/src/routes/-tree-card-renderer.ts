@@ -1,3 +1,4 @@
+import type { TreeSettings } from "@genealogy/core";
 import type { select, Selection } from "d3-selection";
 import type * as Topola from "topola";
 import type {
@@ -71,6 +72,8 @@ export function createCardRendererClass(
   topola: TopolaModule,
   select: SelectFn,
   cardFor: (id: string) => CardInfo | undefined,
+  /** Read at draw time, so a settings change shows on the next render. */
+  settings: () => TreeSettings,
 ) {
   return class CardRenderer extends topola.CompositeRenderer implements Renderer {
     constructor(readonly rendererOptions: RendererOptions<IndiDetails, FamDetails>) {
@@ -113,12 +116,17 @@ export function createCardRendererClass(
           horizontal ? node.data.indi!.height! + PAD_Y : PAD_Y + CARD_HEIGHT / 2,
         );
 
+      const current = settings();
       const card = cards
         .selectAll<SVGGElement, CardDatum>("g.indi")
         .data((node) => cardData(node.data, horizontal))
         .enter()
         .append("g")
-        .attr("class", (datum) => `indi ${GENDER_CLASS[cardFor(datum.indi.id)?.gender ?? "U"]}`)
+        .attr("class", (datum) => {
+          const info = cardFor(datum.indi.id);
+          const directLine = current.highlightDirectLine && info?.isDirectLine;
+          return `indi ${GENDER_CLASS[info?.gender ?? "U"]}${directLine ? " direct-line" : ""}`;
+        })
         .attr("transform", (datum) => `translate(${datum.x + PAD_X}, ${datum.y + PAD_Y})`)
         .on("click", (_event, datum) =>
           this.rendererOptions.indiCallback?.({
@@ -128,7 +136,7 @@ export function createCardRendererClass(
         );
 
       card.each(function (datum) {
-        drawCard(select(this), cardFor(datum.indi.id));
+        drawCard(select(this), cardFor(datum.indi.id), current);
       });
     }
   };
@@ -153,6 +161,7 @@ function cardData(node: TreeNode, horizontal: boolean): CardDatum[] {
 function drawCard(
   card: Selection<SVGGElement, CardDatum, null, undefined>,
   info: CardInfo | undefined,
+  settings: TreeSettings,
 ) {
   card
     .append("rect")
@@ -162,7 +171,7 @@ function drawCard(
     .attr("rx", CARD_RADIUS);
   const text = card.append("g").attr("clip-path", `url(#${TEXT_CLIP_ID})`);
   const name = info?.name ?? "";
-  const lines = [info?.lifespan, info?.place].filter((line): line is string => Boolean(line));
+  const lines = info?.lines ?? [];
   // Vertically centre the block: one name line plus up to two detail lines.
   const top = lines.length === 0 ? 41 : lines.length === 1 ? 32 : 25;
   text
@@ -174,13 +183,14 @@ function drawCard(
   lines.forEach((line, index) => {
     text
       .append("text")
-      .attr("class", index === 0 ? "card-meta" : "card-place")
+      .attr("class", "card-meta")
       .attr("x", TEXT_X)
       .attr("y", top + 18 + index * 16)
       .text(truncate(line, 26));
   });
 
-  if (info?.photoUrl) {
+  // With photos turned off in Settings, everyone gets the initials square.
+  if (info?.photoUrl && settings.showPhotos) {
     card
       .append("image")
       .attr("x", PHOTO_X)
@@ -208,8 +218,10 @@ function drawCard(
       .attr("dominant-baseline", "central")
       .text(info?.initials ?? "");
   }
-  if (info?.isDeceased) drawMourningBand(card);
-  if (info && info.gender !== "U") drawGenderBadge(card, info.gender);
+  if (settings.showMourningBand && info?.isDeceased) drawMourningBand(card);
+  if (settings.showGenderBadge && info && info.gender !== "U") {
+    drawGenderBadge(card, info.gender);
+  }
   card
     .append("rect")
     .attr("class", "card-border")

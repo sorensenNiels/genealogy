@@ -288,7 +288,6 @@
     },
     "view": {
       "label": "Diagram",
-      "hourglass": "Timeglas",
       "relatives": "Slægtninge",
       "ancestors": "Aner",
       "descendants": "Efterkommere"
@@ -461,7 +460,28 @@
     "keyPlaceholder": "Nøgle, f.eks. dimission (små bogstaver, ingen mellemrum)",
     "labelPlaceholder": "Etiket, f.eks. Dimission",
     "labelOnly": "Etiket",
-    "keyLabel": "Nøgle"
+    "keyLabel": "Nøgle",
+    "display": "Visning",
+    "dropdowns": "Valglister",
+    "tree": {
+      "title": "Slægtstræ",
+      "description": "Hvordan slægtstræet tegnes, for alle medlemmer.",
+      "showGenderBadge": "Vis kønsmærke på fotos",
+      "showGenderBadgeHelp": "Et lille ♂/♀-mærke over hjørnet af hver persons foto i slægtstræet.",
+      "showPhotos": "Vis fotos",
+      "showPhotosHelp": "Fra viser kun initialer — praktisk til udskrift eller af hensyn til privatliv.",
+      "showMourningBand": "Sørgebånd for afdøde",
+      "showMourningBandHelp": "Et sort bånd over hjørnet af en afdød persons foto.",
+      "dateDetail": "Datoer på kort",
+      "dateDetailYears": "Kun årstal",
+      "dateDetailFull": "Fulde datoer",
+      "dateDetailHelp": "Fulde datoer fylder en linje hver, så stedet vises kun, når en dato mangler.",
+      "defaultChart": "Diagram træet åbner med",
+      "defaultOrientation": "Retning træet åbner med",
+      "defaultsHelp": "Bruges når et link ikke angiver det — menupunktet Slægtstræ, \"Vis i slægtstræ\". Medlemmer kan stadig skifte på siden.",
+      "highlightDirectLine": "Fremhæv den direkte linje",
+      "highlightDirectLineHelp": "Farver centerpersonens egne aner og efterkommere, så de skiller sig ud fra tanter, onkler og fætre/kusiner."
+    }
   },
   "overview": {
     "backendTitle": "Backend",
