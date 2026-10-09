@@ -205,6 +205,9 @@ export interface TreeCard {
   isDeceased: boolean;
   /** One of the centre person's own ancestors or descendants (or them). */
   isDirectLine: boolean;
+  /** Their parents / children haven't been fetched yet, and the chart would show them — the card's "+" buttons. */
+  canLoadParents: boolean;
+  canLoadChildren: boolean;
 }
 
 export interface TreeCardOptions {
@@ -214,6 +217,8 @@ export interface TreeCardOptions {
   formatDate: (date: HistoricalDate) => string | null;
   dateDetail: TreeDateDetail;
   isDirectLine: boolean;
+  canLoadParents: boolean;
+  canLoadChildren: boolean;
 }
 
 /** At most this many lines fit under the name on a card. */
@@ -255,6 +260,8 @@ export function treeCard(person: TopolaSourcePerson, options: TreeCardOptions): 
     initials: initials === "" ? "?" : initials,
     isDeceased: !person.isLiving,
     isDirectLine: options.isDirectLine,
+    canLoadParents: options.canLoadParents,
+    canLoadChildren: options.canLoadChildren,
   };
 }
 

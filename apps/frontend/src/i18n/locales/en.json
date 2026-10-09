@@ -304,7 +304,12 @@
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
     "fitToView": "Fit to view",
-    "chartHint": "Click a person to show them in the panel; double-click to center the tree on them."
+    "chartHint": "Click a person to show them in the panel; double-click to centre the tree on them. Arrow keys move between people.",
+    "loadParentsOf": "Load {{name}}'s parents",
+    "loadChildrenOf": "Load {{name}}'s children",
+    "chartLabel": "Family tree",
+    "keyboardHelp": "Arrow keys move between people, Enter centres the tree on the selected person, Home goes back to the centre person, plus and minus zoom, 0 fits the whole tree.",
+    "findInTree": "Find in tree…"
   },
   "tools": {
     "title": "Tools",
@@ -480,7 +485,17 @@
       "defaultOrientation": "Direction the tree opens with",
       "defaultsHelp": "Used when a link doesn't say — the Tree menu item, \"View in tree\". Members can still switch on the tree page.",
       "highlightDirectLine": "Highlight the direct line",
-      "highlightDirectLineHelp": "Tints the centre person's own ancestors and descendants, so they stand out from aunts, uncles and cousins."
+      "highlightDirectLineHelp": "Tints the centre person's own ancestors and descendants, so they stand out from aunts, uncles and cousins.",
+      "showExpandButtons": "Show expand buttons on cards",
+      "showExpandButtonsHelp": "A \"+\" on a card's edge loads that person's parents or children right there.",
+      "showMinimap": "Show minimap",
+      "showMinimapHelp": "An overview of the whole tree in the corner, when it doesn't fit on screen.",
+      "animateTransitions": "Animate changes",
+      "animateTransitionsHelp": "Cards glide to their new places when the centre changes or more is loaded. Always off when the device asks for reduced motion.",
+      "initialZoom": "Zoom when the tree opens",
+      "initialZoomFit": "Whole tree",
+      "initialZoomPerson": "Centre person at 100%",
+      "initialZoomHelp": "\"Centre person\" suits big trees, where the whole tree is too small to read."
     }
   },
   "overview": {

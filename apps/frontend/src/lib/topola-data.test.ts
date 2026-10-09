@@ -196,6 +196,8 @@ function cardOptions(overrides: Partial<TreeCardOptions> = {}): TreeCardOptions 
     formatDate: (date) => `full:${date.original}`,
     dateDetail: "years",
     isDirectLine: false,
+    canLoadParents: false,
+    canLoadChildren: false,
     ...overrides,
   };
 }
@@ -219,6 +221,8 @@ describe("treeCard", () => {
       initials: "AJ",
       isDeceased: true,
       isDirectLine: true,
+      canLoadParents: false,
+      canLoadChildren: false,
     });
   });
 

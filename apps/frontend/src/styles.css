@@ -77,6 +77,47 @@
   stroke-width: 7px;
   filter: drop-shadow(0 0 0.5px rgb(255 255 255 / 0.7));
 }
+/* The "+" on a card's edge that loads parents/children. */
+.topola-chart .card-expand {
+  cursor: pointer;
+}
+.topola-chart .card-expand circle {
+  fill: var(--card);
+  stroke: var(--border);
+  stroke-width: 1.5px;
+  transition:
+    fill 120ms,
+    stroke 120ms;
+}
+.topola-chart .card-expand:hover circle {
+  fill: var(--primary);
+  stroke: var(--primary);
+}
+.topola-chart .card-expand path {
+  fill: none;
+  stroke: var(--muted-foreground);
+  stroke-width: 2px;
+  stroke-linecap: round;
+}
+.topola-chart .card-expand:hover path {
+  stroke: var(--primary-foreground);
+}
+.topola-chart .card-expand .card-expand-spinner,
+.topola-chart .card-expand.is-loading .card-expand-plus {
+  display: none;
+}
+.topola-chart .card-expand.is-loading .card-expand-spinner {
+  display: inline;
+  stroke: var(--primary);
+  transform-box: view-box;
+  transform-origin: 0 0;
+  animation: tree-expand-spin 0.8s linear infinite;
+}
+@keyframes tree-expand-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .topola-chart .card-gender circle {
   fill: var(--tree-gender);
   stroke: var(--card);

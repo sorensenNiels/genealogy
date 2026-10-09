@@ -304,7 +304,12 @@
     "zoomIn": "Zoom ind",
     "zoomOut": "Zoom ud",
     "fitToView": "Tilpas til visning",
-    "chartHint": "Klik på en person for at vise dem i panelet; dobbeltklik for at centrere træet om dem."
+    "chartHint": "Klik på en person for at vise dem i panelet; dobbeltklik for at centrere træet om dem. Piletasterne flytter mellem personer.",
+    "loadParentsOf": "Indlæs {{name}}s forældre",
+    "loadChildrenOf": "Indlæs {{name}}s børn",
+    "chartLabel": "Slægtstræ",
+    "keyboardHelp": "Piletasterne flytter mellem personer, Enter centrerer træet om den valgte person, Home går tilbage til centerpersonen, plus og minus zoomer, 0 viser hele træet.",
+    "findInTree": "Find i træet…"
   },
   "tools": {
     "title": "Værktøjer",
@@ -480,7 +485,17 @@
       "defaultOrientation": "Retning træet åbner med",
       "defaultsHelp": "Bruges når et link ikke angiver det — menupunktet Slægtstræ, \"Vis i slægtstræ\". Medlemmer kan stadig skifte på siden.",
       "highlightDirectLine": "Fremhæv den direkte linje",
-      "highlightDirectLineHelp": "Farver centerpersonens egne aner og efterkommere, så de skiller sig ud fra tanter, onkler og fætre/kusiner."
+      "highlightDirectLineHelp": "Farver centerpersonens egne aner og efterkommere, så de skiller sig ud fra tanter, onkler og fætre/kusiner.",
+      "showExpandButtons": "Vis udvid-knapper på kort",
+      "showExpandButtonsHelp": "Et \"+\" på kortets kant indlæser personens forældre eller børn direkte.",
+      "showMinimap": "Vis minikort",
+      "showMinimapHelp": "En oversigt over hele træet i hjørnet, når det ikke kan være på skærmen.",
+      "animateTransitions": "Animér ændringer",
+      "animateTransitionsHelp": "Kortene glider på plads, når centret skifter, eller der indlæses mere. Altid slået fra, når enheden beder om reduceret bevægelse.",
+      "initialZoom": "Zoom når træet åbner",
+      "initialZoomFit": "Hele træet",
+      "initialZoomPerson": "Centerperson ved 100 %",
+      "initialZoomHelp": "\"Centerperson\" passer til store træer, hvor hele træet bliver for småt til at læse."
     }
   },
   "overview": {

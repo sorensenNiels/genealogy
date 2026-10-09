@@ -229,6 +229,35 @@ function TreeSettingsForm({ initial }: { initial: TreeSettings }) {
       </SettingsGroup>
 
       <SettingsGroup>
+        {(["showExpandButtons", "showMinimap", "animateTransitions"] as const).map((name) => (
+          <form.Field key={name} name={name}>
+            {(field) => (
+              <SwitchSetting
+                label={t(`settings.tree.${name}`)}
+                help={t(`settings.tree.${name}Help`)}
+                isSelected={field.state.value}
+                onChange={field.handleChange}
+              />
+            )}
+          </form.Field>
+        ))}
+        <form.Field name="initialZoom">
+          {(field) => (
+            <ChoiceSetting
+              label={t("settings.tree.initialZoom")}
+              help={t("settings.tree.initialZoomHelp")}
+              value={field.state.value}
+              onChange={field.handleChange}
+              options={[
+                { value: "fit", label: t("settings.tree.initialZoomFit") },
+                { value: "person", label: t("settings.tree.initialZoomPerson") },
+              ]}
+            />
+          )}
+        </form.Field>
+      </SettingsGroup>
+
+      <SettingsGroup>
         <form.Field name="defaultChart">
           {(field) => (
             <ChoiceSetting

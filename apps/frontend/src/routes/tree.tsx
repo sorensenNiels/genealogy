@@ -20,10 +20,10 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@genealogy/ui/components/dialog";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { ReadOnlyProvider } from "@genealogy/ui/lib/read-only";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
-import { Cross, UserRound, XIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Cross, Loader2, SearchIcon, UserRound, XIcon } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage } from "../i18n/create-i18n-instance";
@@ -43,7 +43,8 @@ import {
   unlinkSpouse,
 } from "../server/functions/person.functions";
 import { getMyProfile } from "../server/functions/profile.functions";
-import { TopolaChart, type ChartKind } from "./-topola-chart";
+import { TopolaChart, type ChartKind, type TreeChartApi } from "./-topola-chart";
+import type { ExpandDirection } from "./-tree-card-renderer";
 
 export const Route = createFileRoute("/tree")({
   // No zod schema here (unlike the server functions this page calls) — a
@@ -127,7 +128,10 @@ function TreePage() {
     // guessing at the header's pixel height, and no page-level scrollbar.
     <div className="flex h-full flex-col gap-4">
       {personId ? (
-        <FamilyTree key={personId} rootId={personId} view={view} orientation={orientation} />
+        // Deliberately not keyed by `personId`: a new centre person re-renders
+        // the same tree (and the same topola chart), which is what lets it
+        // animate there — see "Smooth re-centring" in FamilyTree.
+        <FamilyTree rootId={personId} view={view} orientation={orientation} />
       ) : (
         <RootPicker />
       )}
@@ -214,14 +218,6 @@ interface MergedTree {
   childrenKnownIds: Set<string>;
 }
 
-/**
- * Layers locally-added people/edges (from "add relative" and "load more" —
- * see `AddRelativeButton`/the expand mutation below) on top of the base
- * fetch, deduplicating by id/edge key. Kept as a plain merge rather than
- * refetching `person.tree` after every action: a refetch would re-run the
- * whole layout and could shuffle everyone else on screen for what's usually
- * a one-person addition.
- */
 /** Edge keys, shared by `mergeTree`'s dedup and the removal set below so the two always agree. */
 function parentEdgeKey(parentId: string, childId: string): string {
   return `${parentId}->${childId}`;
@@ -242,13 +238,35 @@ interface RemovedEdges {
 }
 const NO_REMOVED_EDGES: RemovedEdges = { parentEdges: new Set(), spouseEdges: new Set() };
 
-function mergeTree(base: TreeData, extra: ExtraTreeData, removed: RemovedEdges): MergedTree {
-  const peopleById = new Map(base.people.map((person) => [person.id, person]));
-  for (const person of extra.people) peopleById.set(person.id, person);
+/** Anything `mergeTree` can merge: a fetched `person.tree`, or the locally added extras. */
+type TreeSource = Pick<
+  ExtraTreeData,
+  "people" | "parentEdges" | "spouseEdges" | "parentsKnownIds" | "childrenKnownIds"
+>;
+
+/**
+ * Everything this visit knows, as one tree around `rootId`: every
+ * `person.tree` fetched so far (one per person the tree has been centred
+ * on — see "Smooth re-centring" in FamilyTree) plus the locally-added
+ * people/edges from "add relative" and "load more", deduplicated by id/edge
+ * key, minus the links removed in the panel. A plain merge rather than a
+ * refetch after every action: a refetch would drop everything "Load more"
+ * pulled in and could shuffle everyone else on screen for what's usually a
+ * one-person addition.
+ */
+function mergeTree(
+  rootId: string,
+  sources: readonly TreeSource[],
+  removed: RemovedEdges,
+): MergedTree {
+  const peopleById = new Map<string, TreePersonRow>();
+  for (const source of sources) {
+    for (const person of source.people) peopleById.set(person.id, person);
+  }
 
   const parentEdgeKeys = new Set<string>();
   const parentEdges: TreeEdgeRow[] = [];
-  for (const edge of [...base.parentEdges, ...extra.parentEdges]) {
+  for (const edge of sources.flatMap((source) => source.parentEdges)) {
     const key = parentEdgeKey(edge.parentId, edge.childId);
     if (parentEdgeKeys.has(key) || removed.parentEdges.has(key)) continue;
     parentEdgeKeys.add(key);
@@ -257,7 +275,7 @@ function mergeTree(base: TreeData, extra: ExtraTreeData, removed: RemovedEdges):
 
   const spouseEdgeKeys = new Set<string>();
   const spouseEdges: Array<[string, string]> = [];
-  for (const pair of [...base.spouseEdges, ...extra.spouseEdges]) {
+  for (const pair of sources.flatMap((source) => source.spouseEdges)) {
     const key = spouseEdgeKey(pair);
     if (spouseEdgeKeys.has(key) || removed.spouseEdges.has(key)) continue;
     spouseEdgeKeys.add(key);
@@ -265,13 +283,23 @@ function mergeTree(base: TreeData, extra: ExtraTreeData, removed: RemovedEdges):
   }
 
   return keepConnected({
-    rootId: base.rootId,
+    rootId,
     people: [...peopleById.values()],
     parentEdges,
     spouseEdges,
-    parentsKnownIds: new Set([...base.parentsKnownIds, ...extra.parentsKnownIds]),
-    childrenKnownIds: new Set([...base.childrenKnownIds, ...extra.childrenKnownIds]),
+    parentsKnownIds: new Set(sources.flatMap((source) => source.parentsKnownIds)),
+    childrenKnownIds: new Set(sources.flatMap((source) => source.childrenKnownIds)),
   });
+}
+
+/** One `person.tree` fetch — shared by the current centre's own query and the list of every centre visited. */
+function treeQueryOptions(id: string) {
+  return { queryKey: ["person", "tree", id], queryFn: () => getTree({ data: { id } }) };
+}
+
+/** Only the fetched trees, in visit order. A stable function, so `useQueries` keeps the result stable too. */
+function fetchedTrees(results: ReadonlyArray<{ data: TreeData | undefined }>): TreeData[] {
+  return results.flatMap((result) => (result.data ? [result.data] : []));
 }
 
 /** Keeps `ids` and only the edges whose both ends are in it. */
@@ -333,10 +361,16 @@ function FamilyTree({
   const treeSettings = useTreeSettings();
   const { canEdit } = usePermissions();
   const navigate = useNavigate();
-  const treeQuery = useQuery({
-    queryKey: ["person", "tree", rootId],
-    queryFn: () => getTree({ data: { id: rootId } }),
-  });
+  // Smooth re-centring: every person the tree has been centred on this
+  // visit keeps their fetched tree, so a new centre adds to what's drawn
+  // instead of replacing it — topola then moves the cards it already has.
+  // Grown during render (React's "adjust state when a prop changes"
+  // pattern), so the new centre's fetch starts in the same render.
+  const [visitedRoots, setVisitedRoots] = useState<string[]>([rootId]);
+  if (!visitedRoots.includes(rootId)) setVisitedRoots([...visitedRoots, rootId]);
+  const trees = useQueries({ queries: visitedRoots.map(treeQueryOptions), combine: fetchedTrees });
+  // The current centre's own status (the same cache entry as above).
+  const treeQuery = useQuery(treeQueryOptions(rootId));
 
   const [extra, setExtra] = useState<ExtraTreeData>(EMPTY_EXTRA);
   const [removed, setRemoved] = useState<RemovedEdges>(NO_REMOVED_EDGES);
@@ -377,10 +411,13 @@ function FamilyTree({
   // `merged` is the whole tree as this visit knows it — what the panel reads
   // and what topola draws. Which part of it shows is the chart type's job
   // now (an ancestor chart simply doesn't walk down), not a filter here.
-  const merged = useMemo(
-    () => (treeQuery.data ? mergeTree(treeQuery.data, extra, removed) : null),
-    [treeQuery.data, extra, removed],
-  );
+  // Null until the centre person is known — on the first load, or after
+  // jumping to someone unconnected to what's loaded (their tree, once it
+  // arrives, has them).
+  const merged = useMemo(() => {
+    const tree = mergeTree(rootId, [...trees, extra], removed);
+    return tree.people.some((person) => person.id === rootId) ? tree : null;
+  }, [rootId, trees, extra, removed]);
   // Memoized so TopolaChart only re-renders the chart when the data changes.
   const chartData = useMemo(
     () =>
@@ -407,20 +444,26 @@ function FamilyTree({
             formatDate: (date) => formatDisplayDate(date, language),
             dateDetail: treeSettings.dateDetail,
             isDirectLine: directLineIds.has(person.id),
+            // Only where the chart would show them: an ancestors chart never
+            // draws children, a descendants chart never draws parents.
+            canLoadParents: view !== "descendants" && !merged!.parentsKnownIds.has(person.id),
+            canLoadChildren: view !== "ancestors" && !merged!.childrenKnownIds.has(person.id),
           }),
         ]),
       ),
-    [merged, language, treeSettings.dateDetail, directLineIds],
+    [merged, language, treeSettings.dateDetail, directLineIds, view],
   );
 
   // Defaults to the root rather than nobody, so the detail panel is already
   // populated with the person the tree is centered on instead of an empty
-  // canvas that needs a click before showing anything. `FamilyTree` is keyed
-  // by `rootId` in TreePage, so this re-initializes whenever the centered
-  // person changes. Never null once a tree has loaded — the panel always has
-  // a person to show, so there's no close/deselect action, only ever
-  // switching who's shown.
-  const [selectedId, setSelectedId] = useState<string>(rootId);
+  // canvas that needs a click before showing anything. Stored with the root
+  // it was made under, so a new centre person selects them again. Never
+  // null once a tree has loaded — the panel always has a person to show, so
+  // there's no close/deselect action, only ever switching who's shown.
+  const [selection, setSelection] = useState({ rootId, id: rootId });
+  const selectedId = selection.rootId === rootId ? selection.id : rootId;
+  const setSelectedId = (id: string) => setSelection({ rootId, id });
+  const chartApi = useRef<TreeChartApi | null>(null);
 
   const expandMutation = useMutation({
     mutationFn: async ({ nodeId, direction }: { nodeId: string; direction: "up" | "down" }) => {
@@ -490,32 +533,28 @@ function FamilyTree({
     onSuccess: (update) => addToExtra(update),
   });
 
-  if (treeQuery.isPending) {
-    return (
+  if (!merged) {
+    return treeQuery.isError ? (
+      <p className="text-sm text-destructive">
+        {t("tree.loadErrorTree", { message: treeQuery.error.message })}
+      </p>
+    ) : (
       <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
         {t("tree.loading")}
       </div>
     );
   }
 
-  if (treeQuery.isError) {
-    return (
-      <p className="text-sm text-destructive">
-        {t("tree.loadErrorTree", { message: treeQuery.error.message })}
-      </p>
-    );
-  }
-
   // Falls back to the root when the selected person is gone — disconnected
   // by a removal in the panel.
   const selectedPerson =
-    merged?.people.find((person) => person.id === selectedId) ??
-    merged?.people.find((person) => person.id === rootId) ??
+    merged.people.find((person) => person.id === selectedId) ??
+    merged.people.find((person) => person.id === rootId) ??
     null;
 
   return (
     <div className="flex flex-1 gap-4 overflow-hidden">
-      {merged && selectedPerson && (
+      {selectedPerson && (
         <ReadOnlyProvider readOnly={!canEdit}>
           <DetailPanel
             person={selectedPerson}
@@ -549,6 +588,17 @@ function FamilyTree({
               ]}
             />
           </div>
+          <FindInTree
+            people={merged.people}
+            onFind={(personId) => {
+              setSelectedId(personId);
+              // Not drawn in this chart (an ancestors chart has no cousins):
+              // centre the tree on them instead.
+              if (!chartApi.current?.focusPerson(personId)) {
+                void navigate({ to: "/tree", search: treeSearch(personId, view, orientation) });
+              }
+            }}
+          />
           <div className="rounded-md bg-card shadow-sm">
             <ButtonRadioGroup
               aria-label={t("tree.orientation.label")}
@@ -563,7 +613,14 @@ function FamilyTree({
             />
           </div>
         </div>
-        <p className="pointer-events-none absolute right-3 bottom-3 z-10 max-w-xs text-right text-xs text-muted-foreground">
+        {/* A new centre's relatives are on their way; what's drawn stays put. */}
+        {treeQuery.isFetching && (
+          <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 rounded-md bg-card px-2.5 py-1.5 text-xs text-muted-foreground shadow-sm">
+            <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+            {t("tree.loading")}
+          </div>
+        )}
+        <p className="pointer-events-none absolute bottom-3 left-16 z-10 max-w-xs text-xs text-muted-foreground">
           {t("tree.chartHint")}
         </p>
         {chartData && (
@@ -575,7 +632,19 @@ function FamilyTree({
             chartKind={view}
             horizontal={orientation === "horizontal"}
             selectedId={selectedPerson?.id ?? rootId}
+            expanding={
+              expandMutation.isPending && expandMutation.variables
+                ? {
+                    id: expandMutation.variables.nodeId,
+                    direction: expandMutation.variables.direction,
+                  }
+                : null
+            }
+            apiRef={chartApi}
             onSelect={setSelectedId}
+            onExpand={(personId, direction: ExpandDirection) =>
+              expandMutation.mutate({ nodeId: personId, direction })
+            }
             // Double-click centres the tree on a person — the same as "Center
             // tree here" in the panel, keeping the current chart and direction.
             onCenter={(personId) => {
@@ -587,6 +656,75 @@ function FamilyTree({
       </div>
     </div>
   );
+}
+
+/**
+ * Jump to someone already loaded: filters `people` by name as you type
+ * (ignoring case and accents, so "soren" finds "Søren") and hands the pick
+ * to `onFind`. Only searches what's loaded — finding anyone in the whole
+ * database is the person list's job.
+ */
+function FindInTree({
+  people,
+  onFind,
+}: {
+  people: readonly TreePersonRow[];
+  onFind: (personId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [query, setQuery] = useState("");
+  const needle = foldForSearch(query.trim());
+  const matches =
+    needle === ""
+      ? []
+      : people
+          .filter((person) => foldForSearch(formatPersonName(person)).includes(needle))
+          .slice(0, 12);
+
+  return (
+    <div className="relative w-56 rounded-md bg-card shadow-sm">
+      <SearchIcon
+        className="pointer-events-none absolute top-1/2 left-2.5 z-10 size-4 -translate-y-1/2 text-muted-foreground"
+        aria-hidden="true"
+      />
+      <Combobox<TreePersonRow>
+        aria-label={t("tree.findInTree")}
+        items={matches}
+        inputValue={query}
+        onInputChange={setQuery}
+        onChange={(value) => {
+          if (typeof value !== "string") return;
+          onFind(value);
+          setQuery("");
+        }}
+      >
+        <ComboboxInput placeholder={t("tree.findInTree")} className="pl-8" />
+        <ComboboxContent<TreePersonRow>
+          renderEmptyState={() =>
+            needle === "" ? null : <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>
+          }
+        >
+          {(item) => (
+            <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
+              {formatPersonName(item)}
+              {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
+            </ComboboxItem>
+          )}
+        </ComboboxContent>
+      </Combobox>
+    </div>
+  );
+}
+
+/** Lower-case with accents and Nordic letters folded (ø→o, æ→ae, å→a), so search doesn't need them typed. */
+function foldForSearch(text: string): string {
+  return text
+    .toLowerCase()
+    .replaceAll("ø", "o")
+    .replaceAll("æ", "ae")
+    .replaceAll("å", "a")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
 }
 
 /**

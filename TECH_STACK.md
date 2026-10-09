@@ -660,8 +660,40 @@ CommonJS-only and needs the DOM, so it's loaded with a dynamic `import()` in
 an effect — never during SSR. It draws into an `<svg>` it finds by selector
 and sets that svg's size and its `<g>`'s translate itself, so d3-zoom sits
 on an outer svg with its own transform layer. The chart is rebuilt only when
-the chart type or direction changes; a data change (load more, add, remove)
-is `setData` + `render`, so topola animates it and the user's pan/zoom stays.
+the chart type, direction or animation setting changes; a data change (load
+more, add, remove) is `setData` + `render`, so topola animates it and the
+user's pan/zoom stays.
+
+**Smooth re-centring.** `FamilyTree` is deliberately not keyed by the centre
+person. It keeps every `person.tree` fetched this visit (`visitedRoots` +
+`useQueries`, merged by `mergeTree`), so a new centre adds to what's drawn:
+the same topola handle re-renders with the new `startIndi`, topola moves the
+cards it already has, and the view pans to the new centre card in the same
+700 ms. If the new centre is already loaded (a double-click on a card) the
+move starts at once and its own tree merges in when it arrives; someone
+unconnected to what's loaded shows "Loading…" until their tree comes. The
+panel's selection is stored with the root it was made under, so a new
+centre selects itself without an effect.
+
+**Navigating by card position.** The card renderer reports every drawn
+card's centre at the end of each render (`onPositions`), computed from the
+layout rather than read off the DOM — so it's the final position even while
+cards are still animating, and cards topola is fading out aren't in it.
+Find in tree, the minimap and arrow-key movement all work from that map.
+Arrow keys are spatial (`nearestCard` in `lib/tree-navigation.ts`, tested):
+the nearest card on that side, weighting "nearest generation" for moves
+along the generations and "same generation" for sideways moves, so they go
+where the eye expects in both layouts. The canvas is `role="application"`
+(it handles its own arrow keys) with a help text and a live region
+announcing the selected person; the minimap is a mouse shortcut and hidden
+from assistive tech. Animation is off when the setting says so or the
+browser asks for reduced motion.
+
+**Expand from the card.** The "+" buttons are drawn by our card renderer,
+not topola's own expanders — those only fold and unfold people already
+loaded and can't fetch. They show where `parentsKnownIds` /
+`childrenKnownIds` say there's more to load and the chart would draw it, and
+run the same `expandMutation` as the side panel's "Load ancestors".
 
 **The cards** (`apps/frontend/src/routes/-tree-card-renderer.ts`) are a
 topola renderer of our own, extending its `CompositeRenderer` (which does the

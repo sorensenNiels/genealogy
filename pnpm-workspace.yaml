@@ -123,8 +123,13 @@ catalog:
   topola: 3.10.4
   d3-zoom: 3.0.0
   d3-selection: 3.0.0
+  # Smooth pans (re-centring, find, minimap jumps). Already in the tree as a
+  # topola dependency, same d3-selection; last published 2022 like the rest
+  # of D3 — finished, not abandoned.
+  d3-transition: 3.0.1
   "@types/d3-zoom": 3.0.9
   "@types/d3-selection": 3.0.12
+  "@types/d3-transition": 3.0.9
 
   # --- auth ---
   better-auth: 1.7.5

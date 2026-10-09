@@ -121,44 +121,6 @@ display settings in `packages/core/src/app-settings.ts` (a new setting is a
 schema field with a default plus a form field in `routes/settings.tsx`; no
 migration).
 
-_Getting around a big tree_
-
-- 💡 🆕 **Smooth re-centring.** Double-click or "Center tree here" glides the
-  chart to the new person (Ancestry-style) instead of reloading it. Today
-  `FamilyTree` is keyed by `rootId`, so a new centre remounts everything and
-  refetches `person.tree`. Instead: keep one `FamilyTree`, fetch the new
-  person's `treeAround` and merge it into the existing data (`mergeTree`
-  already merges extra people/edges), then call `handle.render({ startIndi })`
-  on the same topola handle — topola animates moves between renders
-  (`animate: true` is already on). Re-fit or pan the zoom to the new centre
-  card afterwards. `parentsKnownIds`/`childrenKnownIds` must merge too, and the
-  URL still updates so back/forward work.
-- 💡 🆕 **Find in tree.** A search box over the canvas that pans and zooms to a
-  person already drawn and selects them. Builds on: the d3-zoom behaviour in
-  `TopolaChart` (expose a `zoomTo(id)` next to `zoomBy`/`fit`; find the card
-  via its `g.indi` datum, read its position with `getBBox()`/`getCTM()`).
-  Search only the loaded people (`merged.people`), with `formatPersonName`.
-- 💡 🆕 **Minimap.** A small overview of the whole chart in a corner, with a
-  rectangle for the visible area; click or drag it to move. Builds on: the
-  chart size topola returns from `render()` (`info.size`) and the current
-  d3-zoom transform. Draw it as a scaled-down `<use>` of the chart svg or a
-  dot per card.
-- 💡 🆕 **Expand from the card.** A small "+" on a card's top edge (parents) or
-  bottom edge (children) loads them right there — the on-card "load ancestors"
-  badge the React Flow cards had. Draw it in our card renderer, not with
-  topola's own expanders: those only fold/unfold people already loaded, they
-  can't fetch. Show it when the person isn't in `parentsKnownIds` /
-  `childrenKnownIds`; on click, call the same `expandMutation` the side panel
-  uses. The renderer needs those sets (pass them like `cards`/`settings`
-  through `drawInputs`), and the click must not also select the card.
-- 💡 🆕 **Keyboard navigation.** Today the tree can only be used with a mouse.
-  Make the canvas focusable; arrow keys move the selection to a parent (up),
-  child (down), spouse/sibling (left/right); Enter opens the person, a key
-  re-centres; announce the selected person in an `aria-live` region. Build
-  the neighbour lookup from `merged` (parent/spouse edges) rather than from
-  screen positions, and pan the selected card into view (see "Find in tree").
-  Keyboard zoom: `+`/`-`/`0` on the canvas.
-
 _More on each card_
 
 - 💡 🆕 **Research badges.** Small markers on a card for "no sources", "no
@@ -227,10 +189,9 @@ _Doing things from the tree_
   the tree route's `beforeLoad` already redirects to the member's own person
   when no `personId` is given — prefer the last-viewed one there.
 
-_Suggested order_ (from the October 2026 review): smooth re-centring and
-expand-from-card first (they make it feel modern), then research badges
-(they make it useful); keyboard navigation alongside whichever comes first,
-since the tree can't be used without a mouse today.
+_Suggested order_ (from the October 2026 review): the "getting around a big
+tree" ideas (smooth re-centring, find, minimap, expand from the card,
+keyboard navigation) shipped first — see FEATURES.md. Research badges next.
 
 ## Photos
 

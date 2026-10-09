@@ -28,6 +28,8 @@ export const CARD_HEIGHT = 72;
  */
 const PAD_X = 14;
 const PAD_Y = 10;
+/** The expand ("+") buttons on a card's edge. */
+const EXPAND_RADIUS = 10;
 const PHOTO_SIZE = 52;
 const INSET = 10;
 /** Photo on the left, text after it. */
@@ -51,6 +53,33 @@ function truncate(text: string, maxChars: number): string {
 
 const GENDER_CLASS = { M: "male", F: "female", U: "unknown" } as const;
 
+/** A card's centre, in the coordinates of topola's own `<g>` (add the render's `origin` for the inner svg). */
+export interface CardPosition {
+  x: number;
+  y: number;
+}
+
+export type ExpandDirection = "up" | "down";
+
+/** What the renderer reads and reports, through `TopolaChart`'s refs so it's always current. */
+export interface CardRendererHooks {
+  cardFor: (id: string) => CardInfo | undefined;
+  /** Read at draw time, so a settings change shows on the next render. */
+  settings: () => TreeSettings;
+  /** A card's "+" was pressed: load that person's parents ("up") or children ("down"). */
+  onExpand: (id: string, direction: ExpandDirection) => void;
+  /** Tooltip for a "+" button — e.g. "Load Anders Jensen's parents". */
+  expandLabel: (id: string, direction: ExpandDirection) => string;
+  /**
+   * Every drawn person's card centre, reported at the end of each render.
+   * Computed from the layout, not read off the DOM, so it's the final
+   * position even while topola is still animating cards into place — and
+   * it leaves out cards topola is fading out. A person drawn twice
+   * (pedigree collapse) keeps the first.
+   */
+  onPositions: (positions: Map<string, CardPosition>) => void;
+}
+
 interface CardDatum {
   indi: TreeEntry;
   generation: number | undefined;
@@ -71,10 +100,9 @@ type SelectFn = typeof select;
 export function createCardRendererClass(
   topola: TopolaModule,
   select: SelectFn,
-  cardFor: (id: string) => CardInfo | undefined,
-  /** Read at draw time, so a settings change shows on the next render. */
-  settings: () => TreeSettings,
+  hooks: CardRendererHooks,
 ) {
+  const { cardFor, settings } = hooks;
   return class CardRenderer extends topola.CompositeRenderer implements Renderer {
     constructor(readonly rendererOptions: RendererOptions<IndiDetails, FamDetails>) {
       super(rendererOptions);
@@ -138,6 +166,25 @@ export function createCardRendererClass(
       card.each(function (datum) {
         drawCard(select(this), cardFor(datum.indi.id), current);
       });
+      if (current.showExpandButtons) {
+        card.each(function (datum) {
+          drawExpandButtons(select(this), datum.indi.id, cardFor(datum.indi.id), horizontal, hooks);
+        });
+      }
+
+      const positions = new Map<string, CardPosition>();
+      nodes.each((node) => {
+        const left = node.x - node.data.width! / 2;
+        const top = node.y - node.data.height! / 2;
+        for (const datum of cardData(node.data, horizontal)) {
+          if (positions.has(datum.indi.id)) continue;
+          positions.set(datum.indi.id, {
+            x: left + datum.x + PAD_X + CARD_WIDTH / 2,
+            y: top + datum.y + PAD_Y + CARD_HEIGHT / 2,
+          });
+        }
+      });
+      hooks.onPositions(positions);
     }
   };
 }
@@ -273,4 +320,62 @@ function drawGenderBadge(
     .attr("class", "card-gender-icon")
     .attr("transform", `translate(${cx - 5.5}, ${cy - 5.5}) scale(${scale})`);
   for (const d of GENDER_ICON_PATHS[gender]) icon.append("path").attr("d", d);
+}
+
+/**
+ * The "+" buttons that load a person's parents or children, on the card edge
+ * their lines would leave from — top/bottom in the top-down layout,
+ * left/right in the left-to-right one (topola puts ancestors up/left in
+ * every chart). Only shown where `TreeCard` says there's more to load, so
+ * they never sit on top of an existing line.
+ */
+function drawExpandButtons(
+  card: Selection<SVGGElement, CardDatum, null, undefined>,
+  id: string,
+  info: CardInfo | undefined,
+  horizontal: boolean,
+  hooks: CardRendererHooks,
+) {
+  const buttons: Array<{ direction: ExpandDirection; x: number; y: number }> = [];
+  if (info?.canLoadParents) {
+    buttons.push(
+      horizontal
+        ? { direction: "up", x: 0, y: CARD_HEIGHT / 2 }
+        : { direction: "up", x: CARD_WIDTH / 2, y: 0 },
+    );
+  }
+  if (info?.canLoadChildren) {
+    buttons.push(
+      horizontal
+        ? { direction: "down", x: CARD_WIDTH, y: CARD_HEIGHT / 2 }
+        : { direction: "down", x: CARD_WIDTH / 2, y: CARD_HEIGHT },
+    );
+  }
+  for (const button of buttons) {
+    const group = card
+      .append("g")
+      .attr("class", `card-expand card-expand-${button.direction}`)
+      .attr("data-direction", button.direction)
+      .attr("transform", `translate(${button.x}, ${button.y})`)
+      .attr("role", "button")
+      .on("click", (event: MouseEvent) => {
+        // The card's own click selects it; this one only expands.
+        event.stopPropagation();
+        hooks.onExpand(id, button.direction);
+      })
+      // A double-click on the card re-centres the tree; not from here.
+      .on("dblclick", (event: MouseEvent) => event.stopPropagation());
+    group.attr("aria-label", hooks.expandLabel(id, button.direction));
+    group.append("title").text(hooks.expandLabel(id, button.direction));
+    group.append("circle").attr("r", EXPAND_RADIUS);
+    group.append("path").attr("class", "card-expand-plus").attr("d", "M-4 0 H4 M0 -4 V4");
+    // Spins while that person's relatives are loading (see `markExpanding`).
+    group
+      .append("path")
+      .attr("class", "card-expand-spinner")
+      .attr(
+        "d",
+        `M0 ${-EXPAND_RADIUS + 3} A${EXPAND_RADIUS - 3} ${EXPAND_RADIUS - 3} 0 0 1 ${EXPAND_RADIUS - 3} 0`,
+      );
+  }
 }

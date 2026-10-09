@@ -25,6 +25,9 @@ export type TreeOrientation = z.infer<typeof treeOrientationSchema>;
 export const treeDateDetailSchema = z.enum(["years", "full"]);
 export type TreeDateDetail = z.infer<typeof treeDateDetailSchema>;
 
+export const treeInitialZoomSchema = z.enum(["fit", "person"]);
+export type TreeInitialZoom = z.infer<typeof treeInitialZoomSchema>;
+
 export const treeSettingsSchema = z.object({
   /** The ♂/♀ badge over the corner of each card's photo on the tree. */
   showGenderBadge: z.boolean().default(true),
@@ -39,6 +42,14 @@ export const treeSettingsSchema = z.object({
   defaultOrientation: treeOrientationSchema.default("vertical"),
   /** Tint the centre person's own ancestors and descendants, so they stand out from aunts, uncles and cousins. */
   highlightDirectLine: z.boolean().default(false),
+  /** The "+" on a card's edge that loads that person's parents or children. */
+  showExpandButtons: z.boolean().default(true),
+  /** The overview of the whole chart in the corner. */
+  showMinimap: z.boolean().default(true),
+  /** Animate re-centring, loading more, and pans. Off regardless when the browser asks for reduced motion. */
+  animateTransitions: z.boolean().default(true),
+  /** How a freshly opened tree is zoomed: the whole chart, or 100% on the centre person. */
+  initialZoom: treeInitialZoomSchema.default("fit"),
 });
 export type TreeSettings = z.infer<typeof treeSettingsSchema>;
 
