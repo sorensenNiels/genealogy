@@ -22,6 +22,109 @@ Decided on, not built yet.
   docs, including documenting Immich as optional infrastructure (~6–8 GB RAM)
   and keeping `UPLOADS_DIR` on a persistent volume.
 
+**Sharing**
+
+- 🚧 **Static family website export** (planned 2026-10-09). An admin exports
+  the whole tree as a static website — a zip that opens offline from
+  `index.html` or can be hosted anywhere — with the interactive tree and a
+  page per person. Replaces the earlier "deceased only" idea.
+
+  _Decided:_
+  - **Privacy:** everyone is included, but living (and `privacy`/
+    `confidential`) people are name only — the Viewer rule (`isRedactedFor`
+    with the `viewer` role, so the exporting admin's own living person is
+    redacted too). A redacted person keeps name, gender and their place in
+    the tree; no dates, places, events, notes, citations or photo.
+  - **Scope:** everyone in the database.
+  - **Tree page:** interactive and looking like the app — topola with our
+    cards, pan/zoom, minimap, keyboard, click through to person pages,
+    switch chart/direction — working offline.
+  - **Person pages:** names (incl. alternate names), vitals, parents/
+    spouses/children/siblings as links, life events with dates and places,
+    notes (markdown), and sources/citations per fact. **Profile photos
+    only** — no Immich photos.
+
+  _Shape of the site_ (all links relative, so it works from `file://` and in
+  any subfolder):
+  - `index.html` — title, export date, a short privacy note, counts, a
+    surname index, and every person A–Z with lifespan and a client-side
+    filter box; links to the tree.
+  - `tree.html` — the chart, opening on a start person chosen at export
+    (default: the admin's own linked person), `?person=<publicId>` to open on
+    anyone.
+  - `people/<publicId>.html` — one per person. `publicId` is already unique
+    and stable, so links survive re-exports.
+  - `sources.html` (and anchors per source) — the sources list; person pages
+    cite into it.
+  - `assets/` — `site.css` (light/dark via `prefers-color-scheme`, the app's
+    theme tokens), `tree.js` (the chart bundle), `photos/`.
+  - `data/tree.js` sets `window.TREE_DATA = {...}` rather than a JSON file:
+    browsers refuse `fetch()` of a local file under `file://`, but a
+    `<script src>` works.
+
+  _Architecture:_
+  - **New `packages/tree-chart`** (browser, framework-free): move
+    `lib/topola-data.ts`, `routes/-tree-card-renderer.ts`,
+    `lib/tree-navigation.ts`, the `.topola-chart` CSS and the non-React core
+    of `routes/-topola-chart.tsx` (topola + d3-zoom setup, render,
+    positions, minimap, keys) behind a `createTreeChart(container, options)`
+    API. `apps/frontend`'s `TopolaChart` becomes a thin React wrapper over
+    it, so the app and the site share one chart — the "same look" decision
+    depends on this, and it removes the risk of two copies drifting.
+    Dependency direction stays one-way: `frontend → tree-chart`,
+    `static-site → tree-chart`, `tree-chart → core`.
+  - **New `packages/static-site`**, two halves:
+    - _viewer_ — a small Vite library build of the tree page (tree-chart +
+      a little glue: start person, chart/direction switcher, "open person
+      page" on click) into one `tree.js`, plus `site.css`. Built with the
+      rest of the workspace; the backend copies the built files into each
+      export.
+    - _generator_ — Node, pure: `buildSite(data, options) → files` (path →
+      contents). Pages from Handlebars templates (already in the catalog for
+      mail; auto-escapes), notes through a markdown → HTML renderer. No
+      database access, so it's unit-testable with fixture data.
+  - **Backend:** a `static-site` BullMQ job (same pattern as backup / album
+    zip): gather persons + vitals, names, events, unions, `PARENT_OF`/
+    `SPOUSE_OF` edges from the graph, sources and citations; apply the
+    redaction **before** anything reaches the generator; call `buildSite`;
+    write the zip under a new `STATIC_SITES_DIR`; notify with a download
+    link served by a controller that deletes the file afterwards (as
+    `BackupController` does). `adminProcedure` — it exports everyone.
+  - **Frontend:** a "Family website" panel on the Tools page: start person,
+    language (default the admin's), a plain statement of the privacy rule,
+    and "Export"; the notification bell says when it's ready.
+  - **Language:** the site is generated in one language (en/da). Its own
+    strings live in `packages/static-site` (the backend can't import
+    `apps/frontend`'s i18n files); dates through core's
+    `resolveHistoricalDate`, like the app.
+
+  _To choose when building_ (vetted 2026-10-09 per the library rule):
+  - **Zip writer:** `fflate` 0.8.3 (released 2026-07, last commit 2026-05,
+    ~3k stars; already in the lockfile via jsPDF; streaming zip in Node) or
+    `archiver` 8.0.0 (released 2026-05, last commit 2026-10, ~3k stars, 174
+    open issues; Node-stream native). `yazl` is quieter (last release
+    2024-11). Leaning `fflate`.
+  - **Markdown → HTML:** `micromark` 4.0.3 (released 2026-09) — the parser
+    `react-markdown` uses, so notes render the same as in the app, and safe
+    by default (no raw HTML passthrough). `marked` 18.x is very active but
+    passes raw HTML through, so it would need a sanitizer. Leaning
+    `micromark`.
+
+  _Phases_ (each shippable on its own):
+  1. Extract `packages/tree-chart`; the app's tree unchanged (its tests and
+     the existing tree-data/navigation tests move with it).
+  2. `packages/static-site` generator + templates + strings, with tests:
+     redaction never leaks (dates/notes/citations/photo of a living person),
+     escaping, every link resolves to a generated file, `file://`-safe paths.
+  3. The viewer bundle and `tree.html`.
+  4. Backend job, data gathering, zip, notification, download; Tools panel;
+     docs (FEATURES.md, TECH_STACK.md decision record).
+
+  _Open questions:_ a site title (the admin's choice, default "Family
+  tree"); whether to include research notes (left out for now — they're
+  working notes, not results); a size warning for very large trees with
+  many photos.
+
 ## Up next
 
 Picked on 2026-09-28 as the next two to scope, one from each focus area:
@@ -219,9 +322,6 @@ Research badges next.
 - 💡 🆕 **"Help identify" requests.** Send a relative a link to a photo or an
   open question ("who is the woman on the left?") that they can answer without
   an account. _Builds on:_ shareable links, once they exist.
-- 💡 🆕 **Static family website.** Publish deceased people only, as a static
-  site that can be hosted anywhere. It's a read-only export rather than a live
-  link.
 
 ## Data & platform
 
