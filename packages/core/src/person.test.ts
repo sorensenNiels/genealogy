@@ -8,6 +8,8 @@ import {
   formatFullPersonName,
   formatLifespan,
   formatPersonName,
+  isPresumedDeceased,
+  presumedDeceasedCutoff,
 } from "./person.js";
 
 describe("formatPersonName", () => {
@@ -211,5 +213,41 @@ describe("calculateResearchCompleteness", () => {
   it("counts each check as an equal 20% share", () => {
     expect(calculateResearchCompleteness({ ...NONE, hasBirthDate: true })).toBe(20);
     expect(calculateResearchCompleteness({ ...NONE, hasBirthDate: true, hasPhoto: true })).toBe(40);
+  });
+});
+
+function born(earliest: string, latest = earliest) {
+  return { original: earliest, earliest, latest };
+}
+
+describe("isPresumedDeceased", () => {
+  const today = new Date("2026-10-09T12:00:00Z");
+
+  it("presumes someone marked living and born more than N years ago deceased", () => {
+    expect(isPresumedDeceased({ isLiving: true, birth: born("1900-05-01") }, 110, today)).toBe(
+      true,
+    );
+    expect(isPresumedDeceased({ isLiving: true, birth: born("1950-05-01") }, 110, today)).toBe(
+      false,
+    );
+  });
+
+  it("compares on the latest possible birth day, so a vague date isn't presumed early", () => {
+    // "abt. 1916": could be as late as 1918 — not yet 110 years.
+    expect(
+      isPresumedDeceased({ isLiving: true, birth: born("1914-01-01", "1918-12-31") }, 110, today),
+    ).toBe(false);
+  });
+
+  it("never applies to the deceased, without a birth date, or when turned off (0)", () => {
+    expect(isPresumedDeceased({ isLiving: false, birth: born("1800-01-01") }, 110, today)).toBe(
+      false,
+    );
+    expect(isPresumedDeceased({ isLiving: true, birth: null }, 110, today)).toBe(false);
+    expect(isPresumedDeceased({ isLiving: true, birth: born("1800-01-01") }, 0, today)).toBe(false);
+  });
+
+  it("has a cut-off date the database query can use", () => {
+    expect(presumedDeceasedCutoff(110, today)).toBe("1916-10-09");
   });
 });

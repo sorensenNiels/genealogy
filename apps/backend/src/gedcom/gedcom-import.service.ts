@@ -39,6 +39,7 @@ import type { Pool } from "pg";
 
 import { DRIZZLE, PG_POOL } from "../database/database.module.js";
 import { generatePublicId } from "../person/public-id.js";
+import { SettingsService } from "../settings/settings.service.js";
 
 /** Rows per multi-row INSERT — far under Postgres's 65,535 bind-parameter cap for even the widest table here. */
 const INSERT_CHUNK_SIZE = 1000;
@@ -83,6 +84,7 @@ export class GedcomImportService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     @Inject(PG_POOL) private readonly pool: Pool,
+    private readonly settings: SettingsService,
   ) {}
 
   async preview(input: GedcomImportInput): Promise<GedcomImportPreview> {
@@ -166,10 +168,14 @@ export class GedcomImportService {
   }
 
   private async plan(input: GedcomImportInput): Promise<GedcomImportPlan> {
-    const vocabulary = await this.vocabulary();
+    const [vocabulary, personSettings] = await Promise.all([
+      this.vocabulary(),
+      this.settings.getPersonSettings(),
+    ]);
     try {
       return planGedcomImport(input.text, {
         vocabulary,
+        presumeDeceasedAfterYears: personSettings.presumeDeceasedAfterYears,
         ...(input.encoding ? { encoding: input.encoding } : {}),
       });
     } catch (error) {

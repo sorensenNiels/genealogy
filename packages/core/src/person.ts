@@ -249,3 +249,30 @@ export function calculateResearchCompleteness(input: {
   ];
   return (checks.filter(Boolean).length / checks.length) * 100;
 }
+
+/**
+ * The newest birth date that would still count as "born more than
+ * `afterYears` years ago" on `today`, as an ISO date — the cut-off
+ * `isPresumedDeceased` compares against, and the one a database query uses.
+ */
+export function presumedDeceasedCutoff(afterYears: number, today = new Date()): string {
+  const cutoff = new Date(today);
+  cutoff.setFullYear(today.getFullYear() - afterYears);
+  return cutoff.toISOString().slice(0, 10);
+}
+
+/**
+ * Someone marked living who was almost certainly not: born more than
+ * `afterYears` years ago (0 turns this off). Compared on the birth date's
+ * *latest* possible day, so a vague "abt. 1915" isn't presumed dead early.
+ * No birth date means nothing to go on — not presumed.
+ */
+export function isPresumedDeceased(
+  person: Pick<Person, "isLiving" | "birth">,
+  afterYears: number,
+  today = new Date(),
+): boolean {
+  if (!person.isLiving || afterYears <= 0) return false;
+  const latest = person.birth?.latest ?? person.birth?.earliest ?? null;
+  return latest !== null && latest < presumedDeceasedCutoff(afterYears, today);
+}

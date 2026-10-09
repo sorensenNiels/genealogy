@@ -259,6 +259,18 @@ describe("planGedcomImport", () => {
     expect(result.warnings.find((w) => w.code === "inferredDeceased")?.count).toBe(1);
   });
 
+  it("uses the configured presumed-deceased age, and 0 turns the inference off", () => {
+    const lines = [...HEAD, "0 @I1@ INDI", "1 BIRT", "2 DATE 1930"].join("\n");
+    const strict = planGedcomImport(lines, { vocabulary, today, presumeDeceasedAfterYears: 80 });
+    expect(strict.persons[0]?.isLiving).toBe(false);
+    const off = planGedcomImport([...HEAD, "0 @I1@ INDI", "1 BIRT", "2 DATE 1801"].join("\n"), {
+      vocabulary,
+      today,
+      presumeDeceasedAfterYears: 0,
+    });
+    expect(off.persons[0]?.isLiving).toBe(true);
+  });
+
   it("builds parent links, a spouse link, and a union from a FAM record", () => {
     const result = plan([
       ...HEAD,

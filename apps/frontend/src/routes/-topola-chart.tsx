@@ -1,6 +1,7 @@
 import type { TreeChartKind, TreeSettings } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
 import { cn } from "@genealogy/ui/lib/utils";
+import type { ZoomTransform } from "d3-zoom";
 import { MaximizeIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react";
 import {
   useEffect,
@@ -27,7 +28,6 @@ import {
   TEXT_CLIP_ID,
   type CardInfo,
   type CardPosition,
-  type ExpandDirection,
 } from "./-tree-card-renderer";
 
 /** The charts the tree page offers — each maps to one topola chart class. */
@@ -53,8 +53,15 @@ const MAX_SCALE = 2;
 const FIT_PADDING = 40;
 /** A found or keyboard-selected person is brought to at least this zoom, so their card is readable. */
 const FOCUS_SCALE = 0.8;
-/** Matches topola's own move animation (HIDE_TIME_MS + MOVE_TIME_MS), so a re-centre pans while the cards rearrange. */
-const PAN_MS = 700;
+/** A pan the user asked for (find, minimap, keyboard). */
+const PAN_MS = 500;
+/**
+ * Topola's own card animation on a re-render: cards wait HIDE_TIME_MS, then
+ * move for MOVE_TIME_MS (its transition-util). A view change caused by a
+ * re-render uses the same timing, so the view and the cards move together.
+ */
+const CHART_MOVE_DELAY_MS = 200;
+const CHART_MOVE_MS = 500;
 /** A keyboard-selected card closer than this to the canvas edge is panned into view. */
 const EDGE_MARGIN = 60;
 const MINIMAP_MAX_WIDTH = 200;
@@ -73,17 +80,21 @@ interface ViewTransform {
 }
 
 /** The imperative half of the chart, built once topola and d3 have loaded. */
+/** How a view change moves: at once, as a pan of its own, or in step with topola's card animation. */
+type ViewMotion = "instant" | "pan" | "withChart";
+
 interface ChartControls {
   /** Re-renders with the current data and root; returns the new layout. */
   render: () => ChartLayout;
+  /** The layout of the last render. */
+  layout: () => ChartLayout;
   zoomBy: (factor: number) => void;
   fit: () => void;
-  centerAt: (point: CardPosition, options?: { scale?: number; animate?: boolean }) => void;
-  /** Marks the root, the selected card and a loading "+" — after every render, and when those change. */
-  highlight: (
-    selectedId: string,
-    expanding: { id: string; direction: ExpandDirection } | null,
-  ) => void;
+  centerAt: (point: CardPosition, options?: { scale?: number; motion?: ViewMotion }) => void;
+  /** Shifts the view so a card that moved from `before` to `after` stays where it was on screen. */
+  keepInPlace: (before: CardPosition, after: CardPosition) => void;
+  /** Marks the root and the selected card — after every render, and when the selection changes. */
+  highlight: (selectedId: string) => void;
 }
 
 const EMPTY_LAYOUT: ChartLayout = { positions: new Map(), size: [0, 0] };
@@ -123,12 +134,12 @@ export function TopolaChart({
   chartKind,
   horizontal,
   selectedId,
-  expanding,
   apiRef,
   onSelect,
   onCenter,
-  onExpand,
   onContextMenu,
+  canAdd,
+  onAddMenu,
 }: {
   data: JsonGedcomData;
   /** What each person's card shows, by id. */
@@ -139,14 +150,15 @@ export function TopolaChart({
   chartKind: ChartKind;
   horizontal: boolean;
   selectedId: string;
-  /** Whose "+" is loading right now, so it can show a spinner. */
-  expanding: { id: string; direction: ExpandDirection } | null;
   apiRef?: RefObject<TreeChartApi | null>;
   onSelect: (id: string) => void;
   onCenter: (id: string) => void;
-  onExpand: (id: string, direction: ExpandDirection) => void;
   /** Open the card menu for a person, at this point in the chart (right-click, or the menu key on the selected card). */
   onContextMenu: (id: string, point: ChartPoint) => void;
+  /** Draw the "+" add-a-relative button on cards (editors). */
+  canAdd: boolean;
+  /** A card's "+" was pressed: open the add menu for that person at this point. */
+  onAddMenu: (id: string, point: ChartPoint) => void;
 }) {
   const { t, i18n } = useTranslation();
   // useId's ":r1:" form isn't a valid CSS id selector, which topola needs.
@@ -159,7 +171,7 @@ export function TopolaChart({
   // What the card renderer draws from. Updated just before each render (in
   // the data effect) rather than every React render, so it always matches
   // the data drawn.
-  const drawInputs = useRef({ cards, settings });
+  const drawInputs = useRef({ cards, settings, canAdd });
   // The root the chart was last drawn around — a change means re-centre.
   const drawnRoot = useRef<string | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
@@ -173,26 +185,24 @@ export function TopolaChart({
   const latest = useRef({
     rootId,
     selectedId,
-    expanding,
     data,
     remember,
     onSelect,
     onCenter,
-    onExpand,
     onContextMenu,
+    onAddMenu,
     t,
   });
   useEffect(() => {
     latest.current = {
       rootId,
       selectedId,
-      expanding,
       data,
       remember,
       onSelect,
       onCenter,
-      onExpand,
       onContextMenu,
+      onAddMenu,
       t,
     };
   });
@@ -203,7 +213,7 @@ export function TopolaChart({
 
     void (async () => {
       try {
-        const [topola, { select }, { zoom, zoomIdentity, zoomTransform }] = await Promise.all([
+        const [topola, { select }, { zoom, zoomIdentity }] = await Promise.all([
           import("topola"),
           import("d3-selection"),
           import("d3-zoom"),
@@ -230,15 +240,20 @@ export function TopolaChart({
           renderer: createCardRendererClass(topola, select, {
             cardFor: (id) => drawInputs.current.cards.get(id),
             settings: () => drawInputs.current.settings,
-            onExpand: (id, direction) => latest.current.onExpand(id, direction),
-            expandLabel: (id, direction) =>
-              latest.current.t(direction === "up" ? "tree.loadParentsOf" : "tree.loadChildrenOf", {
-                name: drawInputs.current.cards.get(id)?.name ?? "",
-              }),
             onContextMenu: (id, clientX, clientY) => {
               const box = outer.getBoundingClientRect();
               latest.current.onContextMenu(id, { x: clientX - box.left, y: clientY - box.top });
             },
+            canAdd: () => drawInputs.current.canAdd,
+            onAddMenu: (id, clientX, clientY) => {
+              const box = outer.getBoundingClientRect();
+              latest.current.onSelect(id);
+              latest.current.onAddMenu(id, { x: clientX - box.left, y: clientY - box.top });
+            },
+            addLabel: (id) =>
+              latest.current.t("tree.addMenu.label", {
+                name: drawInputs.current.cards.get(id)?.name ?? "",
+              }),
             onPositions: (positions) => {
               lastPositions = positions;
             },
@@ -259,6 +274,8 @@ export function TopolaChart({
           .scaleExtent([MIN_SCALE, MAX_SCALE])
           .on("zoom", (event) => {
             zoomLayer.attr("transform", event.transform.toString());
+            // A drag or wheel by the user sets where the view is meant to be.
+            if (event.sourceEvent) intended = event.transform;
             cancelAnimationFrame(viewFrame);
             const { x, y, k } = event.transform;
             viewFrame = requestAnimationFrame(() => setView({ x, y, k }));
@@ -271,14 +288,25 @@ export function TopolaChart({
         outerSelection.call(zoomBehavior).on("dblclick.zoom", null);
 
         let chartLayout = EMPTY_LAYOUT;
-        const setTransform = (
-          transform: ReturnType<typeof zoomIdentity.scale>,
-          smooth: boolean,
-        ) => {
-          if (smooth) {
-            outerSelection.transition().duration(PAN_MS).call(zoomBehavior.transform, transform);
+        /**
+         * Where the view is meant to end up, as opposed to where it is
+         * mid-animation (`zoomTransform`). A re-render that lands while a
+         * pan is still running builds on this, so it doesn't freeze the
+         * view halfway and leave the centre person off-centre.
+         */
+        let intended = zoomIdentity;
+        const setTransform = (transform: ZoomTransform, motion: ViewMotion) => {
+          intended = transform;
+          if (motion === "instant" || !animate) {
+            outerSelection.interrupt().call(zoomBehavior.transform, transform);
+          } else if (motion === "withChart") {
+            outerSelection
+              .transition()
+              .delay(CHART_MOVE_DELAY_MS)
+              .duration(CHART_MOVE_MS)
+              .call(zoomBehavior.transform, transform);
           } else {
-            outerSelection.call(zoomBehavior.transform, transform);
+            outerSelection.transition().duration(PAN_MS).call(zoomBehavior.transform, transform);
           }
         };
         const fit = () => {
@@ -295,16 +323,25 @@ export function TopolaChart({
           );
           const x = (width - chartWidth * scale) / 2;
           const y = (height - chartHeight * scale) / 2;
-          setTransform(zoomIdentity.translate(x, y).scale(scale), false);
+          setTransform(zoomIdentity.translate(x, y).scale(scale), "instant");
         };
         const centerAt: ChartControls["centerAt"] = (point, options = {}) => {
           const { width, height } = outer.getBoundingClientRect();
-          const scale = options.scale ?? zoomTransform(outer).k;
+          const scale = options.scale ?? intended.k;
           setTransform(
             zoomIdentity
               .translate(width / 2 - point.x * scale, height / 2 - point.y * scale)
               .scale(scale),
-            (options.animate ?? true) && animate,
+            options.motion ?? "pan",
+          );
+        };
+        const keepInPlace: ChartControls["keepInPlace"] = (before, after) => {
+          const dx = (before.x - after.x) * intended.k;
+          const dy = (before.y - after.y) * intended.k;
+          if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+          setTransform(
+            zoomIdentity.translate(intended.x + dx, intended.y + dy).scale(intended.k),
+            "withChart",
           );
         };
 
@@ -336,22 +373,12 @@ export function TopolaChart({
           if (datum?.indi) latest.current.onCenter(datum.indi.id);
         });
 
-        const highlight: ChartControls["highlight"] = (selected, loading) => {
+        const highlight: ChartControls["highlight"] = (selected) => {
           const root = latest.current.rootId;
           innerSelection
             .selectAll<SVGGElement, { indi: { id: string } }>("g.indi")
             .classed("is-root", (box) => box.indi.id === root)
-            .classed("is-selected", (box) => box.indi.id === selected && box.indi.id !== root)
-            .each(function (box) {
-              select(this)
-                .selectAll<SVGGElement, unknown>("g.card-expand")
-                .classed("is-loading", function () {
-                  return (
-                    loading?.id === box.indi.id &&
-                    this.getAttribute("data-direction") === loading.direction
-                  );
-                });
-            });
+            .classed("is-selected", (box) => box.indi.id === selected && box.indi.id !== root);
         };
 
         const render = () => {
@@ -363,22 +390,32 @@ export function TopolaChart({
           }
           chartLayout = { positions, size: info.size };
           setLayout(chartLayout);
-          highlight(latest.current.selectedId, latest.current.expanding);
+          highlight(latest.current.selectedId);
           return chartLayout;
         };
 
         handleRef.current = handle;
         controlsRef.current = {
           render,
+          layout: () => chartLayout,
+          // Around the canvas centre, from where the view is meant to be.
           zoomBy: (factor) => {
-            if (animate) {
-              outerSelection.transition().duration(200).call(zoomBehavior.scaleBy, factor);
-            } else {
-              outerSelection.call(zoomBehavior.scaleBy, factor);
-            }
+            const { width, height } = outer.getBoundingClientRect();
+            const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, intended.k * factor));
+            const ratio = scale / intended.k;
+            setTransform(
+              zoomIdentity
+                .translate(
+                  width / 2 - (width / 2 - intended.x) * ratio,
+                  height / 2 - (height / 2 - intended.y) * ratio,
+                )
+                .scale(scale),
+              "pan",
+            );
           },
           fit,
           centerAt,
+          keepInPlace,
           highlight,
         };
 
@@ -398,10 +435,10 @@ export function TopolaChart({
                 height / 2 + remembered.dy - rootPosition.y * remembered.k,
               )
               .scale(remembered.k),
-            false,
+            "instant",
           );
         } else if (settings.initialZoom === "person" && rootPosition) {
-          centerAt(rootPosition, { scale: 1, animate: false });
+          centerAt(rootPosition, { scale: 1, motion: "instant" });
         } else {
           fit();
         }
@@ -446,21 +483,33 @@ export function TopolaChart({
     const controls = controlsRef.current;
     const handle = handleRef.current;
     if (!controls || !handle) return;
-    drawInputs.current = { cards, settings };
+    drawInputs.current = { cards, settings, canAdd };
     handle.setData(data);
+    const before = controls.layout();
     // The returned layout, not `layout` state, which won't update until the
     // next React render.
     const rendered = controls.render();
     if (drawnRoot.current !== rootId) {
+      // A new centre person: the view moves to them as their card moves.
       drawnRoot.current = rootId;
       const position = rendered.positions.get(rootId);
-      if (position) controls.centerAt(position);
+      if (position) controls.centerAt(position, { motion: "withChart" });
+      return;
     }
-  }, [data, cards, settings, rootId]);
+    // Same centre, new layout (their relatives just arrived, "load more",
+    // an add or a removal): a re-render can shift every card, so keep the
+    // one the user is looking at — the selected card, else the centre
+    // person — where it is on screen.
+    const anchor = [latest.current.selectedId, rootId].find(
+      (id) => before.positions.has(id) && rendered.positions.has(id),
+    );
+    if (anchor)
+      controls.keepInPlace(before.positions.get(anchor)!, rendered.positions.get(anchor)!);
+  }, [data, cards, settings, canAdd, rootId]);
 
   useEffect(() => {
-    controlsRef.current?.highlight(selectedId, expanding);
-  }, [selectedId, expanding]);
+    controlsRef.current?.highlight(selectedId);
+  }, [selectedId]);
 
   // The tree page's handle on the chart (find in tree). Re-assigned each
   // render, so it always sees the current layout.
@@ -559,7 +608,10 @@ export function TopolaChart({
     // as interactive, hence the two exceptions.
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
-      className="topola-chart relative h-full w-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+      // No focus ring: clicking the chart focuses it (for the arrow keys),
+      // and a frame round the whole canvas on every click is just noise. The
+      // selected card's highlight shows where keyboard focus is.
+      className="topola-chart relative h-full w-full outline-none"
       ref={containerRef}
       role="application"
       aria-label={t("tree.chartLabel")}
@@ -626,7 +678,7 @@ export function TopolaChart({
           canvasSize={canvasSize}
           rootId={rootId}
           selectedId={selectedId}
-          onJump={(point) => controlsRef.current?.centerAt(point, { animate: false })}
+          onJump={(point) => controlsRef.current?.centerAt(point, { motion: "instant" })}
         />
       )}
     </div>

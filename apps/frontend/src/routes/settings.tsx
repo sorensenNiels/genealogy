@@ -5,6 +5,7 @@ import {
   isAdmin,
   treeChartKindSchema,
   treeOrientationSchema,
+  type PersonSettings,
   type TreeSettings,
 } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
@@ -12,6 +13,7 @@ import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
 import { DialogFooter } from "@genealogy/ui/components/dialog";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import { Input } from "@genealogy/ui/components/input";
+import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
@@ -27,6 +29,7 @@ import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { personSettingsQueryKey, usePersonSettingsQuery } from "../lib/person-settings";
 import { treeSettingsQueryKey, useTreeSettingsQuery } from "../lib/tree-settings";
 import {
   addOption,
@@ -34,6 +37,7 @@ import {
   moveOption,
   removeOption,
   updateOption,
+  updatePersonSettings,
   updateTreeSettings,
 } from "../server/functions/settings.functions";
 
@@ -53,7 +57,9 @@ export const Route = createFileRoute("/settings")({
   validateSearch: (
     search: Record<string, unknown>,
   ): { topic?: ConfigurableTopic; section?: SettingsSection } => {
-    if (search.section === "tree") return { section: "tree" };
+    if (search.section === "tree" || search.section === "person") {
+      return { section: search.section };
+    }
     const result = configurableTopicSchema.safeParse(search.topic);
     return result.success ? { topic: result.data } : {};
   },
@@ -65,7 +71,7 @@ type ConfigurableOptionRow = RouterOutputs["settings"]["listOptions"][number];
 
 const LIST_OPTIONS_KEY = ["settings", "listOptions"];
 
-type SettingsSection = "tree";
+type SettingsSection = "tree" | "person";
 
 const NAV_LINK_CLASS =
   "rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
@@ -107,6 +113,13 @@ function SettingsRoute() {
               >
                 {t("settings.tree.title")}
               </Link>
+              <Link
+                to="/settings"
+                search={{ section: "person" }}
+                className={cn(NAV_LINK_CLASS, section === "person" && NAV_LINK_ACTIVE_CLASS)}
+              >
+                {t("settings.person.title")}
+              </Link>
             </nav>
           </SectionCard>
           <SectionCard title={t("settings.dropdowns")} titleClassName="text-base">
@@ -129,6 +142,8 @@ function SettingsRoute() {
         </div>
         {section === "tree" ? (
           <TreeSettingsPanel />
+        ) : section === "person" ? (
+          <PersonSettingsPanel />
         ) : (
           <TopicPanel
             topic={topic}
@@ -138,6 +153,97 @@ function SettingsRoute() {
         )}
       </div>
     </div>
+  );
+}
+
+function PersonSettingsPanel() {
+  const { t } = useTranslation();
+  const settings = usePersonSettingsQuery();
+  return (
+    <SectionCard title={t("settings.person.title")} description={t("settings.person.description")}>
+      {settings.isPending ? (
+        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+      ) : settings.isError ? (
+        <p className="text-sm text-destructive">{settings.error.message}</p>
+      ) : (
+        <PersonSettingsForm initial={settings.data} />
+      )}
+    </SectionCard>
+  );
+}
+
+/** Same shape as `TreeSettingsForm`: one form for the section, saved together. */
+function PersonSettingsForm({ initial }: { initial: PersonSettings }) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const updateMutation = useMutation({ mutationFn: updatePersonSettings });
+
+  const form = useForm({
+    defaultValues: initial,
+    onSubmit: async ({ value }) => {
+      const saved = await updateMutation.mutateAsync({ data: value });
+      queryClient.setQueryData(personSettingsQueryKey, saved);
+      form.reset(saved);
+    },
+  });
+  const { isDirty, isSubmitting } = useFormDirtyPending(form);
+
+  return (
+    <form
+      className="space-y-6"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <SettingsGroup>
+        {(["openInEditMode", "showFamilyEventsInTimeline"] as const).map((name) => (
+          <form.Field key={name} name={name}>
+            {(field) => (
+              <SwitchSetting
+                label={t(`settings.person.${name}`)}
+                help={t(`settings.person.${name}Help`)}
+                isSelected={field.state.value}
+                onChange={field.handleChange}
+              />
+            )}
+          </form.Field>
+        ))}
+      </SettingsGroup>
+
+      <SettingsGroup>
+        <form.Field name="presumeDeceasedAfterYears">
+          {(field) => (
+            <div className="space-y-2">
+              <LabeledField label={t("settings.person.presumeDeceasedAfterYears")}>
+                <Input
+                  type="number"
+                  min={0}
+                  max={200}
+                  className="w-28"
+                  value={String(field.state.value)}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => {
+                    const years = Number.parseInt(event.target.value, 10);
+                    field.handleChange(Number.isNaN(years) ? 0 : Math.min(200, Math.max(0, years)));
+                  }}
+                />
+              </LabeledField>
+              <p className="text-sm text-muted-foreground">
+                {t("settings.person.presumeDeceasedAfterYearsHelp")}
+              </p>
+            </div>
+          )}
+        </form.Field>
+      </SettingsGroup>
+
+      {updateMutation.isError && (
+        <p className="text-sm text-destructive">{updateMutation.error.message}</p>
+      )}
+      <SaveButton isDirty={isDirty} isPending={isSubmitting}>
+        {t("common.save")}
+      </SaveButton>
+    </form>
   );
 }
 
@@ -229,9 +335,7 @@ function TreeSettingsForm({ initial }: { initial: TreeSettings }) {
       </SettingsGroup>
 
       <SettingsGroup>
-        {(
-          ["showExpandButtons", "showMinimap", "animateTransitions", "rememberLastView"] as const
-        ).map((name) => (
+        {(["showMinimap", "animateTransitions", "rememberLastView"] as const).map((name) => (
           <form.Field key={name} name={name}>
             {(field) => (
               <SwitchSetting

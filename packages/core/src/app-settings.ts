@@ -44,8 +44,6 @@ export const treeSettingsSchema = z.object({
   defaultOrientation: treeOrientationSchema.default("vertical"),
   /** Tint the centre person's own ancestors and descendants, so they stand out from aunts, uncles and cousins. */
   highlightDirectLine: z.boolean().default(false),
-  /** The "+" on a card's edge that loads that person's parents or children. */
-  showExpandButtons: z.boolean().default(true),
   /** The overview of the whole chart in the corner. */
   showMinimap: z.boolean().default(true),
   /** Animate re-centring, loading more, and pans. Off regardless when the browser asks for reduced motion. */
@@ -75,15 +73,54 @@ export const defaultTreeSettings: TreeSettings = treeSettingsSchema.parse({});
  * one stale value.
  */
 export function parseTreeSettings(value: unknown): TreeSettings {
+  return parseSettingsSection(treeSettingsSchema, defaultTreeSettings, value);
+}
+
+/**
+ * The shared field-by-field read behind `parseTreeSettings` and
+ * `parsePersonSettings`: each field that's missing or no longer valid takes
+ * its default, every other saved field is kept.
+ */
+function parseSettingsSection<T extends Record<string, unknown>>(
+  schema: z.ZodObject,
+  defaults: T,
+  value: unknown,
+): T {
   const stored =
     typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-  const result: Record<string, unknown> = { ...defaultTreeSettings };
-  for (const [key, fieldSchema] of Object.entries(treeSettingsSchema.shape)) {
-    const field = fieldSchema.safeParse(stored[key]);
+  const result: Record<string, unknown> = { ...defaults };
+  for (const [key, fieldSchema] of Object.entries(schema.shape)) {
+    const field = (fieldSchema as z.ZodType).safeParse(stored[key]);
     if (field.success) result[key] = field.data;
   }
-  return result as TreeSettings;
+  return result as T;
+}
+
+/** The person page's settings — the Settings page's "Person page" section. */
+export const personSettingsSchema = z.object({
+  /**
+   * Open a person's page in edit view (every card's form open) rather than
+   * the read view, with an Edit button per card. Viewers always get the read
+   * view.
+   */
+  openInEditMode: z.boolean().default(false),
+  /** Children's births and deaths, a spouse's and the parents' deaths, faintly in the person's own Life events timeline. */
+  showFamilyEventsInTimeline: z.boolean().default(true),
+  /**
+   * Someone still marked living whose birth was more than this many years
+   * ago is presumed deceased — by the GEDCOM import, by the "Probably
+   * deceased" hint in Personal details, and by the Tools action. 0 turns
+   * it off. See `isPresumedDeceased`.
+   */
+  presumeDeceasedAfterYears: z.number().int().min(0).max(200).default(110),
+});
+export type PersonSettings = z.infer<typeof personSettingsSchema>;
+
+export const defaultPersonSettings: PersonSettings = personSettingsSchema.parse({});
+
+export function parsePersonSettings(value: unknown): PersonSettings {
+  return parseSettingsSection(personSettingsSchema, defaultPersonSettings, value);
 }
 
 /** The `app_settings.key` of each section. */
-export const appSettingsKeys = { tree: "tree" } as const;
+export const appSettingsKeys = { tree: "tree", person: "person" } as const;

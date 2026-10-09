@@ -532,8 +532,10 @@ export interface GedcomImportOptions {
   vocabulary: GedcomImportVocabulary;
   /** What `decodeGedcomBytes` had to fall back to, if it was reported. */
   encoding?: GedcomEncoding;
-  /** Injectable for tests — the "born over 110 years ago" deceased inference is relative to it. */
+  /** Injectable for tests — the "born over N years ago" deceased inference is relative to it. */
   today?: Date;
+  /** The "presumed deceased" age — the Settings page's `presumeDeceasedAfterYears`; 0 turns the inference off. Defaults to 110. */
+  presumeDeceasedAfterYears?: number;
 }
 
 /** Thrown for input that isn't a GEDCOM file at all, as opposed to a GEDCOM file with problems (those become warnings). */
@@ -676,8 +678,12 @@ export function gedcomQuay(confidence: string): string | null {
 /** Event tags whose mere presence means the person is no longer living. */
 const DECEASED_TAGS = new Set(["DEAT", "BURI", "CREM", "PROB"]);
 
-/** Nobody in a family tree is plausibly alive this long after their birth or christening. */
-const MAX_PLAUSIBLE_AGE = 110;
+/**
+ * Nobody in a family tree is plausibly alive this long after their birth or
+ * christening — the default for `GedcomImportOptions.presumeDeceasedAfterYears`,
+ * matching `personSettingsSchema`'s default.
+ */
+const DEFAULT_PRESUME_DECEASED_AFTER_YEARS = 110;
 
 const MARRIAGE_START_TAGS = ["MARR", "MARB", "MARC", "MARL", "MARS"];
 const ENGAGEMENT_TAGS = ["ENGA"];
@@ -873,6 +879,8 @@ export function buildGedcomImportPlan(
 
   const vocab = new Vocabulary(options.vocabulary);
   const today = options.today ?? new Date();
+  const presumeDeceasedAfterYears =
+    options.presumeDeceasedAfterYears ?? DEFAULT_PRESUME_DECEASED_AFTER_YEARS;
 
   const indiRecords = new Map<string, GedcomNode>();
   const famRecords: GedcomNode[] = [];
@@ -1552,7 +1560,8 @@ export function buildGedcomImportPlan(
     if (
       !deceased &&
       earliestLifeYear !== null &&
-      today.getFullYear() - earliestLifeYear > MAX_PLAUSIBLE_AGE
+      presumeDeceasedAfterYears > 0 &&
+      today.getFullYear() - earliestLifeYear > presumeDeceasedAfterYears
     ) {
       deceased = true;
       warnings.add("inferredDeceased", primary ? formatName(primary) : `@${ref}@`);

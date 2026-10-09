@@ -28,8 +28,6 @@ export const CARD_HEIGHT = 72;
  */
 const PAD_X = 14;
 const PAD_Y = 10;
-/** The expand ("+") buttons on a card's edge. */
-const EXPAND_RADIUS = 10;
 const PHOTO_SIZE = 52;
 const INSET = 10;
 /** Photo on the left, text after it. */
@@ -37,6 +35,8 @@ const TEXT_X = INSET + PHOTO_SIZE + 12;
 const TEXT_WIDTH = CARD_WIDTH - TEXT_X - INSET;
 /** The gender badge over the photo's bottom-right corner. */
 const BADGE_RADIUS = 9;
+/** The "+" (add a relative) at the bottom of a card. */
+const ADD_RADIUS = 11;
 /** Shared by every card — clip paths are in each card's own coordinates, so one definition serves all. */
 export const TEXT_CLIP_ID = "tree-card-text-clip";
 export const PHOTO_CLIP_ID = "tree-card-photo-clip";
@@ -59,19 +59,19 @@ export interface CardPosition {
   y: number;
 }
 
-export type ExpandDirection = "up" | "down";
-
 /** What the renderer reads and reports, through `TopolaChart`'s refs so it's always current. */
 export interface CardRendererHooks {
   cardFor: (id: string) => CardInfo | undefined;
   /** Read at draw time, so a settings change shows on the next render. */
   settings: () => TreeSettings;
-  /** A card's "+" was pressed: load that person's parents ("up") or children ("down"). */
-  onExpand: (id: string, direction: ExpandDirection) => void;
   /** A card was right-clicked, at this point on the page (`clientX`/`clientY`). */
   onContextMenu: (id: string, clientX: number, clientY: number) => void;
-  /** Tooltip for a "+" button — e.g. "Load Anders Jensen's parents". */
-  expandLabel: (id: string, direction: ExpandDirection) => string;
+  /** Whether to draw the "+" at all — editors only, since it changes the tree. */
+  canAdd: () => boolean;
+  /** A card's "+" was pressed; the point is the button's bottom centre on the page, where its menu opens. */
+  onAddMenu: (id: string, clientX: number, clientY: number) => void;
+  /** The "+" button's accessible name, e.g. "Add a relative of Anders Jensen". */
+  addLabel: (id: string) => string;
   /**
    * Every drawn person's card centre, reported at the end of each render.
    * Computed from the layout, not read off the DOM, so it's the final
@@ -178,9 +178,9 @@ export function createCardRendererClass(
       card.each(function (datum) {
         drawCard(select(this), cardFor(datum.indi.id), current);
       });
-      if (current.showExpandButtons) {
+      if (hooks.canAdd()) {
         card.each(function (datum) {
-          drawExpandButtons(select(this), datum.indi.id, cardFor(datum.indi.id), horizontal, hooks);
+          drawAddButton(select(this), datum.indi.id, hooks);
         });
       }
 
@@ -335,59 +335,33 @@ function drawGenderBadge(
 }
 
 /**
- * The "+" buttons that load a person's parents or children, on the card edge
- * their lines would leave from — top/bottom in the top-down layout,
- * left/right in the left-to-right one (topola puts ancestors up/left in
- * every chart). Only shown where `TreeCard` says there's more to load, so
- * they never sit on top of an existing line.
+ * The "+" at the bottom centre of a card: opens a menu to add a parent,
+ * sibling or child (see `AddRelativeMenu` on the tree page). Shown only on
+ * the selected card and the one under the pointer (styles.css), so a chart
+ * full of cards isn't a chart full of buttons; on a touch screen, tapping a
+ * card selects it, which shows its "+".
  */
-function drawExpandButtons(
+function drawAddButton(
   card: Selection<SVGGElement, CardDatum, null, undefined>,
   id: string,
-  info: CardInfo | undefined,
-  horizontal: boolean,
   hooks: CardRendererHooks,
 ) {
-  const buttons: Array<{ direction: ExpandDirection; x: number; y: number }> = [];
-  if (info?.canLoadParents) {
-    buttons.push(
-      horizontal
-        ? { direction: "up", x: 0, y: CARD_HEIGHT / 2 }
-        : { direction: "up", x: CARD_WIDTH / 2, y: 0 },
-    );
-  }
-  if (info?.canLoadChildren) {
-    buttons.push(
-      horizontal
-        ? { direction: "down", x: CARD_WIDTH, y: CARD_HEIGHT / 2 }
-        : { direction: "down", x: CARD_WIDTH / 2, y: CARD_HEIGHT },
-    );
-  }
-  for (const button of buttons) {
-    const group = card
-      .append("g")
-      .attr("class", `card-expand card-expand-${button.direction}`)
-      .attr("data-direction", button.direction)
-      .attr("transform", `translate(${button.x}, ${button.y})`)
-      .attr("role", "button")
-      .on("click", (event: MouseEvent) => {
-        // The card's own click selects it; this one only expands.
-        event.stopPropagation();
-        hooks.onExpand(id, button.direction);
-      })
-      // A double-click on the card re-centres the tree; not from here.
-      .on("dblclick", (event: MouseEvent) => event.stopPropagation());
-    group.attr("aria-label", hooks.expandLabel(id, button.direction));
-    group.append("title").text(hooks.expandLabel(id, button.direction));
-    group.append("circle").attr("r", EXPAND_RADIUS);
-    group.append("path").attr("class", "card-expand-plus").attr("d", "M-4 0 H4 M0 -4 V4");
-    // Spins while that person's relatives are loading (see `markExpanding`).
-    group
-      .append("path")
-      .attr("class", "card-expand-spinner")
-      .attr(
-        "d",
-        `M0 ${-EXPAND_RADIUS + 3} A${EXPAND_RADIUS - 3} ${EXPAND_RADIUS - 3} 0 0 1 ${EXPAND_RADIUS - 3} 0`,
-      );
-  }
+  const label = hooks.addLabel(id);
+  const button = card
+    .append("g")
+    .attr("class", "card-add")
+    .attr("transform", `translate(${CARD_WIDTH / 2}, ${CARD_HEIGHT})`)
+    .attr("role", "button")
+    .attr("aria-label", label)
+    .on("click", (event: MouseEvent) => {
+      // The card's own click selects it; this opens the add menu instead.
+      event.stopPropagation();
+      const box = (event.currentTarget as SVGGElement).getBoundingClientRect();
+      hooks.onAddMenu(id, box.left + box.width / 2, box.bottom);
+    })
+    // A double-click on the card re-centres the tree; not from here.
+    .on("dblclick", (event: MouseEvent) => event.stopPropagation());
+  button.append("title").text(label);
+  button.append("circle").attr("r", ADD_RADIUS);
+  button.append("path").attr("d", "M-4.5 0 H4.5 M0 -4.5 V4.5");
 }

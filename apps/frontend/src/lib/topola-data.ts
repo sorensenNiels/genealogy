@@ -205,7 +205,7 @@ export interface TreeCard {
   isDeceased: boolean;
   /** One of the centre person's own ancestors or descendants (or them). */
   isDirectLine: boolean;
-  /** Their parents / children haven't been fetched yet, and the chart would show them — the card's "+" buttons. */
+  /** Their parents / children haven't been fetched yet, and the chart would show them — the card menu's "Load ancestors/descendants". */
   canLoadParents: boolean;
   canLoadChildren: boolean;
 }

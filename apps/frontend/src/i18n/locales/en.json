@@ -305,8 +305,6 @@
     "zoomOut": "Zoom out",
     "fitToView": "Fit to view",
     "chartHint": "Click a person to show them in the panel; double-click to centre the tree on them. Arrow keys move between people.",
-    "loadParentsOf": "Load {{name}}'s parents",
-    "loadChildrenOf": "Load {{name}}'s children",
     "chartLabel": "Family tree",
     "keyboardHelp": "Arrow keys move between people, Enter centres the tree on the selected person, Home goes back to the centre person, plus and minus zoom, 0 fits the whole tree.",
     "findInTree": "Find in tree…",
@@ -320,6 +318,12 @@
     },
     "cardMenu": {
       "label": "Menu for {{name}}"
+    },
+    "addMenu": {
+      "label": "Add a relative of {{name}}",
+      "loadParentsFirst": "Load parents first",
+      "loadChildrenFirst": "Load children first",
+      "nothing": "Nothing to add here yet"
     }
   },
   "tools": {
@@ -332,7 +336,8 @@
       "gedcom-export": "Export GEDCOM",
       "gedcom-import": "Import GEDCOM",
       "data-integrity": "Data integrity checks",
-      "graph-consistency": "Two-store consistency check"
+      "graph-consistency": "Two-store consistency check",
+      "presumed-deceased": "Presumed deceased"
     },
     "backupDescription": "Generates a gzipped SQL dump of the whole database — people, sources, citations, and the family tree graph — in one file. Restore it from the \"Restore database\" tool in the sidebar (a plain psql < file won't work — the family tree graph needs a couple of extra steps the restore tool already handles). You'll get a notification (top right) once it's ready to download.",
     "starting": "Starting…",
@@ -451,7 +456,25 @@
     "graphConsistencyDescription": "Compares every person in the database against the family-tree graph that stores how they're related. A mismatch here means the two have drifted apart — read-only, nothing is changed automatically.",
     "peopleMissingGraphNode": "People missing a graph node",
     "orphanedGraphNodes": "Graph nodes with no matching person",
-    "noIssuesFound": "No issues found."
+    "noIssuesFound": "No issues found.",
+    "presumedDeceased": {
+      "description": "People still marked living whose birth was longer ago than the \"Presume deceased after\" limit on the Settings page — usually people added by hand, who start out as living. The GEDCOM import already applies the same rule.",
+      "check": "Find people",
+      "off": "\"Presume deceased after\" is turned off (0) on the Settings page.",
+      "none": "Nobody marked living was born more than {{years}} years ago.",
+      "found_one": "{{count}} person marked living was born more than {{years}} years ago:",
+      "found_other": "{{count}} people marked living were born more than {{years}} years ago:",
+      "markAll_one": "Mark {{count}} as deceased",
+      "markAll_other": "Mark all {{count}} as deceased",
+      "itemLabel_one": "{{count}} person",
+      "itemLabel_other": "{{count}} people",
+      "confirmTitle_one": "Mark {{count}} person as deceased?",
+      "confirmTitle_other": "Mark {{count}} people as deceased?",
+      "confirmDescription": "Their living status changes to deceased; nothing else is touched. Anyone can be marked living again on their own page.",
+      "confirmAction": "Mark as deceased",
+      "marked_one": "{{count}} person marked as deceased.",
+      "marked_other": "{{count}} people marked as deceased."
+    }
   },
   "settings": {
     "title": "Settings",
@@ -497,8 +520,6 @@
       "defaultsHelp": "Used when a link doesn't say — the Tree menu item, \"View in tree\". Members can still switch on the tree page.",
       "highlightDirectLine": "Highlight the direct line",
       "highlightDirectLineHelp": "Tints the centre person's own ancestors and descendants, so they stand out from aunts, uncles and cousins.",
-      "showExpandButtons": "Show expand buttons on cards",
-      "showExpandButtonsHelp": "A \"+\" on a card's edge loads that person's parents or children right there.",
       "showMinimap": "Show minimap",
       "showMinimapHelp": "An overview of the whole tree in the corner, when it doesn't fit on screen.",
       "animateTransitions": "Animate changes",
@@ -509,6 +530,16 @@
       "initialZoomHelp": "\"Centre person\" suits big trees, where the whole tree is too small to read.",
       "rememberLastView": "Remember where each member was",
       "rememberLastViewHelp": "The tree reopens on the person, chart and direction a member last had, on any device; the zoom is remembered per browser."
+    },
+    "person": {
+      "title": "Person page",
+      "description": "How a person's page looks and behaves, for every member.",
+      "openInEditMode": "Open in edit view",
+      "openInEditModeHelp": "Off: a person's page opens as a readable profile, with an Edit button on Personal details. On: the details form is open straight away. Viewers always get the readable profile.",
+      "showFamilyEventsInTimeline": "Family events in the timeline",
+      "showFamilyEventsInTimelineHelp": "Children's births and deaths, a spouse's death and the parents' deaths, shown faintly in the person's own Life events, within their lifetime.",
+      "presumeDeceasedAfterYears": "Presume deceased after (years)",
+      "presumeDeceasedAfterYearsHelp": "Someone still marked living who was born longer ago than this is probably not: the GEDCOM import marks them deceased, Personal details suggests it, and Tools can apply it to everyone. 0 turns it off."
     }
   },
   "overview": {
@@ -634,7 +665,8 @@
       "loading": "Loading…",
       "loadError": "Could not load person: {{message}}",
       "breadcrumb": "Breadcrumb",
-      "printSummary": "Print summary →"
+      "printSummary": "Print summary →",
+      "status": "Status"
     },
     "birth": {
       "title": "Birth",
@@ -810,7 +842,7 @@
     },
     "restriction": {
       "label": "Privacy restriction",
-      "description": "From GEDCOM's RESN. Shown as a badge for now; it will be respected when sharing with family members arrives.",
+      "description": "Viewers already see living people by name only. Private or Confidential does the same for someone who has died; Locked is only kept for GEDCOM.",
       "none": "No restriction",
       "privacy": "Private",
       "confidential": "Confidential",
@@ -900,6 +932,32 @@
         "directlyRelated": "They're recorded as each other's parent, child or spouse — remove that relationship first if they really are one person.",
         "sameLineage": "One is recorded as the other's ancestor — merging would make them their own ancestor.",
         "bothLinkedToAccounts": "Both are linked to user accounts (\"this is me\"). Unlink one of them first."
+      }
+    },
+    "presumedDeceased": {
+      "hint": "Born more than {{years}} years ago — probably deceased.",
+      "mark": "Mark as deceased"
+    },
+    "familyEvents": {
+      "childBirth": {
+        "M": "Birth of son",
+        "F": "Birth of daughter",
+        "U": "Birth of child"
+      },
+      "childDeath": {
+        "M": "Death of son",
+        "F": "Death of daughter",
+        "U": "Death of child"
+      },
+      "spouseDeath": {
+        "M": "Death of husband",
+        "F": "Death of wife",
+        "U": "Death of spouse"
+      },
+      "parentDeath": {
+        "M": "Death of father",
+        "F": "Death of mother",
+        "U": "Death of parent"
       }
     }
   },

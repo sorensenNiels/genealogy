@@ -77,12 +77,12 @@ export async function standaloneSvg(snapshot: ChartSnapshot): Promise<string> {
 
 /**
  * Copies computed styles from `source` onto `target`, walking both trees in
- * step (they're clones, so the same shape). Drops the "+" expand buttons on
+ * step (they're clones, so the same shape). Drops the cards' "+" buttons on
  * the way — controls, not content — which has to happen here, while the
  * class names that identify them are still on the source.
  */
 function inlineStyles(source: Element, target: Element) {
-  if (source.classList.contains("card-expand")) {
+  if (source.classList.contains("card-add")) {
     target.remove();
     return;
   }

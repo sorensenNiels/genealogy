@@ -82,46 +82,32 @@
 .topola-chart.is-exporting * {
   transition: none !important;
 }
-/* The "+" on a card's edge that loads parents/children. */
-.topola-chart .card-expand {
+/* The "+" (add a relative) at the bottom of a card — only on the selected
+   card and the one under the pointer, so the chart isn't full of buttons. */
+.topola-chart .card-add {
   cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms;
 }
-.topola-chart .card-expand circle {
-  fill: var(--card);
-  stroke: var(--border);
-  stroke-width: 1.5px;
-  transition:
-    fill 120ms,
-    stroke 120ms;
+.topola-chart g.indi:hover .card-add,
+.topola-chart g.indi.is-selected .card-add {
+  opacity: 1;
+  pointer-events: auto;
 }
-.topola-chart .card-expand:hover circle {
+.topola-chart .card-add circle {
   fill: var(--primary);
-  stroke: var(--primary);
+  stroke: var(--card);
+  stroke-width: 2px;
 }
-.topola-chart .card-expand path {
+.topola-chart .card-add path {
   fill: none;
-  stroke: var(--muted-foreground);
+  stroke: var(--primary-foreground);
   stroke-width: 2px;
   stroke-linecap: round;
 }
-.topola-chart .card-expand:hover path {
-  stroke: var(--primary-foreground);
-}
-.topola-chart .card-expand .card-expand-spinner,
-.topola-chart .card-expand.is-loading .card-expand-plus {
-  display: none;
-}
-.topola-chart .card-expand.is-loading .card-expand-spinner {
-  display: inline;
-  stroke: var(--primary);
-  transform-box: view-box;
-  transform-origin: 0 0;
-  animation: tree-expand-spin 0.8s linear infinite;
-}
-@keyframes tree-expand-spin {
-  to {
-    transform: rotate(360deg);
-  }
+.topola-chart .card-add:hover circle {
+  fill: color-mix(in oklab, var(--primary) 85%, var(--foreground));
 }
 .topola-chart .card-gender circle {
   fill: var(--tree-gender);

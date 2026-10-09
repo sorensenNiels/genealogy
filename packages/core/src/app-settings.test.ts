@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  defaultPersonSettings,
   defaultTreeSettings,
   lastTreeViewSchema,
+  parsePersonSettings,
   parseTreeSettings,
   treeSettingsSchema,
 } from "./app-settings.js";
@@ -58,5 +60,23 @@ describe("lastTreeViewSchema", () => {
     expect(
       lastTreeViewSchema.safeParse({ personId: null, view: null, orientation: null }).success,
     ).toBe(false);
+  });
+});
+
+describe("parsePersonSettings", () => {
+  it("defaults to the read view, family events on, and presumed deceased after 110 years", () => {
+    expect(parsePersonSettings(undefined)).toEqual(defaultPersonSettings);
+    expect(defaultPersonSettings).toEqual({
+      openInEditMode: false,
+      showFamilyEventsInTimeline: true,
+      presumeDeceasedAfterYears: 110,
+    });
+  });
+
+  it("keeps valid fields and resets an out-of-range age", () => {
+    expect(parsePersonSettings({ openInEditMode: true, presumeDeceasedAfterYears: -5 })).toEqual({
+      ...defaultPersonSettings,
+      openInEditMode: true,
+    });
   });
 });

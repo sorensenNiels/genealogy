@@ -519,6 +519,39 @@ them), writes `adminProcedure`, and the Settings page shows them under
 "Display", above the dropdown topics. They're site-wide, not per member — a
 per-member override would go on `user_profiles` instead.
 
+### Person page: read view first, family events, presumed deceased
+
+Settings for the person page are a second `app_settings` section
+(`"person"`, `personSettingsSchema`) read and written exactly like the
+tree's — the field-by-field `parseSettingsSection` behind both keeps every
+valid stored field when one goes stale.
+
+**Read view first.** `PersonDetailsCard` shows the details as text and, for
+editors, an Edit button; the form (`PersonDetailsForm`) is only mounted
+while editing, so it always starts from the latest saved values rather than
+whatever it was created with. `openInEditMode` makes the form the default;
+Viewers never get it. In the read view the alternate names are wrapped in
+`ReadOnlyProvider`, which hides their add/edit/remove.
+
+**Family events** (`lib/family-events.ts`, tested) come from
+`person.relatives`, which already carries each relative's vitals and is
+redacted per viewer — so a living relative's dates are never there to show.
+Only events inside the person's own life count (after their birth, before
+their death if recorded), comparing date ranges so a vague date that
+overlaps still shows. Children's marriages would need their unions and are
+left for later.
+
+**Presumed deceased.** The GEDCOM import has always marked someone deceased
+when born too long ago to be alive; people added by hand default to living
+and usually get their birth date later, so they slipped through. One rule,
+`isPresumedDeceased` in `@genealogy/core` (tested), now drives the import
+(`presumeDeceasedAfterYears` option, from the setting), the hint in
+Personal details, and the Tools check (`PersonService.presumedDeceased`,
+the same comparison in SQL via `presumedDeceasedCutoff`). It compares on
+the birth date's _latest_ possible day, so "abt. 1916" isn't presumed dead
+early, and it never changes anyone silently: the hint and the Tools action
+are both explicit, and anyone can be marked living again.
+
 ### Configurable dropdown options, not hardcoded enums
 
 Closed-vocabulary dropdowns are backed by a single `configurableOptions` table
@@ -668,8 +701,14 @@ user's pan/zoom stays.
 person. It keeps every `person.tree` fetched this visit (`visitedRoots` +
 `useQueries`, merged by `mergeTree`), so a new centre adds to what's drawn:
 the same topola handle re-renders with the new `startIndi`, topola moves the
-cards it already has, and the view pans to the new centre card in the same
-700 ms. If the new centre is already loaded (a double-click on a card) the
+cards it already has, and the view pans to the new centre card on topola's
+own timing (200 ms wait, 500 ms move), so they arrive together. Any later
+re-render with the same centre — their relatives arriving, "load more", an
+add or a removal — shifts the view by however far the selected card (else
+the centre person) moved, so it stays put on screen while the rest
+rearranges. Both build on where the view is _meant_ to end up rather than
+where it is mid-animation, so a re-render landing during a pan doesn't
+leave the centre person off-centre. If the new centre is already loaded (a double-click on a card) the
 move starts at once and its own tree merges in when it arrives; someone
 unconnected to what's loaded shows "Loading…" until their tree comes. The
 panel's selection is stored with the root it was made under, so a new
@@ -689,11 +728,19 @@ announcing the selected person; the minimap is a mouse shortcut and hidden
 from assistive tech. Animation is off when the setting says so or the
 browser asks for reduced motion.
 
-**Expand from the card.** The "+" buttons are drawn by our card renderer,
-not topola's own expanders — those only fold and unfold people already
-loaded and can't fetch. They show where `parentsKnownIds` /
-`childrenKnownIds` say there's more to load and the chart would draw it, and
-run the same `expandMutation` as the side panel's "Load ancestors".
+**The "+" on a card adds, it doesn't load.** A first version put a "+" on
+a card's top/bottom edge to _load_ that person's parents/children; it read
+as noise on a chart full of cards and was removed (loading lives in the
+side panel and the card menu, both running `expandMutation`). The "+" now
+sits at a card's bottom centre and opens a menu to _add_ a father, mother,
+sibling or child (editors only), shown on the selected card and the one
+under the pointer rather than on every card. What it offers comes from
+`addOptions` (`lib/tree-add-options.ts`, tested), shared with the card
+menu and following the panel's rules so the chart never offers a
+duplicate: a parent only where we know that slot is empty, a child only
+once their children have been loaded, a sibling only when a birth parent
+is known (a sibling is linked as a child of the same birth parents) — and
+"Load parents/children first" where we haven't looked yet.
 
 **The card menu.** Right-click on a card (the renderer's `contextmenu`
 hook), or the menu key / Shift+F10 on the selected card, opens a React Aria

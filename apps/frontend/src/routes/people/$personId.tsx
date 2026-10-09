@@ -5,6 +5,7 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { usePermissions } from "../../lib/permissions";
+import { usePersonSettings } from "../../lib/person-settings";
 import { listAssociations } from "../../server/functions/association.functions";
 import {
   getPersonById,
@@ -17,14 +18,12 @@ import { listNotes } from "../../server/functions/research-note.functions";
 import { listOptions } from "../../server/functions/settings.functions";
 import { listCitations, listSources } from "../../server/functions/source.functions";
 import { AssociationsCard } from "./-associations-card";
-import { BirthCard } from "./-birth-card";
 import { CitationsSection } from "./-citations-section";
 import { ExternalIdsCard } from "./-external-ids-card";
 import { FamilyCard } from "./-family-card";
 import { PersonPhotosCard } from "./-immich-photos-card";
 import { LifeEventsCard } from "./-life-events-card";
-import { LivingStatusDeathCard } from "./-living-status-death-card";
-import { NamesGenderCard } from "./-names-gender-card";
+import { PersonDetailsCard } from "./-person-details-card";
 import { PersonHeaderCard } from "./-person-header-card";
 import { ResearchNotesSection } from "./-research-notes-section";
 
@@ -46,6 +45,7 @@ function PersonDetailRoute() {
   const { personId } = Route.useParams();
   const queryClient = useQueryClient();
   const { canEdit, isAdmin } = usePermissions();
+  const personSettings = usePersonSettings();
   const navigate = useNavigate();
 
   const person = useQuery({
@@ -177,14 +177,12 @@ function PersonDetailRoute() {
         />
         <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
           <div className="space-y-6">
-            <NamesGenderCard
+            <PersonDetailsCard
               person={person.data}
               names={names.data ?? []}
               options={options.data ?? []}
               onChanged={refresh}
             />
-            <BirthCard person={person.data} onChanged={refresh} />
-            <LivingStatusDeathCard person={person.data} onChanged={refresh} />
             <PersonPhotosCard personId={personId} />
             <LifeEventsCard
               personId={personId}
@@ -192,6 +190,8 @@ function PersonDetailRoute() {
               unions={unions.data ?? []}
               spouses={spouses}
               parents={parents}
+              personChildren={children}
+              showFamilyEvents={personSettings.showFamilyEventsInTimeline}
               person={person.data}
               citations={citationsList.data ?? []}
               sourcesList={sourcesList.data ?? []}

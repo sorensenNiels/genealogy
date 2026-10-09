@@ -52,6 +52,15 @@ export const createPerson = createServerFn({ method: "POST" })
 const mergeInput = z.object({ keepId: personIdSchema, removeId: personIdSchema });
 
 /** What merging `removeId` into `keepId` would move, and anything that blocks it — writes nothing. */
+/** Tools: everyone still marked living but born longer ago than the Settings limit. */
+export const getPresumedDeceased = createServerFn({ method: "GET" }).handler(() =>
+  trpcProxy.person.presumedDeceased.query(),
+);
+
+export const markPresumedDeceased = createServerFn({ method: "POST" }).handler(() =>
+  trpcProxy.person.markPresumedDeceased.mutate(),
+);
+
 export const getMergePreview = createServerFn({ method: "GET" })
   .validator(mergeInput)
   .handler(({ data }) => trpcProxy.person.mergePreview.query(data));

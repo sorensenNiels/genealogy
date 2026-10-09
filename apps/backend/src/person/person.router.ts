@@ -18,6 +18,7 @@ import { Injectable } from "@nestjs/common";
 import { z } from "zod";
 
 import { PersonRedactor, viewerOf } from "../privacy/person-redactor.js";
+import { SettingsService } from "../settings/settings.service.js";
 import { adminProcedure, editorProcedure, protectedProcedure, router } from "../trpc/trpc.base.js";
 import { PersonMergeService } from "./person-merge.service.js";
 import { PersonService } from "./person.service.js";
@@ -58,6 +59,7 @@ export class PersonRouter {
     private readonly persons: PersonService,
     private readonly merges: PersonMergeService,
     private readonly redactor: PersonRedactor,
+    private readonly settings: SettingsService,
   ) {}
 
   /**
@@ -111,6 +113,22 @@ export class PersonRouter {
       remove: adminProcedure.input(z.object({ id: personIdSchema })).mutation(async ({ input }) => {
         await this.persons.remove(input.id);
         return { ok: true } as const;
+      }),
+
+      // The Tools page's "Presumed deceased": everyone still marked living
+      // who was born longer ago than the Settings page's limit. Admin, like
+      // the rest of Tools — it changes many people at once.
+      presumedDeceased: adminProcedure.query(async () => {
+        const { presumeDeceasedAfterYears } = await this.settings.getPersonSettings();
+        return {
+          afterYears: presumeDeceasedAfterYears,
+          people: await this.persons.presumedDeceased(presumeDeceasedAfterYears),
+        };
+      }),
+
+      markPresumedDeceased: adminProcedure.mutation(async () => {
+        const { presumeDeceasedAfterYears } = await this.settings.getPersonSettings();
+        return { updated: await this.persons.markPresumedDeceased(presumeDeceasedAfterYears) };
       }),
 
       relatives: protectedProcedure

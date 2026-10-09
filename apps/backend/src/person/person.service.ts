@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 
-import { parseHistoricalDate } from "@genealogy/core";
+import { parseHistoricalDate, presumedDeceasedCutoff } from "@genealogy/core";
 import type {
   CreateNameVariant,
   CreatePerson,
@@ -702,6 +702,42 @@ export class PersonService {
   }
 
   /** Direct parents, spouses, children and siblings, resolved to full rows for display. */
+  /**
+   * Everyone still marked living whose birth was more than `afterYears`
+   * years ago — the "presumed deceased" rule (`isPresumedDeceased` in
+   * `@genealogy/core`), on the birth date's latest possible day so a vague
+   * date isn't presumed dead early. People without a birth date aren't
+   * included: there's nothing to go on.
+   */
+  async presumedDeceased(afterYears: number): Promise<PersonWithVitals[]> {
+    if (afterYears <= 0) return [];
+    const cutoff = presumedDeceasedCutoff(afterYears);
+    return personsWithVitals(this.db)
+      .where(
+        and(
+          eq(persons.isLiving, true),
+          sql`coalesce(${birthEvents.date}->>'latest', ${birthEvents.date}->>'earliest') < ${cutoff}`,
+        ),
+      )
+      .orderBy(sql`(${birthEvents.date}->>'earliest') asc`);
+  }
+
+  /** Marks everyone `presumedDeceased` returns as deceased; returns how many. */
+  async markPresumedDeceased(afterYears: number): Promise<number> {
+    const people = await this.presumedDeceased(afterYears);
+    if (people.length === 0) return 0;
+    await this.db
+      .update(persons)
+      .set({ isLiving: false, updatedAt: new Date() })
+      .where(
+        inArray(
+          persons.id,
+          people.map((person) => person.id),
+        ),
+      );
+    return people.length;
+  }
+
   async relatives(id: string): Promise<RelativesResult> {
     const [parentEdges, spouseNodes, childNodes] = await Promise.all([
       parentsOf(this.pool, id),

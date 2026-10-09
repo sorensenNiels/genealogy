@@ -277,6 +277,64 @@ _Suggested order_ (from the October 2026 review): the "getting around a big
 tree" and "doing things from the tree" ideas have shipped — see FEATURES.md.
 Research badges next.
 
+## Person page
+
+Ideas from the October 2026 review of the person page
+(`apps/frontend/src/routes/people/$personId.tsx` and its `-*.tsx` cards).
+Person-page settings live in the `"person"` section of `app_settings`
+(`personSettingsSchema` in `packages/core/src/app-settings.ts`: a schema
+field with a default, plus a form field on the Settings page's "Person
+page" section; no migration). Already built from this list: the read view,
+family events in the timeline, and "presumed deceased after N years" — see
+FEATURES.md.
+
+_Reading and getting around_
+
+- 💡 🆕 **Section jump bar.** A sticky row of links (Details · Events ·
+  Family · Sources · Notes) for long pages — `id`s on the cards, a
+  `position: sticky` bar under the breadcrumb (mind `__root.tsx`'s header
+  height).
+- 💡 🆕 **Previous/next person.** Step through siblings (from
+  `person.relatives`) or back through recently visited people (a small
+  per-browser history in localStorage).
+- 💡 🆕 **A small tree on the page.** A compact relatives chart (parents,
+  spouse, children) using the tree's chart; a click opens that person's
+  page, plus "Open in tree". Easiest once the chart is a shared package (see
+  "Static family website export" above: `packages/tree-chart`).
+
+_More on the page_
+
+- 💡 🆕 **Generated summary sentence.** A template-built line (no AI) at the
+  top: "Anders Jensen (1850–1921) was born in Ribe, married Karen Hansdatter
+  in 1874, had 6 children and died in Esbjerg." From vitals, unions and
+  relatives; localized per language as whole sentences, not glued fragments.
+  Complements the LLM "Narrative generation" idea below.
+- 💡 🆕 **Citation dots on Personal details.** The timeline shows a
+  confidence dot per event; birth/death/burial in Personal details don't
+  show whether they're sourced. Their citations are on the birth/death
+  events (`citationFactType` "event"), so the same `confidenceTier` and
+  cite-from-here flow can be reused.
+- 💡 🆕 **Change history.** Who changed what and when on this person, now
+  that several members edit. Needs an audit table written in the services
+  (person, events, names, relationships) — a schema change and a decision
+  on retention.
+- 💡 🆕 **Comments for family members.** Viewers leave a note on a person
+  ("I think this is Aunt Else's mother") without edit rights; editors see
+  and resolve them. A new table and `protectedProcedure`s for own comments,
+  `editorProcedure` to resolve. _Builds on:_ notifications.
+
+_Settings for the person page_ (a `"person"` section of `app_settings`):
+
+- 💡 🆕 **Which cards show, and in what order** — hide Witnesses &
+  godparents, External IDs or Research notes for a family that doesn't use
+  them.
+- 💡 🆕 **Name display** — "Anders Jensen", "JENSEN, Anders" or surname in
+  capitals, app-wide (`formatPersonName` in `@genealogy/core` takes it).
+- 💡 🆕 **Dates and ages** — full dates or years only; ages at events on/off.
+- 💡 🆕 **Family card scope** — half-siblings, step-relations, in-laws.
+- 💡 🆕 **What Viewers see of the living** — name only (today), name and
+  birth year, or not at all (`isRedactedFor` / `PersonRedactor`).
+
 ## Photos
 
 - 💡 **Test Immich face clustering on old photos.** Try it on

@@ -34,7 +34,7 @@ import { ReadOnlyProvider } from "@genealogy/ui/lib/read-only";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { Cross, DownloadIcon, Loader2, SearchIcon, UserRound, XIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage } from "../i18n/create-i18n-instance";
@@ -42,6 +42,12 @@ import { publicBackendUrl } from "../lib/env";
 import { formatDisplayDate } from "../lib/format-date";
 import { usePermissions } from "../lib/permissions";
 import { directLine, toTopolaJson, treeCard } from "../lib/topola-data";
+import {
+  addOptions,
+  type AddOption,
+  type AddRelativeKind,
+  type ExpandDirection,
+} from "../lib/tree-add-options";
 import { downloadFile, exportFilename, type TreeExportFormat } from "../lib/tree-export";
 import { useTreeSettings, useTreeSettingsQuery } from "../lib/tree-settings";
 import {
@@ -61,7 +67,6 @@ import {
 } from "../server/functions/profile.functions";
 import { getTreeSettings } from "../server/functions/settings.functions";
 import { TopolaChart, type ChartKind, type ChartPoint, type TreeChartApi } from "./-topola-chart";
-import type { ExpandDirection } from "./-tree-card-renderer";
 
 export const Route = createFileRoute("/tree")({
   // No zod schema here (unlike the server functions this page calls) — a
@@ -494,10 +499,8 @@ function FamilyTree({
   // The card menu (right-click, or the menu key) and the add-relative
   // dialog it can open — the panel's own "+ Add" buttons have their own.
   const [cardMenu, setCardMenu] = useState<{ personId: string; point: ChartPoint } | null>(null);
-  const [addRelative, setAddRelative] = useState<{
-    subjectId: string;
-    kind: AddRelativeKind;
-  } | null>(null);
+  const [addMenu, setAddMenu] = useState<{ personId: string; point: ChartPoint } | null>(null);
+  const [addRelative, setAddRelative] = useState<({ subjectId: string } & AddOption) | null>(null);
   const [exportState, setExportState] = useState<{
     pending: boolean;
     error: string | null;
@@ -730,20 +733,11 @@ function FamilyTree({
             chartKind={view}
             horizontal={orientation === "horizontal"}
             selectedId={selectedPerson?.id ?? rootId}
-            expanding={
-              expandMutation.isPending && expandMutation.variables
-                ? {
-                    id: expandMutation.variables.nodeId,
-                    direction: expandMutation.variables.direction,
-                  }
-                : null
-            }
             apiRef={chartApi}
             onSelect={setSelectedId}
-            onExpand={(personId, direction: ExpandDirection) =>
-              expandMutation.mutate({ nodeId: personId, direction })
-            }
             onContextMenu={(personId, point) => setCardMenu({ personId, point })}
+            canAdd={canEdit}
+            onAddMenu={(personId, point) => setAddMenu({ personId, point })}
             // Double-click centres the tree on a person — the same as "Center
             // tree here" in the panel, keeping the current chart and direction.
             onCenter={(personId) => {
@@ -770,13 +764,35 @@ function FamilyTree({
             onExpand={(personId, direction) =>
               expandMutation.mutate({ nodeId: personId, direction })
             }
-            onAddRelative={(subjectId, kind) => setAddRelative({ subjectId, kind })}
+            onAddRelative={(subjectId, option) => setAddRelative({ subjectId, ...option })}
+          />
+        )}
+        {addMenu && (
+          <AddRelativeMenu
+            key={`${addMenu.personId}:${addMenu.point.x}:${addMenu.point.y}`}
+            person={merged.people.find((person) => person.id === addMenu.personId)}
+            point={addMenu.point}
+            card={cards.get(addMenu.personId)}
+            tree={merged}
+            onClose={() => setAddMenu(null)}
+            onExpand={(personId, direction) =>
+              expandMutation.mutate({ nodeId: personId, direction })
+            }
+            onAddRelative={(subjectId, option) => setAddRelative({ subjectId, ...option })}
           />
         )}
         {addRelative && (
           <AddRelativeDialog
             subjectId={addRelative.subjectId}
             kind={addRelative.kind}
+            {...(addRelative.siblingParentIds
+              ? {
+                  siblingParentIds: addRelative.siblingParentIds,
+                  // From the loaded tree, so the parents are on the canvas.
+                  siblingParentsOnCanvas: true,
+                }
+              : {})}
+            {...(addRelative.excludeIds ? { excludeIds: addRelative.excludeIds } : {})}
             onAdded={addToExtra}
             isOpen
             onOpenChange={(open) => {
@@ -789,24 +805,49 @@ function FamilyTree({
   );
 }
 
-/** The birth parent of this gender — the "Father"/"Mother" slot the panel shows. */
-function birthParent(tree: MergedTree, personId: string, gender: "M" | "F") {
-  return tree.parentEdges.find(
-    (edge) =>
-      edge.childId === personId &&
-      edge.parentage === "birth" &&
-      tree.people.find((person) => person.id === edge.parentId)?.gender === gender,
+/**
+ * A menu opened at a point on the chart rather than from a button: React
+ * Aria's menu positions itself against its trigger, so an invisible trigger
+ * sits at that point.
+ */
+function PointMenu({
+  point,
+  label,
+  title,
+  onClose,
+  children,
+}: {
+  point: ChartPoint;
+  /** The (invisible) trigger's accessible name. */
+  label: string;
+  /** Shown above the items — the person's name. */
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <DropdownMenu
+      isOpen
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <Button
+        aria-label={label}
+        className="pointer-events-none absolute size-px p-0 opacity-0"
+        style={{ left: point.x, top: point.y }}
+      />
+      <DropdownMenuContent header={<DropdownMenuLabel>{title}</DropdownMenuLabel>}>
+        {children}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
 /**
  * The menu on a card — right-click, or the keyboard's menu key (or
- * Shift+F10) on the selected card. Opened at the pointer: React Aria's menu
- * positions itself against its trigger, so an invisible trigger sits at
- * that point. Adding relatives is for editors only, and offered only where
- * the panel would offer it (a parent slot we know is empty, children we've
- * actually looked for); siblings stay in the panel, which knows the
- * parents' other children.
+ * Shift+F10) on the selected card: centre here, open the profile, load more,
+ * and (editors) add a relative, under the rules in `addOptions`.
  */
 function CardMenu({
   person,
@@ -829,69 +870,119 @@ function CardMenu({
   onCenter: (personId: string) => void;
   onOpenProfile: (personId: string) => void;
   onExpand: (personId: string, direction: ExpandDirection) => void;
-  onAddRelative: (subjectId: string, kind: AddRelativeKind) => void;
+  onAddRelative: (subjectId: string, option: AddOption) => void;
 }) {
   const { t } = useTranslation();
   const { canEdit } = usePermissions();
   if (!person) return null;
   const id = person.id;
   const name = formatPersonName(person);
-  const parentsKnown = tree.parentsKnownIds.has(id);
-  const childrenKnown = tree.childrenKnownIds.has(id);
-  const addKinds: AddRelativeKind[] = canEdit
-    ? [
-        ...(parentsKnown && !birthParent(tree, id, "M") ? (["father"] as const) : []),
-        ...(parentsKnown && !birthParent(tree, id, "F") ? (["mother"] as const) : []),
-        "spouse",
-        ...(childrenKnown ? (["child"] as const) : []),
-      ]
-    : [];
-  const loadItems = [
-    ...(card?.canLoadParents ? [{ direction: "up" as const, label: t("tree.loadAncestors") }] : []),
-    ...(card?.canLoadChildren
-      ? [{ direction: "down" as const, label: t("tree.loadDescendants") }]
-      : []),
-  ];
+  const options = addOptions(tree, id, card);
 
   return (
-    <DropdownMenu
-      isOpen
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
+    <PointMenu
+      point={point}
+      label={t("tree.cardMenu.label", { name })}
+      title={name}
+      onClose={onClose}
     >
-      <Button
-        aria-label={t("tree.cardMenu.label", { name })}
-        className="pointer-events-none absolute size-px p-0 opacity-0"
-        style={{ left: point.x, top: point.y }}
-      />
-      <DropdownMenuContent header={<DropdownMenuLabel>{name}</DropdownMenuLabel>}>
-        {!isRoot && (
-          <DropdownMenuItem id="center" onAction={() => onCenter(id)}>
-            {t("tree.centerTreeHere")}
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuItem id="profile" onAction={() => onOpenProfile(id)}>
-          {t("tree.viewFullProfile")}
+      {!isRoot && (
+        <DropdownMenuItem id="center" onAction={() => onCenter(id)}>
+          {t("tree.centerTreeHere")}
         </DropdownMenuItem>
-        {loadItems.length > 0 && <DropdownMenuSeparator />}
-        {loadItems.map((item) => (
+      )}
+      <DropdownMenuItem id="profile" onAction={() => onOpenProfile(id)}>
+        {t("tree.viewFullProfile")}
+      </DropdownMenuItem>
+      {options.load.length > 0 && <DropdownMenuSeparator />}
+      {options.load.map((direction) => (
+        <DropdownMenuItem
+          key={direction}
+          id={`load-${direction}`}
+          onAction={() => onExpand(id, direction)}
+        >
+          {direction === "up" ? t("tree.loadAncestors") : t("tree.loadDescendants")}
+        </DropdownMenuItem>
+      ))}
+      {canEdit && <DropdownMenuSeparator />}
+      {canEdit &&
+        [...options.add, { kind: "spouse" as const }].map((option) => (
           <DropdownMenuItem
-            key={item.direction}
-            id={`load-${item.direction}`}
-            onAction={() => onExpand(id, item.direction)}
+            key={option.kind}
+            id={`add-${option.kind}`}
+            onAction={() => onAddRelative(id, option)}
           >
-            {item.label}
+            {t("tree.addLabel", { kind: t(`tree.kind.${option.kind}`) })}
           </DropdownMenuItem>
         ))}
-        {addKinds.length > 0 && <DropdownMenuSeparator />}
-        {addKinds.map((kind) => (
-          <DropdownMenuItem key={kind} id={`add-${kind}`} onAction={() => onAddRelative(id, kind)}>
-            {t("tree.addLabel", { kind: t(`tree.kind.${kind}`) })}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    </PointMenu>
+  );
+}
+
+/**
+ * The menu behind a card's "+" (editors): add a parent, sibling or child,
+ * under the rules in `addOptions`. Where a person's parents or children
+ * haven't been loaded yet, it offers loading them first — after which the
+ * add items appear.
+ */
+function AddRelativeMenu({
+  person,
+  point,
+  card,
+  tree,
+  onClose,
+  onExpand,
+  onAddRelative,
+}: {
+  person: TreePersonRow | undefined;
+  point: ChartPoint;
+  card: { canLoadParents: boolean; canLoadChildren: boolean } | undefined;
+  tree: MergedTree;
+  onClose: () => void;
+  onExpand: (personId: string, direction: ExpandDirection) => void;
+  onAddRelative: (subjectId: string, option: AddOption) => void;
+}) {
+  const { t } = useTranslation();
+  if (!person) return null;
+  const id = person.id;
+  const name = formatPersonName(person);
+  const options = addOptions(tree, id, card);
+  const isEmpty = options.add.length === 0 && options.load.length === 0;
+
+  return (
+    <PointMenu
+      point={point}
+      label={t("tree.addMenu.label", { name })}
+      title={name}
+      onClose={onClose}
+    >
+      {options.add.map((option) => (
+        <DropdownMenuItem
+          key={option.kind}
+          id={`add-${option.kind}`}
+          onAction={() => onAddRelative(id, option)}
+        >
+          {t("tree.addLabel", { kind: t(`tree.kind.${option.kind}`) })}
+        </DropdownMenuItem>
+      ))}
+      {options.add.length > 0 && options.load.length > 0 && <DropdownMenuSeparator />}
+      {options.load.map((direction) => (
+        <DropdownMenuItem
+          key={direction}
+          id={`load-${direction}`}
+          onAction={() => onExpand(id, direction)}
+        >
+          {direction === "up"
+            ? t("tree.addMenu.loadParentsFirst")
+            : t("tree.addMenu.loadChildrenFirst")}
+        </DropdownMenuItem>
+      ))}
+      {isEmpty && (
+        <DropdownMenuItem id="nothing" isDisabled>
+          {t("tree.addMenu.nothing")}
+        </DropdownMenuItem>
+      )}
+    </PointMenu>
   );
 }
 
@@ -1018,8 +1109,6 @@ function RelativeRow({
     </div>
   );
 }
-
-type AddRelativeKind = "father" | "mother" | "spouse" | "child" | "sibling";
 
 /**
  * Search for an existing person to link, or create a blank one on the spot —

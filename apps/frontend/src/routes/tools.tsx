@@ -10,6 +10,7 @@ import { Button } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
 import { FileDropZone } from "@genealogy/ui/components/file-drop-zone";
 import { Input } from "@genealogy/ui/components/input";
+import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
 import { cn } from "@genealogy/ui/lib/utils";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -26,6 +27,8 @@ import {
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { toSupportedLanguage } from "../i18n/create-i18n-instance";
+import { formatDisplayDate } from "../lib/format-date";
 import { useImmichAvailable } from "../lib/immich-status";
 import { createBackup } from "../server/functions/backup.functions";
 import {
@@ -35,6 +38,7 @@ import {
 } from "../server/functions/gedcom.functions";
 import { enqueueAllAlbumsZip, rescanImmichFaces } from "../server/functions/immich.functions";
 import { checkDataIntegrity, checkGraphConsistency } from "../server/functions/integrity.functions";
+import { getPresumedDeceased, markPresumedDeceased } from "../server/functions/person.functions";
 
 const TOOLS = [
   "backup",
@@ -43,6 +47,7 @@ const TOOLS = [
   "gedcom-export",
   "gedcom-import",
   "data-integrity",
+  "presumed-deceased",
   "graph-consistency",
 ] as const;
 type Tool = (typeof TOOLS)[number];
@@ -55,6 +60,7 @@ function toolLabels(t: TFunction): Record<Tool, string> {
     "gedcom-export": t("tools.tool.gedcom-export"),
     "gedcom-import": t("tools.tool.gedcom-import"),
     "data-integrity": t("tools.tool.data-integrity"),
+    "presumed-deceased": t("tools.tool.presumed-deceased"),
     "graph-consistency": t("tools.tool.graph-consistency"),
   };
 }
@@ -109,6 +115,7 @@ function ToolsRoute() {
         {tool === "gedcom-export" && <GedcomExportPanel />}
         {tool === "gedcom-import" && <GedcomImportPanel />}
         {tool === "data-integrity" && <DataIntegrityPanel />}
+        {tool === "presumed-deceased" && <PresumedDeceasedPanel />}
         {tool === "graph-consistency" && <GraphConsistencyPanel />}
       </div>
     </div>
@@ -559,6 +566,98 @@ function PersonLink({ personId, name }: { personId: string; name: string }) {
     <Link to="/people/$personId" params={{ personId }} className="text-primary hover:underline">
       {name || t("tools.unnamed")}
     </Link>
+  );
+}
+
+/**
+ * Everyone still marked living who was born longer ago than the Settings
+ * page's "Presume deceased after" limit — typically people added by hand,
+ * who default to living (the GEDCOM import already applies the rule). Run
+ * on demand like the other checks; marking is one confirmed action, and a
+ * single person can be marked living again on their own page.
+ */
+function PresumedDeceasedPanel() {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
+  const queryClient = useQueryClient();
+  const checkMutation = useMutation({ mutationFn: getPresumedDeceased });
+  const markMutation = useMutation({
+    mutationFn: markPresumedDeceased,
+    onSuccess: async () => {
+      checkMutation.reset();
+      await queryClient.invalidateQueries({ queryKey: ["person"] });
+    },
+  });
+  const result = checkMutation.data;
+
+  return (
+    <SectionCard title={toolLabels(t)["presumed-deceased"]}>
+      <p className="text-sm text-muted-foreground">{t("tools.presumedDeceased.description")}</p>
+      <div className="mt-4">
+        <Button isDisabled={checkMutation.isPending} onPress={() => checkMutation.mutate()}>
+          {checkMutation.isPending ? t("tools.checking") : t("tools.presumedDeceased.check")}
+        </Button>
+      </div>
+      {checkMutation.isError && (
+        <p className="mt-2 text-sm text-destructive">{checkMutation.error.message}</p>
+      )}
+      {markMutation.isSuccess && (
+        <p className="mt-2 text-sm text-muted-foreground">
+          {t("tools.presumedDeceased.marked", { count: markMutation.data.updated })}
+        </p>
+      )}
+      {markMutation.isError && (
+        <p className="mt-2 text-sm text-destructive">{markMutation.error.message}</p>
+      )}
+      {result && (
+        <div className="mt-6 space-y-3">
+          {result.afterYears === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("tools.presumedDeceased.off")}</p>
+          ) : result.people.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {t("tools.presumedDeceased.none", { years: result.afterYears })}
+            </p>
+          ) : (
+            <>
+              <p className="text-sm">
+                {t("tools.presumedDeceased.found", {
+                  count: result.people.length,
+                  years: result.afterYears,
+                })}
+              </p>
+              <ul className="max-h-72 space-y-1 overflow-y-auto rounded-md border p-3 text-sm">
+                {result.people.map((person) => (
+                  <li key={person.id} className="flex justify-between gap-4">
+                    <Link
+                      to="/people/$personId"
+                      params={{ personId: person.id }}
+                      className="truncate hover:underline"
+                    >
+                      {formatPersonName(person)}
+                    </Link>
+                    <span className="shrink-0 text-muted-foreground">
+                      {formatDisplayDate(person.birth, language)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <RemoveButton
+                itemLabel={t("tools.presumedDeceased.itemLabel", { count: result.people.length })}
+                title={t("tools.presumedDeceased.confirmTitle", { count: result.people.length })}
+                description={t("tools.presumedDeceased.confirmDescription")}
+                actionLabel={t("tools.presumedDeceased.confirmAction")}
+                onConfirm={() => markMutation.mutate()}
+                trigger={
+                  <Button isDisabled={markMutation.isPending}>
+                    {t("tools.presumedDeceased.markAll", { count: result.people.length })}
+                  </Button>
+                }
+              />
+            </>
+          )}
+        </div>
+      )}
+    </SectionCard>
   );
 }
 

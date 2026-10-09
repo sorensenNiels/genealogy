@@ -305,8 +305,6 @@
     "zoomOut": "Zoom ud",
     "fitToView": "Tilpas til visning",
     "chartHint": "Klik på en person for at vise dem i panelet; dobbeltklik for at centrere træet om dem. Piletasterne flytter mellem personer.",
-    "loadParentsOf": "Indlæs {{name}}s forældre",
-    "loadChildrenOf": "Indlæs {{name}}s børn",
     "chartLabel": "Slægtstræ",
     "keyboardHelp": "Piletasterne flytter mellem personer, Enter centrerer træet om den valgte person, Home går tilbage til centerpersonen, plus og minus zoomer, 0 viser hele træet.",
     "findInTree": "Find i træet…",
@@ -320,6 +318,12 @@
     },
     "cardMenu": {
       "label": "Menu for {{name}}"
+    },
+    "addMenu": {
+      "label": "Tilføj en slægtning til {{name}}",
+      "loadParentsFirst": "Indlæs forældre først",
+      "loadChildrenFirst": "Indlæs børn først",
+      "nothing": "Intet at tilføje her endnu"
     }
   },
   "tools": {
@@ -332,7 +336,8 @@
       "gedcom-export": "Eksportér GEDCOM",
       "gedcom-import": "Importér GEDCOM",
       "data-integrity": "Dataintegritetstjek",
-      "graph-consistency": "Konsistenstjek mellem de to lagre"
+      "graph-consistency": "Konsistenstjek mellem de to lagre",
+      "presumed-deceased": "Formodet døde"
     },
     "backupDescription": "Genererer et gzip-komprimeret SQL-dump af hele databasen — personer, kilder, kildehenvisninger og slægtstræ-grafen — i én fil. Gendan den fra \"Gendan database\"-værktøjet i sidebjælken (et almindeligt psql < fil virker ikke — slægtstræ-grafen kræver et par ekstra trin, som gendannelsesværktøjet allerede håndterer). Du får en notifikation (øverst til højre), når den er klar til download.",
     "starting": "Starter…",
@@ -451,7 +456,25 @@
     "graphConsistencyDescription": "Sammenligner alle personer i databasen med slægtstræ-grafen, der gemmer, hvordan de er beslægtede. En uoverensstemmelse her betyder, at de to er drevet fra hinanden — skrivebeskyttet, intet ændres automatisk.",
     "peopleMissingGraphNode": "Personer der mangler en grafknude",
     "orphanedGraphNodes": "Grafknuder uden en matchende person",
-    "noIssuesFound": "Ingen problemer fundet."
+    "noIssuesFound": "Ingen problemer fundet.",
+    "presumedDeceased": {
+      "description": "Personer, der stadig står som levende, men er født for længere tid siden end grænsen \"Formodes død efter\" på Indstillinger — typisk personer tilføjet i hånden, som starter som levende. GEDCOM-importen bruger allerede samme regel.",
+      "check": "Find personer",
+      "off": "\"Formodes død efter\" er slået fra (0) på Indstillinger.",
+      "none": "Ingen, der står som levende, er født for mere end {{years}} år siden.",
+      "found_one": "{{count}} person, der står som levende, er født for mere end {{years}} år siden:",
+      "found_other": "{{count}} personer, der står som levende, er født for mere end {{years}} år siden:",
+      "markAll_one": "Markér {{count}} som død",
+      "markAll_other": "Markér alle {{count}} som døde",
+      "itemLabel_one": "{{count}} person",
+      "itemLabel_other": "{{count}} personer",
+      "confirmTitle_one": "Markér {{count}} person som død?",
+      "confirmTitle_other": "Markér {{count}} personer som døde?",
+      "confirmDescription": "Deres status ændres til død; intet andet røres. Enhver kan markeres som levende igen på sin egen side.",
+      "confirmAction": "Markér som død",
+      "marked_one": "{{count}} person markeret som død.",
+      "marked_other": "{{count}} personer markeret som døde."
+    }
   },
   "settings": {
     "title": "Indstillinger",
@@ -497,8 +520,6 @@
       "defaultsHelp": "Bruges når et link ikke angiver det — menupunktet Slægtstræ, \"Vis i slægtstræ\". Medlemmer kan stadig skifte på siden.",
       "highlightDirectLine": "Fremhæv den direkte linje",
       "highlightDirectLineHelp": "Farver centerpersonens egne aner og efterkommere, så de skiller sig ud fra tanter, onkler og fætre/kusiner.",
-      "showExpandButtons": "Vis udvid-knapper på kort",
-      "showExpandButtonsHelp": "Et \"+\" på kortets kant indlæser personens forældre eller børn direkte.",
       "showMinimap": "Vis minikort",
       "showMinimapHelp": "En oversigt over hele træet i hjørnet, når det ikke kan være på skærmen.",
       "animateTransitions": "Animér ændringer",
@@ -509,6 +530,16 @@
       "initialZoomHelp": "\"Centerperson\" passer til store træer, hvor hele træet bliver for småt til at læse.",
       "rememberLastView": "Husk hvor hvert medlem var",
       "rememberLastViewHelp": "Træet åbner igen på den person, det diagram og den retning, et medlem sidst havde, på enhver enhed; zoom huskes pr. browser."
+    },
+    "person": {
+      "title": "Personside",
+      "description": "Hvordan en persons side ser ud og opfører sig, for alle medlemmer.",
+      "openInEditMode": "Åbn i redigeringsvisning",
+      "openInEditModeHelp": "Fra: en persons side åbner som en læsevenlig profil med en Redigér-knap på Personoplysninger. Til: formularen er åben med det samme. Læsere får altid den læsevenlige profil.",
+      "showFamilyEventsInTimeline": "Familiebegivenheder i tidslinjen",
+      "showFamilyEventsInTimelineHelp": "Børns fødsler og dødsfald, en ægtefælles og forældrenes dødsfald, vist dæmpet i personens egne livsbegivenheder inden for deres levetid.",
+      "presumeDeceasedAfterYears": "Formodes død efter (år)",
+      "presumeDeceasedAfterYearsHelp": "En person, der stadig står som levende, men er født for længere tid siden end dette, er det sandsynligvis ikke: GEDCOM-importen markerer dem som døde, Personoplysninger foreslår det, og Værktøjer kan anvende det på alle. 0 slår det fra."
     }
   },
   "overview": {
@@ -634,7 +665,8 @@
       "loading": "Indlæser…",
       "loadError": "Kunne ikke indlæse person: {{message}}",
       "breadcrumb": "Brødkrumme",
-      "printSummary": "Udskriv oversigt →"
+      "printSummary": "Udskriv oversigt →",
+      "status": "Status"
     },
     "birth": {
       "title": "Fødsel",
@@ -810,7 +842,7 @@
     },
     "restriction": {
       "label": "Privatlivsbegrænsning",
-      "description": "Fra GEDCOM's RESN. Vises indtil videre som et mærke; den bliver respekteret, når deling med familiemedlemmer kommer.",
+      "description": "Læsere ser allerede levende personer kun med navn. Privat eller Fortrolig gør det samme for en afdød; Låst gemmes kun til GEDCOM.",
       "none": "Ingen begrænsning",
       "privacy": "Privat",
       "confidential": "Fortrolig",
@@ -900,6 +932,32 @@
         "directlyRelated": "De er registreret som hinandens forælder, barn eller ægtefælle — fjern den relation først, hvis de virkelig er samme person.",
         "sameLineage": "Den ene er registreret som den andens ane — en fletning ville gøre personen til sin egen ane.",
         "bothLinkedToAccounts": "Begge er koblet til brugerkonti (\"det er mig\"). Fjern koblingen fra den ene først."
+      }
+    },
+    "presumedDeceased": {
+      "hint": "Født for mere end {{years}} år siden — sandsynligvis død.",
+      "mark": "Markér som død"
+    },
+    "familyEvents": {
+      "childBirth": {
+        "M": "Fødsel af søn",
+        "F": "Fødsel af datter",
+        "U": "Fødsel af barn"
+      },
+      "childDeath": {
+        "M": "Død af søn",
+        "F": "Død af datter",
+        "U": "Død af barn"
+      },
+      "spouseDeath": {
+        "M": "Død af ægtemand",
+        "F": "Død af hustru",
+        "U": "Død af ægtefælle"
+      },
+      "parentDeath": {
+        "M": "Død af far",
+        "F": "Død af mor",
+        "U": "Død af forælder"
       }
     }
   },

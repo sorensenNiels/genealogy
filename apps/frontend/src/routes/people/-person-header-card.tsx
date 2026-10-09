@@ -115,7 +115,9 @@ export function PersonHeaderCard({
                   {t("person.header.redacted")}
                 </Badge>
               )}
-              {person.restriction && (
+              {/* Only for the deceased, like the field in Personal details: a
+                  living person is name-only for Viewers anyway. */}
+              {person.restriction && !person.isLiving && (
                 <Badge className="border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400">
                   {t(`person.restriction.${person.restriction}`)}
                 </Badge>

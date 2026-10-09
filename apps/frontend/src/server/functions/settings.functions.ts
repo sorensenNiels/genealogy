@@ -2,6 +2,7 @@ import {
   addConfigurableOptionSchema,
   configurableOptionIdSchema,
   moveConfigurableOptionSchema,
+  personSettingsSchema,
   treeSettingsSchema,
   updateConfigurableOptionSchema,
 } from "@genealogy/core";
@@ -21,6 +22,14 @@ export const getTreeSettings = createServerFn({ method: "GET" }).handler(() =>
 export const updateTreeSettings = createServerFn({ method: "POST" })
   .validator(treeSettingsSchema)
   .handler(({ data }) => trpcProxy.settings.updateTreeSettings.mutate(data));
+
+export const getPersonSettings = createServerFn({ method: "GET" }).handler(() =>
+  trpcProxy.settings.personSettings.query(),
+);
+
+export const updatePersonSettings = createServerFn({ method: "POST" })
+  .validator(personSettingsSchema)
+  .handler(({ data }) => trpcProxy.settings.updatePersonSettings.mutate(data));
 
 export const addOption = createServerFn({ method: "POST" })
   .validator(addConfigurableOptionSchema)

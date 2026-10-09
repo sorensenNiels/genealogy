@@ -5,6 +5,8 @@ import { SettingsService } from "./settings.service.js";
 
 @Module({
   providers: [SettingsService, SettingsRouter],
-  exports: [SettingsRouter],
+  // SettingsService is exported for the person and GEDCOM modules, which
+  // read the person settings ("presumed deceased after N years").
+  exports: [SettingsRouter, SettingsService],
 })
 export class SettingsModule {}

@@ -1,9 +1,10 @@
 import type {
   AddConfigurableOption,
+  PersonSettings,
   TreeSettings,
   UpdateConfigurableOption,
 } from "@genealogy/core";
-import { appSettingsKeys, parseTreeSettings } from "@genealogy/core";
+import { appSettingsKeys, parsePersonSettings, parseTreeSettings } from "@genealogy/core";
 import {
   appSettings,
   citations,
@@ -45,22 +46,38 @@ export class SettingsService {
    * breaking the tree page.
    */
   async getTreeSettings(): Promise<TreeSettings> {
-    const [row] = await this.db
-      .select({ value: appSettings.value })
-      .from(appSettings)
-      .where(eq(appSettings.key, appSettingsKeys.tree));
-    return parseTreeSettings(row?.value);
+    return parseTreeSettings(await this.readSection(appSettingsKeys.tree));
   }
 
   async updateTreeSettings(settings: TreeSettings): Promise<TreeSettings> {
+    await this.writeSection(appSettingsKeys.tree, settings);
+    return settings;
+  }
+
+  /** The person page's settings — same reading rules as `getTreeSettings`. */
+  async getPersonSettings(): Promise<PersonSettings> {
+    return parsePersonSettings(await this.readSection(appSettingsKeys.person));
+  }
+
+  async updatePersonSettings(settings: PersonSettings): Promise<PersonSettings> {
+    await this.writeSection(appSettingsKeys.person, settings);
+    return settings;
+  }
+
+  /** One `app_settings` row's raw value, or undefined if never saved. */
+  private async readSection(key: string): Promise<unknown> {
+    const [row] = await this.db
+      .select({ value: appSettings.value })
+      .from(appSettings)
+      .where(eq(appSettings.key, key));
+    return row?.value;
+  }
+
+  private async writeSection(key: string, value: object): Promise<void> {
     await this.db
       .insert(appSettings)
-      .values({ key: appSettingsKeys.tree, value: settings })
-      .onConflictDoUpdate({
-        target: appSettings.key,
-        set: { value: settings, updatedAt: new Date() },
-      });
-    return settings;
+      .values({ key, value })
+      .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
   }
 
   /** Every configurable option, across every topic — the table is small enough that one query beats one per topic. */
