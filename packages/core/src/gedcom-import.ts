@@ -626,6 +626,10 @@ export const GEDCOM_EVENT_DETAIL_TAGS: Record<string, Record<string, string>> = 
   occupation: { employer: "AGNC" },
   death: { causeOfDeath: "CAUS" },
   residence: { address: "ADDR" },
+  // A census household's values (see `CensusService`): GEDCOM has standard
+  // tags for the address and the age at the event; position, occupation and
+  // birthplace as written have none, and stay in the app.
+  census: { address: "ADDR", age: "AGE" },
 };
 
 /** The only values GEDCOM 5.5.1 allows for `FAMC.PEDI`; any other parentage travels as `_FREL`/`_MREL`. */

@@ -30,8 +30,7 @@ const REDACTED_FIELDS = {
 } as const;
 
 /**
- * "Name only" for a Viewer looking at someone living (or private/
- * confidential) — see `isRedactedFor` in `@genealogy/core` for the rule.
+ * "Name only" for a Viewer looking at someone living — see `isRedactedFor` in `@genealogy/core` for the rule.
  * Enforced here, server-side, on what each read returns; the frontend only
  * decides how a redacted person *looks*. Applied in the routers rather than
  * inside each service, so the services stay role-agnostic and every

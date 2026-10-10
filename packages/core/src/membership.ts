@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import type { PersonRestriction } from "./person.js";
-
 /**
  * What a signed-in member may do. Structural, not configurable: every
  * procedure is gated on these exact values (see `editorProcedure`/
@@ -25,18 +23,20 @@ export function isAdmin(role: MemberRole | null | undefined): boolean {
 
 /**
  * Whether `role` sees this person as "name only": a Viewer looking at someone
- * living, or at someone marked private or confidential (`persons.restriction`,
- * GEDCOM's RESN). Editors and admins always see everything — they maintain
- * the data. "locked" doesn't redact; it's about editing, not reading.
+ * living. Editors and admins always see everything — they maintain the data.
+ *
+ * The deceased are never restricted. `persons.restriction` (GEDCOM's RESN —
+ * privacy/confidential/locked) used to hide a deceased person from Viewers
+ * too, but it was decided (October 2026) that the living are private by
+ * definition and the dead have no restrictions; the value is still stored
+ * and exported to GEDCOM, it just no longer affects who sees what.
  */
 export function isRedactedFor(
   role: MemberRole | null | undefined,
-  person: { isLiving: boolean; restriction: PersonRestriction | string | null },
+  person: { isLiving: boolean },
 ): boolean {
   if (canEdit(role)) return false;
-  return (
-    person.isLiving || person.restriction === "privacy" || person.restriction === "confidential"
-  );
+  return person.isLiving;
 }
 
 /** How long an invitation link works. Long enough for a relative to get round to it. */

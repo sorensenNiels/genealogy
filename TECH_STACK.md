@@ -526,7 +526,13 @@ Settings for the person page are a second `app_settings` section
 tree's — the field-by-field `parseSettingsSection` behind both keeps every
 valid stored field when one goes stale.
 
-**Read view first.** `PersonDetailsCard` shows the details as text and, for
+**Read view first** — "life at a glance". The read view doesn't repeat the
+header (name, gender, born/died, badges); it tells the life: a summary from
+`lifeAtAGlance` (`lib/life-summary.ts`, tested), written as whole sentences
+per combination of known facts (`person.lifeSummary.*`) rather than glued
+fragments, so Danish and English can each phrase it naturally; then birth,
+unions and death as milestones; then the other names; then, for editors,
+prompts for what's missing. `PersonDetailsCard` shows that and, for
 editors, an Edit button; the form (`PersonDetailsForm`) is only mounted
 while editing, so it always starts from the latest saved values rather than
 whatever it was created with. `openInEditMode` makes the form the default;
@@ -551,6 +557,69 @@ the same comparison in SQL via `presumedDeceasedCutoff`). It compares on
 the birth date's _latest_ possible day, so "abt. 1916" isn't presumed dead
 early, and it never changes anyone silently: the hint and the Tools action
 are both explicit, and anyone can be marked living again.
+
+### Records (census and church books)
+
+A record — a census household, a baptism, a marriage, a burial — is its
+own row (`records` + `record_people`, migration `0042_records`), because
+that's how a source is read: one entry, everyone in it with their role, all
+_as written_. What a record means for each person is kept as the ordinary
+tree data it implies — a `census`/`christening`/`burial` person event, a
+union, an association — so the timeline, the tree, the summary and GEDCOM
+need nothing record-specific. (Migrations `0040_census`/`0041_drop_census`
+are the census-only first version; `0040`'s seeds are still used.)
+
+**Templates, not code per type.** `RECORD_TEMPLATES` in `@genealogy/core`
+(`records.ts`) says, per type, which roles a row can have, which roles are
+the principals (who get the event, or for a marriage the union), the event
+type, which roles become associations (godparent, witness, informant,
+officiant), and which columns the editor shows. The record type list is a
+Zod enum, not a configurable option, on purpose: the backend branches on
+it. Which types are offered is a setting. A further record type (probate,
+confirmation — see IDEAS.md) is a template plus i18n, and backend code
+only if it creates something new.
+
+**Censuses are data.** `census.ts` holds built-in definitions for Denmark
+(1787–1940), Norway, Sweden, England & Wales, Scotland, the USA and Canada
+— each with its census day and whether it asked birthplace and position in
+the household, which decides the editor's columns. Settings adds custom
+censuses (any country, any count) and picks which countries are offered and
+which a person's coverage grid lists. A record stores `census_key`; an
+unknown key (a custom census since removed) falls back to a stand-in with
+every column, so nothing becomes unreadable. Age inference
+(`parseRecordAge`, `estimatedBirthFromAge`, `ageMismatch`, two years'
+tolerance) works for any record with an age and a date.
+
+**Sync.** `RecordService.save` takes the whole record from the editor and,
+in one `inGraphTransaction`, brings what it implies in line: rows are
+matched by id, a row that stays linked keeps what it created (event,
+association) and updates it, an unlinked or removed row deletes it, a new
+link creates it. A marriage reuses an open union between the couple
+(`created_union` records whether the record made it, so deleting the record
+removes only a union it created — otherwise just its citation). Each
+event/union cites the record's source with page and entry number, at the
+confidence chosen in Settings; only a citation from the record's (previous)
+source is replaced, so hand-added citations stay. Deleting a record deletes
+what it created; the people stay. Merging two people moves record rows and
+"not found" searches with them. Exercised end to end against a copy of the
+dev database for every type, including relinking, reuse and deletion.
+
+**Family links.** `relationshipCandidates` derives the links a record
+implies (a baptism's parents, a marriage's parents of the bride and groom,
+a census head with spouse and children); the backend drops those the graph
+already has. By default they're suggestions on the record, one click each;
+the "automatic" setting makes them on save. Never replaces an existing link.
+
+**Privacy.** Records are read with `protectedProcedure`; for a Viewer, a
+row linked to a living person keeps only name and role, suggestions are
+hidden, and a living person's own records card isn't shown — the same
+"living = name only" rule as the person page. Writes are `editorProcedure`,
+settings `adminProcedure`.
+
+**Census positions** are a configurable topic (`household_position`),
+seeded with head, wife, husband, son, daughter, child, stepchild, foster
+child, grandchild, parent, sibling, in-law, servant, lodger and other.
+Church-book roles are fixed per template, because they drive what's created.
 
 ### Configurable dropdown options, not hardcoded enums
 
@@ -1369,9 +1438,10 @@ idea in IDEAS.md.
     the cascade can't reach (`factId` isn't an FK), and the integrity
     check reports dangling association citations too.
   - `RESN` → nullable **`persons.restriction`** (privacy/confidential/
-    locked; `personRestrictionSchema`, plus a CHECK constraint). Edited
-    in the living-status card, shown as a header badge, exported as
-    RESN; not yet enforced — that's the living-person redaction feature.
+    locked; `personRestrictionSchema`, plus a CHECK constraint). Stored
+    and exported as RESN, but not shown or edited and not enforced:
+    the living are private anyway, and it was decided (October 2026)
+    that the deceased have no restrictions — see `isRedactedFor`.
     A GEDCOM 7 file listing several values keeps the most restrictive.
   - `_TODO` → **research notes** (no schema change): inline or a pointer
     to a `0 @T1@ _TODO` record; description from the value/DESC/TEXT/
@@ -1461,8 +1531,9 @@ tree and photos. **Viewer**: reads, with living people redacted.
   creating the account there accepts it. There must always be one admin
   left, and an admin can't remove themselves.
 - **Redaction** (`PersonRedactor`, applied in the routers, not the
-  services): a Viewer sees a living person — or one marked private or
-  confidential — as name, gender and place in the tree, `redacted: true`;
+  services): a Viewer sees a living person as name, gender and place in
+  the tree, `redacted: true` (the deceased are never restricted, whatever
+  `restriction` says);
   dates, places, notes, photo, and their names/events/citations/roles/
   research notes/external ids/linked photos are withheld, and a marriage
   involving them loses its dates and places. A Viewer's own linked person
@@ -1475,7 +1546,7 @@ tree and photos. **Viewer**: reads, with living people redacted.
 - **Known limits.** Album browsing isn't redacted — an album is a set of
   photos, not a person, and its faces show names only. The people list's
   birth-date filters and sort still order redacted people by their hidden
-  dates. `restriction: "locked"` doesn't yet stop editors editing. better-
+  dates. better-
   auth's own sign-in/sign-up error texts stay English.
 
 ### Merging people: one transaction, nothing overwritten

@@ -1,10 +1,16 @@
 import type {
   AddConfigurableOption,
   PersonSettings,
+  RecordSettings,
   TreeSettings,
   UpdateConfigurableOption,
 } from "@genealogy/core";
-import { appSettingsKeys, parsePersonSettings, parseTreeSettings } from "@genealogy/core";
+import {
+  appSettingsKeys,
+  parsePersonSettings,
+  parseRecordSettings,
+  parseTreeSettings,
+} from "@genealogy/core";
 import {
   appSettings,
   citations,
@@ -61,6 +67,16 @@ export class SettingsService {
 
   async updatePersonSettings(settings: PersonSettings): Promise<PersonSettings> {
     await this.writeSection(appSettingsKeys.person, settings);
+    return settings;
+  }
+
+  /** The Records section — record types, census countries, custom censuses, link behaviour. */
+  async getRecordSettings(): Promise<RecordSettings> {
+    return parseRecordSettings(await this.readSection(appSettingsKeys.records));
+  }
+
+  async updateRecordSettings(settings: RecordSettings): Promise<RecordSettings> {
+    await this.writeSection(appSettingsKeys.records, settings);
     return settings;
   }
 

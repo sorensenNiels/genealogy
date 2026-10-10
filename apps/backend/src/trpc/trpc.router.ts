@@ -15,6 +15,7 @@ import { MembersRouter } from "../members/members.router.js";
 import { NotificationRouter } from "../notification/notification.router.js";
 import { PersonRouter } from "../person/person.router.js";
 import { ProfileRouter } from "../profile/profile.router.js";
+import { RecordRouter } from "../records/record.router.js";
 import { ResearchNoteRouter } from "../research-note/research-note.router.js";
 import { SettingsRouter } from "../settings/settings.router.js";
 import { SourceRouter } from "../source/source.router.js";
@@ -43,6 +44,7 @@ export class TrpcRouter {
     private readonly albumCategory: AlbumCategoryRouter,
     private readonly externalId: ExternalIdRouter,
     private readonly members: MembersRouter,
+    private readonly records: RecordRouter,
     @Inject(AUTH) private readonly auth: Auth,
   ) {}
 
@@ -68,6 +70,7 @@ export class TrpcRouter {
       albumCategory: this.albumCategory.build(),
       externalId: this.externalId.build(),
       members: this.members.build(),
+      records: this.records.build(),
     });
   }
 

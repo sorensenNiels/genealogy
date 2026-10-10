@@ -26,8 +26,10 @@ devcontainer exec --workspace-folder . bash -lc "<command>"
 **`docker` inside the dev container drives the host's Docker** (the
 `docker-outside-of-docker` feature), so `docker compose ...` and `make db-up`
 from in here manage the same containers as on the host — including the `db`
-service holding the real dev data. Treat Docker commands accordingly: `docker
-compose down -v` or `make db-reset` destroys that data. Bind mounts in
+service holding the dev data. `docker compose down -v` or `make db-reset`
+destroys that data. It is disposable and can be rebuilt by importing
+`family-tree.ged` (see [AGENTS.md](AGENTS.md)), but it is the user's working
+copy, so ask before resetting it. Bind mounts in
 `docker-compose.yml` are resolved on the host, so they use
 `${LOCAL_WORKSPACE_FOLDER:-.}` (set in `devcontainer.json`) rather than a bare
 `./` path. Inside the container, Postgres is reached at `host.docker.internal`
@@ -246,6 +248,8 @@ prompted it.
   a route file if `typecheck` complains it can't find `./routeTree.gen`.
 - A schema change: edit `packages/db/src/schema.ts`, then `pnpm db:generate` and
   `pnpm db:migrate`. If the change adds people, remember the matching graph node.
+  The migration only has to work on an empty database. Don't write backfills or
+  compatibility shims for existing rows (see [AGENTS.md](AGENTS.md)).
 - **A dropdown or radio group with a closed set of choices: never a static
   `z.enum([...])`/Postgres `pgEnum`.** Add a topic to `configurableOptions`
   instead (`packages/db/src/schema.ts`), seed it in the migration, and add its

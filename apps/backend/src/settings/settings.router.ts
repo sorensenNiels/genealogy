@@ -3,6 +3,7 @@ import {
   configurableOptionIdSchema,
   moveConfigurableOptionSchema,
   personSettingsSchema,
+  recordSettingsSchema,
   treeSettingsSchema,
   updateConfigurableOptionSchema,
 } from "@genealogy/core";
@@ -37,6 +38,14 @@ export class SettingsRouter {
       updatePersonSettings: adminProcedure
         .input(personSettingsSchema)
         .mutation(({ input }) => this.settings.updatePersonSettings(input)),
+
+      // Read by every member (record pages, the person page's coverage);
+      // only an admin changes them.
+      recordSettings: protectedProcedure.query(() => this.settings.getRecordSettings()),
+
+      updateRecordSettings: adminProcedure
+        .input(recordSettingsSchema)
+        .mutation(({ input }) => this.settings.updateRecordSettings(input)),
 
       addOption: adminProcedure
         .input(addConfigurableOptionSchema)

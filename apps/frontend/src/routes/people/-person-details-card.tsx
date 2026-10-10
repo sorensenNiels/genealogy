@@ -1,11 +1,10 @@
 import {
+  formatPersonName,
   genderSchema,
   isPresumedDeceased,
   joinHistoricalDateText,
   parseHistoricalDate,
-  personRestrictionSchema,
   splitHistoricalDateText,
-  type PersonRestriction,
 } from "@genealogy/core";
 import { Autocomplete } from "@genealogy/ui/components/autocomplete";
 import { Button } from "@genealogy/ui/components/button";
@@ -15,25 +14,20 @@ import { HistoricalDateInput } from "@genealogy/ui/components/historical-date-in
 import { Input } from "@genealogy/ui/components/input";
 import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { SaveButton } from "@genealogy/ui/components/save-button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
-import { ReadOnlyProvider } from "@genealogy/ui/lib/read-only";
+import { cn } from "@genealogy/ui/lib/utils";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { PencilIcon } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Baby, Flower2, HeartHandshake, PencilIcon, PlusIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage, type SupportedLanguage } from "../../i18n/create-i18n-instance";
 import { formatDisplayDate } from "../../lib/format-date";
+import { lifeAtAGlance, type LifeMilestone } from "../../lib/life-summary";
 import { usePermissions } from "../../lib/permissions";
-import { genderLabel } from "../../lib/person-display";
+import { genderLabel, labelFor } from "../../lib/person-display";
 import { usePersonSettings } from "../../lib/person-settings";
 import {
   listSuffixes,
@@ -42,7 +36,7 @@ import {
 } from "../../server/functions/person.functions";
 import { AlternateNames } from "./-alternate-names";
 import { historicalDateFieldPreview } from "./-shared";
-import type { ConfigurableOptionRow, NameVariantRow, PersonRow } from "./-types";
+import type { ConfigurableOptionRow, NameVariantRow, PersonRow, UnionRow } from "./-types";
 
 // A starting point, not a closed vocabulary — the Title/prefix and Suffix
 // fields below merge these with whatever's already been typed for other
@@ -131,11 +125,18 @@ function orNull(value: string): string | null {
 export function PersonDetailsCard({
   person,
   names,
+  unions,
+  spouses,
+  childCount,
   options,
   onChanged,
 }: {
   person: PersonRow;
   names: NameVariantRow[];
+  /** For the read view's milestones and summary. */
+  unions: UnionRow[];
+  spouses: PersonRow[];
+  childCount: number;
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
@@ -163,6 +164,9 @@ export function PersonDetailsCard({
     <DetailsReadView
       person={person}
       names={names}
+      unions={unions}
+      spouses={spouses}
+      childCount={childCount}
       options={options}
       presumeDeceasedAfterYears={settings.presumeDeceasedAfterYears}
       onEdit={canEdit ? () => setEditing(true) : null}
@@ -229,8 +233,6 @@ function PersonDetailsForm({
       birth: birthSplit,
       birthPlace: person.birthPlace ?? "",
       isLiving: person.isLiving,
-      // "none" rather than null: a Select needs a key for "no restriction".
-      restriction: (person.restriction ?? "none") as PersonRestriction | "none",
       death: deathSplit,
       deathPlace: person.deathPlace ?? "",
       causeOfDeath: person.causeOfDeath ?? "",
@@ -249,7 +251,6 @@ function PersonDetailsForm({
           birth: toHistoricalDate(value.birth, language),
           birthPlace: orNull(value.birthPlace),
           isLiving: value.isLiving,
-          restriction: value.restriction === "none" ? null : value.restriction,
           death: toHistoricalDate(value.death, language),
           deathPlace: orNull(value.deathPlace),
           causeOfDeath: orNull(value.causeOfDeath),
@@ -398,39 +399,6 @@ function PersonDetailsForm({
             )}
             {!isLiving && (
               <>
-                {/* Only for the deceased: a living person is already shown to
-                    Viewers by name only, so a restriction would add nothing. A
-                    value stored while living is kept (and exported to GEDCOM),
-                    just not shown. */}
-                <form.Field name="restriction">
-                  {(field) => (
-                    <LabeledField label={t("person.restriction.label")} className="sm:col-span-2">
-                      <Select
-                        aria-label={t("person.restriction.label")}
-                        value={field.state.value}
-                        onChange={(value) => {
-                          const parsed = personRestrictionSchema.safeParse(value);
-                          field.handleChange(parsed.success ? parsed.data : "none");
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem id="none">{t("person.restriction.none")}</SelectItem>
-                          {personRestrictionSchema.options.map((restriction) => (
-                            <SelectItem key={restriction} id={restriction}>
-                              {t(`person.restriction.${restriction}`)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        {t("person.restriction.description")}
-                      </p>
-                    </LabeledField>
-                  )}
-                </form.Field>
                 <LabeledField label={t("person.livingStatusDeath.dateOfDeath")}>
                   {dateInput("death", death, t("person.livingStatusDeath.deathDatePlaceholder"))}
                 </LabeledField>
@@ -490,10 +458,19 @@ function PersonDetailsForm({
   );
 }
 
-/** The card when not editing: the same three sections as plain text. */
+/**
+ * The card when not editing — "life at a glance": a short generated
+ * summary (`lifeAtAGlance`), then birth, unions and death as milestones on
+ * a line, the person's other names, and for editors one-click prompts for
+ * the facts still missing (each opens the form). Names, gender and the
+ * badges are in the header above, so they aren't repeated here.
+ */
 function DetailsReadView({
   person,
   names,
+  unions,
+  spouses,
+  childCount,
   options,
   presumeDeceasedAfterYears,
   onEdit,
@@ -501,137 +478,214 @@ function DetailsReadView({
 }: {
   person: PersonRow;
   names: NameVariantRow[];
+  unions: UnionRow[];
+  spouses: PersonRow[];
+  childCount: number;
   options: ConfigurableOptionRow[];
   presumeDeceasedAfterYears: number;
-  /** Null for Viewers — no Edit button. */
+  /** Null for Viewers — no Edit button or prompts. */
   onEdit: (() => void) | null;
   onChanged: () => Promise<void>;
 }) {
   const { t, i18n } = useTranslation();
   const language = toSupportedLanguage(i18n.language);
   const markDeceased = useMutation({ mutationFn: updatePerson, onSuccess: onChanged });
-  const date = (value: PersonRow["birth"]) => formatDisplayDate(value, language);
+
+  const { milestones, sentences } = lifeAtAGlance({
+    person,
+    unions: unions
+      .filter((union) => union.personAId === person.id || union.personBId === person.id)
+      .map((union) => {
+        const partnerId = union.personAId === person.id ? union.personBId : union.personAId;
+        const partner = spouses.find((spouse) => spouse.id === partnerId);
+        return {
+          startDate: union.startDate,
+          startPlace: union.startPlace,
+          status: union.status,
+          partnerId: partner ? partnerId : null,
+          partnerName: partner ? formatPersonName(partner) : t("person.events.unknownSpouse"),
+        };
+      }),
+    childCount,
+    formatDate: (date) => formatDisplayDate(date, language),
+  });
+
+  // What an editor could still fill in — each prompt opens the form.
+  const missing = [
+    ...(person.birth ? [] : [t("person.lifeSummary.missing.birthDate")]),
+    ...(person.birthPlace ? [] : [t("person.lifeSummary.missing.birthPlace")]),
+    ...(person.isLiving || person.death ? [] : [t("person.lifeSummary.missing.deathDate")]),
+    ...(person.isLiving || person.deathPlace ? [] : [t("person.lifeSummary.missing.deathPlace")]),
+  ];
 
   return (
     <Card>
-      <CardContent className="space-y-8">
-        <DetailsSection title={t("person.namesGender.title")}>
-          <ReadField label={t("person.firstNames")} value={person.given} />
-          <ReadField label={t("person.lastNames")} value={person.surname} />
-          <ReadField label={t("common.gender.label")} value={genderLabel(person.gender, t)} />
-          {person.titlePrefix && (
-            <ReadField label={t("person.namesGender.titlePrefix")} value={person.titlePrefix} />
-          )}
-          {person.suffix && (
-            <ReadField label={t("person.namesGender.suffix")} value={person.suffix} />
-          )}
-          {names.length > 0 && (
-            <div className="sm:col-span-2">
-              {/* The list only: its add/edit/remove follow ReadOnlyProvider. */}
-              <ReadOnlyProvider readOnly>
-                <AlternateNames
-                  personId={person.id}
-                  names={names}
-                  options={options}
-                  onChanged={onChanged}
-                />
-              </ReadOnlyProvider>
-            </div>
-          )}
-        </DetailsSection>
+      <CardContent className="space-y-6">
+        {sentences.length > 0 ? (
+          <p className="text-base leading-relaxed">
+            {sentences
+              .map((sentence) => t(`person.lifeSummary.${sentence.key}`, sentence.params))
+              .join(" ")}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t("person.lifeSummary.empty")}</p>
+        )}
 
-        <DetailsSection title={t("person.birth.title")}>
-          <ReadField label={t("person.birth.dateOfBirth")} value={date(person.birth)} />
-          <ReadField label={t("person.birth.placeOfBirth")} value={person.birthPlace} />
-        </DetailsSection>
-
-        <DetailsSection title={t("person.livingStatusDeath.title")}>
-          <ReadField
-            label={t("person.detail.status")}
-            value={
-              person.isLiving
-                ? t("person.livingStatusDeath.living")
-                : t("person.livingStatusDeath.deceased")
-            }
+        {onEdit && isPresumedDeceased(person, presumeDeceasedAfterYears) && (
+          <PresumedDeceasedHint
+            years={presumeDeceasedAfterYears}
+            isPending={markDeceased.isPending}
+            onMarkDeceased={() => markDeceased.mutate({ data: { id: person.id, isLiving: false } })}
           />
-          {onEdit && isPresumedDeceased(person, presumeDeceasedAfterYears) && (
-            <PresumedDeceasedHint
-              years={presumeDeceasedAfterYears}
-              isPending={markDeceased.isPending}
-              onMarkDeceased={() =>
-                markDeceased.mutate({ data: { id: person.id, isLiving: false } })
-              }
-            />
-          )}
-          {!person.isLiving && (
-            <>
-              {person.restriction && (
-                <ReadField
-                  label={t("person.restriction.label")}
-                  value={t(`person.restriction.${person.restriction}`)}
-                />
-              )}
-              <ReadField
-                label={t("person.livingStatusDeath.dateOfDeath")}
-                value={date(person.death)}
-              />
-              <ReadField
-                label={t("person.livingStatusDeath.placeOfDeath")}
-                value={person.deathPlace}
-              />
-              {(person.burial || person.burialPlace) && (
-                <>
-                  <ReadField
-                    label={t("person.livingStatusDeath.burialDate")}
-                    value={date(person.burial)}
-                  />
-                  <ReadField
-                    label={t("person.livingStatusDeath.burialPlace")}
-                    value={person.burialPlace}
-                  />
-                </>
-              )}
-              {person.causeOfDeath && (
-                <ReadField
-                  label={t("person.livingStatusDeath.causeOfDeath")}
-                  value={person.causeOfDeath}
-                  className="sm:col-span-2"
-                />
-              )}
-            </>
-          )}
-        </DetailsSection>
+        )}
         {markDeceased.isError && (
           <p className="text-sm text-destructive">{markDeceased.error.message}</p>
         )}
+
+        {milestones.length > 0 && (
+          <Milestones milestones={milestones} person={person} options={options} />
+        )}
+
+        {names.length > 0 && (
+          <p className="text-sm">
+            <span className="text-muted-foreground">{t("person.lifeSummary.alsoKnownAs")}</span>{" "}
+            {names.map((name, index) => (
+              <span key={name.id}>
+                {index > 0 && ", "}
+                <span className="font-medium">
+                  {[name.given, name.surname].filter(Boolean).join(" ")}
+                </span>{" "}
+                <span className="text-muted-foreground">
+                  ({labelFor(options, "name_variant_type", name.nameType)})
+                </span>
+              </span>
+            ))}
+          </p>
+        )}
+
+        {onEdit && (
+          <div className="flex flex-wrap items-center gap-2">
+            {missing.map((label) => (
+              <Button key={label} variant="ghost" size="sm" onPress={onEdit}>
+                <PlusIcon className="size-3.5" aria-hidden="true" />
+                {label}
+              </Button>
+            ))}
+            <Button variant="outline" size="sm" className="ml-auto" onPress={onEdit}>
+              <PencilIcon className="size-4" aria-hidden="true" />
+              {t("common.edit")}
+            </Button>
+          </div>
+        )}
       </CardContent>
-      {onEdit && (
-        <CardFooter className="justify-end">
-          <Button variant="outline" onPress={onEdit}>
-            <PencilIcon className="size-4" aria-hidden="true" />
-            {t("common.edit")}
-          </Button>
-        </CardFooter>
-      )}
     </Card>
   );
 }
 
-/** One label/value pair in the read view; an empty value shows as "—". */
-function ReadField({
-  label,
-  value,
-  className,
+const MILESTONE_LOOK = {
+  birth: { Icon: Baby, tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
+  union: { Icon: HeartHandshake, tone: "bg-rose-500/15 text-rose-700 dark:text-rose-400" },
+  death: { Icon: Flower2, tone: "bg-muted text-muted-foreground" },
+} as const;
+
+/**
+ * Birth, unions and death on a line: an icon per milestone, its date (big),
+ * place, partner and the age at the time. Across the card on wider
+ * screens, stacked on a phone. Burial and cause of death sit under the
+ * death, where they belong.
+ */
+function Milestones({
+  milestones,
+  person,
+  options,
 }: {
-  label: string;
-  value: string | null | undefined;
-  className?: string;
+  milestones: LifeMilestone[];
+  person: PersonRow;
+  options: ConfigurableOptionRow[];
 }) {
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
+  // The connecting line runs between the first and last icon centres.
+  const inset = `${50 / milestones.length}%`;
+
+  const title = (milestone: LifeMilestone) => {
+    if (milestone.kind === "birth") return t("person.lifeSummary.milestone.born");
+    if (milestone.kind === "death") return t("person.lifeSummary.milestone.died");
+    return milestone.unionStatus === "married"
+      ? t("person.lifeSummary.milestone.married")
+      : labelFor(options, "union_status", milestone.unionStatus ?? "");
+  };
+
   return (
-    <div className={className}>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm">{value && value.trim() !== "" ? value : "—"}</p>
-    </div>
+    <ol className="relative grid gap-5 sm:auto-cols-fr sm:grid-flow-col sm:gap-4">
+      {milestones.length > 1 && (
+        <li
+          aria-hidden="true"
+          className="absolute top-5 hidden h-px bg-border sm:block"
+          style={{ left: inset, right: inset }}
+        />
+      )}
+      {milestones.map((milestone, index) => {
+        const { Icon, tone } = MILESTONE_LOOK[milestone.kind];
+        return (
+          <li
+            // A milestone's kind and position are its identity here.
+            // eslint-disable-next-line react/no-array-index-key
+            key={`${milestone.kind}-${index}`}
+            className="relative flex gap-3 sm:flex-col sm:items-center sm:text-center"
+          >
+            <span
+              className={cn(
+                "relative z-10 flex size-10 shrink-0 items-center justify-center rounded-full ring-4 ring-card",
+                tone,
+              )}
+            >
+              <Icon className="size-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 space-y-0.5">
+              <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                {title(milestone)}
+              </p>
+              <p className="font-semibold">{formatDisplayDate(milestone.date, language) ?? "—"}</p>
+              {milestone.place && (
+                <p className="text-sm text-muted-foreground">{milestone.place}</p>
+              )}
+              {milestone.partner &&
+                (milestone.partner.id ? (
+                  <Link
+                    to="/people/$personId"
+                    params={{ personId: milestone.partner.id }}
+                    className="text-sm hover:underline"
+                  >
+                    {milestone.partner.name}
+                  </Link>
+                ) : (
+                  <p className="text-sm">{milestone.partner.name}</p>
+                ))}
+              {milestone.kind === "death" && (person.burial || person.burialPlace) && (
+                <p className="text-xs text-muted-foreground">
+                  {t("person.lifeSummary.buried", {
+                    what: [formatDisplayDate(person.burial, language), person.burialPlace]
+                      .filter(Boolean)
+                      .join(", "),
+                  })}
+                </p>
+              )}
+              {milestone.kind === "death" && person.causeOfDeath && (
+                <p className="text-xs text-muted-foreground">
+                  {t("person.lifeSummary.cause", { cause: person.causeOfDeath })}
+                </p>
+              )}
+              {milestone.age !== null && (
+                <span className="mt-1 inline-block rounded-full bg-muted px-2 py-0.5 text-xs">
+                  {t("person.lifeSummary.aged", { age: milestone.age })}
+                </span>
+              )}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 

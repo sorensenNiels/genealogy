@@ -665,7 +665,8 @@ function DataIntegrityPanel() {
   // Run-on-demand, not on page load — same "button, then results" shape as
   // every other tool here, and these checks touch every citation/person row
   // (plus one Immich call per link), not worth doing on every visit.
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const language = toSupportedLanguage(i18n.language);
   const checkMutation = useMutation({ mutationFn: checkDataIntegrity });
   const report = checkMutation.data;
 
@@ -737,6 +738,34 @@ function DataIntegrityPanel() {
               ))}
             </ReportSection>
           )}
+
+          <ReportSection
+            title={t("tools.recordAgeMismatches")}
+            isEmpty={report.recordAgeMismatches.length === 0}
+          >
+            {report.recordAgeMismatches.map((mismatch) => (
+              <li key={`${mismatch.recordId}:${mismatch.personId}`}>
+                <PersonLink
+                  personId={mismatch.personId}
+                  name={formatPersonName(mismatch.personName)}
+                />{" "}
+                {t("tools.recordAgeMismatchText", {
+                  age: mismatch.age,
+                  record: t(`records.type.${mismatch.recordType}`),
+                  year: mismatch.year,
+                  birth: formatDisplayDate(mismatch.birth, language),
+                  years: Math.abs(mismatch.yearsOff),
+                })}{" "}
+                <Link
+                  to="/records/$recordId"
+                  params={{ recordId: mismatch.recordId }}
+                  className="underline hover:text-foreground"
+                >
+                  {t("tools.recordAgeMismatchOpen")}
+                </Link>
+              </li>
+            ))}
+          </ReportSection>
         </div>
       )}
     </SectionCard>

@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   defaultPersonSettings,
+  defaultRecordSettings,
   defaultTreeSettings,
   lastTreeViewSchema,
   parsePersonSettings,
+  parseRecordSettings,
   parseTreeSettings,
   treeSettingsSchema,
 } from "./app-settings.js";
@@ -78,5 +80,32 @@ describe("parsePersonSettings", () => {
       ...defaultPersonSettings,
       openInEditMode: true,
     });
+  });
+});
+
+describe("parseRecordSettings", () => {
+  it("offers every record type and built-in census country, covering Denmark by default", () => {
+    expect(defaultRecordSettings.enabledRecordTypes).toEqual([
+      "census",
+      "baptism",
+      "marriage",
+      "burial",
+    ]);
+    expect(defaultRecordSettings.coverageCountries).toEqual(["dk"]);
+    expect(defaultRecordSettings.relationshipLinks).toBe("suggest");
+  });
+
+  it("keeps a valid custom census and drops a broken settings field", () => {
+    const custom = {
+      key: "de-1900",
+      country: "de",
+      year: 1900,
+      date: "1900-12-01",
+      hasBirthplace: true,
+      hasRelationship: true,
+    };
+    expect(
+      parseRecordSettings({ customCensuses: [custom], relationshipLinks: "sometimes" }),
+    ).toEqual({ ...defaultRecordSettings, customCensuses: [custom] });
   });
 });

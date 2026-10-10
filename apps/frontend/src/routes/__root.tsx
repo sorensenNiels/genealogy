@@ -188,7 +188,9 @@ function isFullWidthPath(pathname: string): boolean {
     // from full-width to the narrow centered `max-w-5xl` column for one
     // frame while navigating from the album list into an album, visible as
     // a layout-shift flicker mid-navigation.
-    /^\/photos\/[^/]+$/.test(pathname)
+    /^\/photos\/[^/]+$/.test(pathname) ||
+    // A record's transcription table has up to nine columns.
+    /^\/records\/[^/]+$/.test(pathname)
   );
 }
 

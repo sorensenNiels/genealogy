@@ -23,10 +23,9 @@ describe("isRedactedFor", () => {
     expect(isRedactedFor("viewer", deceased)).toBe(false);
   });
 
-  it("redacts the deceased too when marked private or confidential, but not locked", () => {
-    expect(isRedactedFor("viewer", { isLiving: false, restriction: "privacy" })).toBe(true);
-    expect(isRedactedFor("viewer", { isLiving: false, restriction: "confidential" })).toBe(true);
-    expect(isRedactedFor("viewer", { isLiving: false, restriction: "locked" })).toBe(false);
+  it("never redacts the deceased, whatever restriction was imported for them", () => {
+    expect(isRedactedFor("viewer", { isLiving: false, restriction: "privacy" })).toBe(false);
+    expect(isRedactedFor("viewer", { isLiving: false, restriction: "confidential" })).toBe(false);
   });
 
   it("never redacts for editors and admins, who maintain the data", () => {

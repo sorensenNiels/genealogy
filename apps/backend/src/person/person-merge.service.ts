@@ -33,6 +33,7 @@ import { and, count, eq, inArray, or } from "drizzle-orm";
 import type { Pool } from "pg";
 
 import { DRIZZLE, PG_POOL } from "../database/database.module.js";
+import { RecordService } from "../records/record.service.js";
 
 /** Why a merge can't go ahead — translated in the frontend. */
 export type MergeBlocker =
@@ -87,6 +88,7 @@ export class PersonMergeService {
     @Inject(DRIZZLE) private readonly db: Database,
     @Inject(PG_POOL) private readonly pool: Pool,
     private readonly config: ConfigService,
+    private readonly records: RecordService,
   ) {}
 
   async preview(keepId: string, removeId: string): Promise<MergePreview> {
@@ -272,6 +274,7 @@ export class PersonMergeService {
         .update(researchNotes)
         .set({ personId: keepId })
         .where(eq(researchNotes.personId, removeId));
+      await this.records.repointPerson(tx, removeId, keepId);
       await tx
         .update(personImmichLinks)
         .set({ personId: keepId })

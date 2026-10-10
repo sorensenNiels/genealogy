@@ -1,15 +1,22 @@
 import type { AppRouter } from "@genealogy/backend";
 import {
+  allCensuses,
+  BUILT_IN_CENSUS_COUNTRIES,
+  type CensusDefinition,
+  censusDefinitionSchema,
   configurableTopicSchema,
   type ConfigurableTopic,
   isAdmin,
   treeChartKindSchema,
   treeOrientationSchema,
   type PersonSettings,
+  recordTypeSchema,
+  type RecordSettings,
   type TreeSettings,
 } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
+import { Checkbox } from "@genealogy/ui/components/checkbox";
 import { DialogFooter } from "@genealogy/ui/components/dialog";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import { Input } from "@genealogy/ui/components/input";
@@ -17,6 +24,13 @@ import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@genealogy/ui/components/select";
 import { Switch } from "@genealogy/ui/components/switch";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { cn } from "@genealogy/ui/lib/utils";
@@ -26,10 +40,12 @@ import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { TFunction } from "i18next";
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { optionsFor } from "../lib/person-display";
 import { personSettingsQueryKey, usePersonSettingsQuery } from "../lib/person-settings";
+import { recordSettingsQueryKey, useRecordSettingsQuery } from "../lib/record-settings";
 import { treeSettingsQueryKey, useTreeSettingsQuery } from "../lib/tree-settings";
 import {
   addOption,
@@ -38,6 +54,7 @@ import {
   removeOption,
   updateOption,
   updatePersonSettings,
+  updateRecordSettings,
   updateTreeSettings,
 } from "../server/functions/settings.functions";
 
@@ -57,7 +74,7 @@ export const Route = createFileRoute("/settings")({
   validateSearch: (
     search: Record<string, unknown>,
   ): { topic?: ConfigurableTopic; section?: SettingsSection } => {
-    if (search.section === "tree" || search.section === "person") {
+    if (search.section === "tree" || search.section === "person" || search.section === "records") {
       return { section: search.section };
     }
     const result = configurableTopicSchema.safeParse(search.topic);
@@ -71,7 +88,7 @@ type ConfigurableOptionRow = RouterOutputs["settings"]["listOptions"][number];
 
 const LIST_OPTIONS_KEY = ["settings", "listOptions"];
 
-type SettingsSection = "tree" | "person";
+type SettingsSection = "tree" | "person" | "records";
 
 const NAV_LINK_CLASS =
   "rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
@@ -86,6 +103,7 @@ function topicLabels(t: TFunction): Record<ConfigurableTopic, string> {
     parentage: t("settings.topic.parentage"),
     research_note_type: t("settings.topic.research_note_type"),
     association_role: t("settings.topic.association_role"),
+    household_position: t("settings.topic.household_position"),
   };
 }
 
@@ -120,6 +138,13 @@ function SettingsRoute() {
               >
                 {t("settings.person.title")}
               </Link>
+              <Link
+                to="/settings"
+                search={{ section: "records" }}
+                className={cn(NAV_LINK_CLASS, section === "records" && NAV_LINK_ACTIVE_CLASS)}
+              >
+                {t("settings.records.title")}
+              </Link>
             </nav>
           </SectionCard>
           <SectionCard title={t("settings.dropdowns")} titleClassName="text-base">
@@ -144,6 +169,8 @@ function SettingsRoute() {
           <TreeSettingsPanel />
         ) : section === "person" ? (
           <PersonSettingsPanel />
+        ) : section === "records" ? (
+          <RecordSettingsPanel options={options.data ?? []} />
         ) : (
           <TopicPanel
             topic={topic}
@@ -244,6 +271,373 @@ function PersonSettingsForm({ initial }: { initial: PersonSettings }) {
         {t("common.save")}
       </SaveButton>
     </form>
+  );
+}
+
+function RecordSettingsPanel({ options }: { options: ConfigurableOptionRow[] }) {
+  const { t } = useTranslation();
+  const settings = useRecordSettingsQuery();
+  return (
+    <SectionCard
+      title={t("settings.records.title")}
+      description={t("settings.records.description")}
+    >
+      {settings.isPending ? (
+        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+      ) : settings.isError ? (
+        <p className="text-sm text-destructive">{settings.error.message}</p>
+      ) : (
+        <RecordSettingsForm initial={settings.data} options={options} />
+      )}
+    </SectionCard>
+  );
+}
+
+/** Toggles `value` in or out of a list, keeping `order`'s order. */
+function toggled<T>(list: readonly T[], value: T, on: boolean, order: readonly T[]): T[] {
+  const next = new Set(list);
+  if (on) next.add(value);
+  else next.delete(value);
+  return [
+    ...order.filter((item) => next.has(item)),
+    ...[...next].filter((item) => !order.includes(item)),
+  ];
+}
+
+/**
+ * Same shape as `TreeSettingsForm`. Censuses come from all over the world:
+ * the built-in countries can each be offered or not, and anything else — a
+ * country with no built-in list, a local count — is a custom census here.
+ */
+function RecordSettingsForm({
+  initial,
+  options,
+}: {
+  initial: RecordSettings;
+  options: ConfigurableOptionRow[];
+}) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const updateMutation = useMutation({ mutationFn: updateRecordSettings });
+
+  const form = useForm({
+    defaultValues: initial,
+    onSubmit: async ({ value }) => {
+      const saved = await updateMutation.mutateAsync({ data: value });
+      queryClient.setQueryData(recordSettingsQueryKey, saved);
+      form.reset(saved);
+    },
+  });
+  const { isDirty, isSubmitting } = useFormDirtyPending(form);
+  const countryLabel = (country: string) =>
+    t(`records.country.${country}`, { defaultValue: country });
+
+  return (
+    <form
+      className="space-y-6"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <SettingsGroup>
+        <form.Field name="enabledRecordTypes">
+          {(field) => (
+            <CheckboxListSetting
+              label={t("settings.records.enabledRecordTypes")}
+              help={t("settings.records.enabledRecordTypesHelp")}
+              items={recordTypeSchema.options.map((type) => ({
+                value: type,
+                label: t(`records.type.${type}`),
+              }))}
+              value={field.state.value}
+              onChange={(type, on) =>
+                field.handleChange(toggled(field.state.value, type, on, recordTypeSchema.options))
+              }
+            />
+          )}
+        </form.Field>
+      </SettingsGroup>
+
+      <form.Subscribe selector={(state) => state.values.customCensuses}>
+        {(customCensuses) => {
+          // Every country there's a census for: the built-in ones, then any
+          // a custom census adds.
+          const builtIn: readonly string[] = BUILT_IN_CENSUS_COUNTRIES;
+          const countries = [
+            ...builtIn,
+            ...new Set(
+              customCensuses
+                .map((census) => census.country)
+                .filter((country) => !builtIn.includes(country)),
+            ),
+          ];
+          const items = countries.map((country) => ({
+            value: country,
+            label: `${countryLabel(country)} (${allCensuses(customCensuses).filter((census) => census.country === country).length})`,
+          }));
+          return (
+            <SettingsGroup>
+              <form.Field name="censusCountries">
+                {(field) => (
+                  <CheckboxListSetting
+                    label={t("settings.records.censusCountries")}
+                    help={t("settings.records.censusCountriesHelp")}
+                    items={items}
+                    value={field.state.value}
+                    onChange={(country, on) =>
+                      field.handleChange(toggled(field.state.value, country, on, countries))
+                    }
+                  />
+                )}
+              </form.Field>
+              <form.Field name="coverageCountries">
+                {(field) => (
+                  <CheckboxListSetting
+                    label={t("settings.records.coverageCountries")}
+                    help={t("settings.records.coverageCountriesHelp")}
+                    items={items.map((item) => ({ ...item, label: countryLabel(item.value) }))}
+                    value={field.state.value}
+                    onChange={(country, on) =>
+                      field.handleChange(toggled(field.state.value, country, on, countries))
+                    }
+                  />
+                )}
+              </form.Field>
+            </SettingsGroup>
+          );
+        }}
+      </form.Subscribe>
+
+      <SettingsGroup>
+        <form.Field name="customCensuses">
+          {(field) => (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">{t("settings.records.customCensuses")}</p>
+                <p className="text-sm text-muted-foreground">
+                  {t("settings.records.customCensusesHelp")}
+                </p>
+              </div>
+              {field.state.value.length > 0 && (
+                <ul className="divide-y rounded-md border">
+                  {field.state.value.map((census) => (
+                    <li
+                      key={census.key}
+                      className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+                    >
+                      <span>
+                        <span className="font-medium">
+                          {census.label ||
+                            t("records.censusLabel", {
+                              country: countryLabel(census.country),
+                              year: census.year,
+                            })}
+                        </span>{" "}
+                        <span className="text-muted-foreground">
+                          {[
+                            census.date,
+                            census.hasRelationship && t("settings.records.hasRelationship"),
+                            census.hasBirthplace && t("settings.records.hasBirthplace"),
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      </span>
+                      <RemoveButton
+                        itemLabel={census.label || `${countryLabel(census.country)} ${census.year}`}
+                        onConfirm={() =>
+                          field.handleChange(
+                            field.state.value.filter((item) => item.key !== census.key),
+                          )
+                        }
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <AddCensusForm
+                existingKeys={allCensuses(field.state.value).map((census) => census.key)}
+                onAdd={(census) => field.handleChange([...field.state.value, census])}
+              />
+            </div>
+          )}
+        </form.Field>
+      </SettingsGroup>
+
+      <SettingsGroup>
+        <form.Field name="citationConfidence">
+          {(field) => (
+            <div className="space-y-2">
+              <LabeledField label={t("settings.records.citationConfidence")}>
+                <Select
+                  aria-label={t("settings.records.citationConfidence")}
+                  value={field.state.value}
+                  onChange={(value) => {
+                    if (typeof value === "string") field.handleChange(value);
+                  }}
+                  className="w-56"
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {optionsFor(options, "confidence").map((option) => (
+                      <SelectItem key={option.key} id={option.key}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </LabeledField>
+              <p className="text-sm text-muted-foreground">
+                {t("settings.records.citationConfidenceHelp")}
+              </p>
+            </div>
+          )}
+        </form.Field>
+        <form.Field name="relationshipLinks">
+          {(field) => (
+            <ChoiceSetting
+              label={t("settings.records.relationshipLinks")}
+              help={t("settings.records.relationshipLinksHelp")}
+              value={field.state.value}
+              onChange={field.handleChange}
+              options={[
+                { value: "suggest", label: t("settings.records.relationshipLinksSuggest") },
+                { value: "automatic", label: t("settings.records.relationshipLinksAutomatic") },
+              ]}
+            />
+          )}
+        </form.Field>
+      </SettingsGroup>
+
+      {updateMutation.isError && (
+        <p className="text-sm text-destructive">{updateMutation.error.message}</p>
+      )}
+      <SaveButton isDirty={isDirty} isPending={isSubmitting}>
+        {t("common.save")}
+      </SaveButton>
+    </form>
+  );
+}
+
+function CheckboxListSetting<T extends string>({
+  label,
+  help,
+  items,
+  value,
+  onChange,
+}: {
+  label: string;
+  help: string;
+  items: Array<{ value: T; label: string }>;
+  value: readonly T[];
+  onChange: (item: T, on: boolean) => void;
+}) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-medium">{label}</legend>
+      <div className="flex flex-wrap gap-x-5 gap-y-2">
+        {items.map((item) => (
+          <Checkbox
+            key={item.value}
+            isSelected={value.includes(item.value)}
+            onChange={(on) => onChange(item.value, on)}
+          >
+            {item.label}
+          </Checkbox>
+        ))}
+      </div>
+      <p className="text-sm text-muted-foreground">{help}</p>
+    </fieldset>
+  );
+}
+
+/**
+ * A custom census's own little form, inside the Records form: it adds to
+ * the list there, saved along with everything else by the section's Save.
+ * The key is derived (`country-year`, plus a suffix if that's taken) so two
+ * counts in one year can coexist.
+ */
+function AddCensusForm({
+  existingKeys,
+  onAdd,
+}: {
+  existingKeys: readonly string[];
+  onAdd: (census: CensusDefinition) => void;
+}) {
+  const { t } = useTranslation();
+  const [country, setCountry] = useState("");
+  const [date, setDate] = useState("");
+  const [label, setLabel] = useState("");
+  const [hasRelationship, setHasRelationship] = useState(true);
+  const [hasBirthplace, setHasBirthplace] = useState(true);
+
+  const slug = country
+    .trim()
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, "-")
+    .replaceAll(/^-|-$/g, "");
+  const year = Number(date.slice(0, 4));
+  let key = `${slug}-${year}`;
+  for (let n = 2; existingKeys.includes(key); n++) key = `${slug}-${year}-${n}`;
+  const parsed = censusDefinitionSchema.safeParse({
+    key,
+    country: slug,
+    year,
+    date,
+    hasBirthplace,
+    hasRelationship,
+    ...(label.trim() ? { label: label.trim() } : {}),
+  });
+
+  return (
+    <div className="space-y-3 rounded-md border border-dashed p-3">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <LabeledField label={t("settings.records.customCountry")}>
+          <Input
+            value={country}
+            placeholder="fi"
+            onChange={(event) => setCountry(event.target.value)}
+          />
+        </LabeledField>
+        <LabeledField label={t("settings.records.customDate")}>
+          <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+        </LabeledField>
+        <LabeledField label={t("settings.records.customLabel")}>
+          <Input
+            value={label}
+            placeholder={t("settings.records.customLabelPlaceholder")}
+            onChange={(event) => setLabel(event.target.value)}
+          />
+        </LabeledField>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <Checkbox isSelected={hasRelationship} onChange={setHasRelationship}>
+          {t("settings.records.hasRelationship")}
+        </Checkbox>
+        <Checkbox isSelected={hasBirthplace} onChange={setHasBirthplace}>
+          {t("settings.records.hasBirthplace")}
+        </Checkbox>
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto"
+          isDisabled={!parsed.success}
+          onPress={() => {
+            if (!parsed.success) return;
+            onAdd(parsed.data);
+            setCountry("");
+            setDate("");
+            setLabel("");
+          }}
+        >
+          {t("settings.records.addCensus")}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">{t("settings.records.customCountryHelp")}</p>
+    </div>
   );
 }
 

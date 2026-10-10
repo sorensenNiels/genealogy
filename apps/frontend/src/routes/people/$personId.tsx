@@ -25,6 +25,7 @@ import { PersonPhotosCard } from "./-immich-photos-card";
 import { LifeEventsCard } from "./-life-events-card";
 import { PersonDetailsCard } from "./-person-details-card";
 import { PersonHeaderCard } from "./-person-header-card";
+import { RecordsCard } from "./-records-card";
 import { ResearchNotesSection } from "./-research-notes-section";
 
 export const Route = createFileRoute("/people/$personId")({
@@ -180,6 +181,9 @@ function PersonDetailRoute() {
             <PersonDetailsCard
               person={person.data}
               names={names.data ?? []}
+              unions={unions.data ?? []}
+              spouses={spouses}
+              childCount={children.length}
               options={options.data ?? []}
               onChanged={refresh}
             />
@@ -198,6 +202,10 @@ function PersonDetailRoute() {
               options={options.data ?? []}
               onChanged={refresh}
             />
+            {/* A living person is name-only for a Viewer; their records are hidden too. */}
+            {!person.data.redacted && (
+              <RecordsCard person={person.data} options={options.data ?? []} onChanged={refresh} />
+            )}
             <CitationsSection
               personId={personId}
               citations={citationsList.data ?? []}

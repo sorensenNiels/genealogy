@@ -1,6 +1,8 @@
 import { z } from "zod";
 
+import { BUILT_IN_CENSUS_COUNTRIES, censusDefinitionSchema } from "./census.js";
 import { personIdSchema } from "./person.js";
+import { recordTypeSchema } from "./records.js";
 
 /**
  * Site-wide display settings, edited by an admin on the Settings page and
@@ -123,4 +125,38 @@ export function parsePersonSettings(value: unknown): PersonSettings {
 }
 
 /** The `app_settings.key` of each section. */
-export const appSettingsKeys = { tree: "tree", person: "person" } as const;
+/**
+ * Records (census, baptism, marriage, burial — see `RECORD_TEMPLATES`): the
+ * Settings page's "Records" section.
+ */
+export const recordSettingsSchema = z.object({
+  /** Which record types the "Add record" menus offer. */
+  enabledRecordTypes: z.array(recordTypeSchema).default([...recordTypeSchema.options]),
+  /** Which countries' censuses the census picker offers (built-in country codes, or a custom census's country). */
+  censusCountries: z.array(z.string().trim().min(1)).default([...BUILT_IN_CENSUS_COUNTRIES]),
+  /**
+   * The countries whose censuses a person's coverage grid lists by default.
+   * A person's grid also shows any country they already have a census from,
+   * so a family that emigrated shows both.
+   */
+  coverageCountries: z.array(z.string().trim().min(1)).default(["dk"]),
+  /** Censuses beyond the built-in ones — another country, a local count. */
+  customCensuses: z.array(censusDefinitionSchema).default([]),
+  /** The confidence of the citation each record gives its people (a `confidence` option key). */
+  citationConfidence: z.string().trim().min(1).default("high"),
+  /**
+   * What a record's implied family links do — "suggest": shown on the
+   * record for one click each; "automatic": made when the record is saved
+   * (never replacing an existing link).
+   */
+  relationshipLinks: z.enum(["suggest", "automatic"]).default("suggest"),
+});
+export type RecordSettings = z.infer<typeof recordSettingsSchema>;
+
+export const defaultRecordSettings: RecordSettings = recordSettingsSchema.parse({});
+
+export function parseRecordSettings(value: unknown): RecordSettings {
+  return parseSettingsSection(recordSettingsSchema, defaultRecordSettings, value);
+}
+
+export const appSettingsKeys = { tree: "tree", person: "person", records: "records" } as const;

@@ -15,6 +15,7 @@ import type { Pool } from "pg";
 
 import { DRIZZLE, PG_POOL } from "../database/database.module.js";
 import { ImmichService } from "../immich/immich.service.js";
+import { RecordService, type RecordAgeMismatch } from "../records/record.service.js";
 
 export interface DanglingCitation {
   citationId: string;
@@ -44,6 +45,8 @@ export interface DataIntegrityReport {
   possibleDuplicates: DuplicatePersonGroup[];
   /** Null (not just empty) when Immich isn't available — nothing to check against. */
   danglingImmichLinks: DanglingImmichLink[] | null;
+  /** People whose age in a record disagrees with their recorded birth by more than a couple of years. */
+  recordAgeMismatches: RecordAgeMismatch[];
 }
 
 export interface GraphConsistencyReport {
@@ -64,19 +67,22 @@ export class IntegrityService {
     @Inject(DRIZZLE) private readonly db: Database,
     @Inject(PG_POOL) private readonly pool: Pool,
     private readonly immich: ImmichService,
+    private readonly records: RecordService,
   ) {}
 
   async checkData(): Promise<DataIntegrityReport> {
-    const [danglingCitations, possibleDuplicates, danglingImmichLinks] = await Promise.all([
-      this.findDanglingCitations(),
-      this.findPossibleDuplicates(),
-      // `isAvailable`, not `isConfigured`: with Immich down, every lookup
-      // would throw and take the whole report with it.
-      this.immich
-        .isAvailable()
-        .then((available) => (available ? this.immich.listDanglingLinks() : null)),
-    ]);
-    return { danglingCitations, possibleDuplicates, danglingImmichLinks };
+    const [danglingCitations, possibleDuplicates, danglingImmichLinks, recordAgeMismatches] =
+      await Promise.all([
+        this.findDanglingCitations(),
+        this.findPossibleDuplicates(),
+        // `isAvailable`, not `isConfigured`: with Immich down, every lookup
+        // would throw and take the whole report with it.
+        this.immich
+          .isAvailable()
+          .then((available) => (available ? this.immich.listDanglingLinks() : null)),
+        this.records.ageMismatches(),
+      ]);
+    return { danglingCitations, possibleDuplicates, danglingImmichLinks, recordAgeMismatches };
   }
 
   async checkGraphConsistency(): Promise<GraphConsistencyReport> {

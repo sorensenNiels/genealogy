@@ -474,7 +474,10 @@
       "confirmAction": "Mark as deceased",
       "marked_one": "{{count}} person marked as deceased.",
       "marked_other": "{{count}} people marked as deceased."
-    }
+    },
+    "recordAgeMismatches": "Ages in records that don't fit the birth date",
+    "recordAgeMismatchText": "is {{age}} in a {{year}} record ({{record}}), but born {{birth}} — {{years}} years off.",
+    "recordAgeMismatchOpen": "Open the record"
   },
   "settings": {
     "title": "Settings",
@@ -486,7 +489,8 @@
       "union_status": "Spouse union statuses",
       "parentage": "Parent relationship types",
       "research_note_type": "Research note types",
-      "association_role": "Witness and godparent roles"
+      "association_role": "Witness and godparent roles",
+      "household_position": "Census household positions"
     },
     "add": "+ Add",
     "addOptionTitle": "Add {{topic}} option",
@@ -532,7 +536,7 @@
       "rememberLastViewHelp": "The tree reopens on the person, chart and direction a member last had, on any device; the zoom is remembered per browser."
     },
     "person": {
-      "title": "Person page",
+      "title": "Person",
       "description": "How a person's page looks and behaves, for every member.",
       "openInEditMode": "Open in edit view",
       "openInEditModeHelp": "Off: a person's page opens as a readable profile, with an Edit button on Personal details. On: the details form is open straight away. Viewers always get the readable profile.",
@@ -540,6 +544,32 @@
       "showFamilyEventsInTimelineHelp": "Children's births and deaths, a spouse's death and the parents' deaths, shown faintly in the person's own Life events, within their lifetime.",
       "presumeDeceasedAfterYears": "Presume deceased after (years)",
       "presumeDeceasedAfterYearsHelp": "Someone still marked living who was born longer ago than this is probably not: the GEDCOM import marks them deceased, Personal details suggests it, and Tools can apply it to everyone. 0 turns it off."
+    },
+    "records": {
+      "title": "Records",
+      "description": "Census and church book entries: which kinds can be added, which countries' censuses, and what saving a record does.",
+      "enabledRecordTypes": "Record types",
+      "enabledRecordTypesHelp": "The kinds of record the “Add record” menus offer. Existing records of a hidden type stay as they are.",
+      "censusCountries": "Census countries",
+      "censusCountriesHelp": "Whose censuses the census picker offers (the number of censuses each). Add any other country below as a custom census.",
+      "coverageCountries": "Coverage on the person page",
+      "coverageCountriesHelp": "Whose censuses a person's coverage grid lists. A person also shows any country they already have a census from, so a family that emigrated shows both.",
+      "customCensuses": "Custom censuses",
+      "customCensusesHelp": "A census not built in — another country, a regional or local count. It's offered alongside the built-in ones once saved.",
+      "customCountry": "Country",
+      "customCountryHelp": "Use a short code (fi, de, nl…) or a name; censuses with the same country are grouped together.",
+      "customDate": "Census day",
+      "customLabel": "Name (optional)",
+      "customLabelPlaceholder": "e.g. Finland census 1880",
+      "hasRelationship": "Records position in household",
+      "hasBirthplace": "Records birthplace",
+      "addCensus": "Add census",
+      "citationConfidence": "Citation confidence",
+      "citationConfidenceHelp": "The confidence of the citation a record gives each linked person's event.",
+      "relationshipLinks": "Family links from records",
+      "relationshipLinksHelp": "A record implies links — a baptism's parents, a census household's head and children. Suggest shows them on the record for one click each; automatic makes them when the record is saved (never replacing an existing link).",
+      "relationshipLinksSuggest": "Suggest",
+      "relationshipLinksAutomatic": "Automatic"
     }
   },
   "overview": {
@@ -773,7 +803,13 @@
         "employer": "Employer",
         "jobTitle": "Job title",
         "causeOfDeath": "Cause of death",
-        "informant": "Informant"
+        "informant": "Informant",
+        "censusPosition": "Position in household",
+        "censusAge": "Age (as written)",
+        "maritalStatus": "Marital status",
+        "occupation": "Occupation",
+        "birthplace": "Birthplace (as written)",
+        "householdNumber": "Household no."
       }
     },
     "citations": {
@@ -839,14 +875,6 @@
       "addSibling": "Add sibling",
       "sharedParents": "Shared parent(s)",
       "selectAtLeastOneParent": "Select at least one parent."
-    },
-    "restriction": {
-      "label": "Privacy restriction",
-      "description": "Viewers already see living people by name only. Private or Confidential does the same for someone who has died; Locked is only kept for GEDCOM.",
-      "none": "No restriction",
-      "privacy": "Private",
-      "confidential": "Confidential",
-      "locked": "Locked"
     },
     "associations": {
       "title": "Witnesses & godparents",
@@ -959,6 +987,37 @@
         "F": "Death of mother",
         "U": "Death of parent"
       }
+    },
+    "lifeSummary": {
+      "bornDatePlace": "Born {{date}} in {{place}}.",
+      "bornDate": "Born {{date}}.",
+      "bornPlace": "Born in {{place}}.",
+      "marriedDate": "Married {{spouse}} ({{date}}).",
+      "married": "Married {{spouse}}.",
+      "children_one": "Had {{count}} child.",
+      "children_other": "Had {{count}} children.",
+      "living": "Living, age {{age}}.",
+      "diedDatePlaceAge": "Died {{date}} in {{place}}, aged {{age}}.",
+      "diedDatePlace": "Died {{date}} in {{place}}.",
+      "diedDateAge": "Died {{date}}, aged {{age}}.",
+      "diedDate": "Died {{date}}.",
+      "diedPlace": "Died in {{place}}.",
+      "empty": "Nothing recorded yet about this person's life.",
+      "milestone": {
+        "born": "Born",
+        "married": "Married",
+        "died": "Died"
+      },
+      "aged": "aged {{age}}",
+      "buried": "Buried {{what}}",
+      "cause": "Cause: {{cause}}",
+      "alsoKnownAs": "Also known as",
+      "missing": {
+        "birthDate": "Birth date",
+        "birthPlace": "Birth place",
+        "deathDate": "Death date",
+        "deathPlace": "Death place"
+      }
     }
   },
   "members": {
@@ -1026,5 +1085,146 @@
     "connected": "Connected — Immich {{version}}",
     "checkedAt": "Checked at {{time}}",
     "checkAgain": "Check again"
+  },
+  "records": {
+    "type": {
+      "census": "Census",
+      "baptism": "Baptism",
+      "marriage": "Marriage",
+      "burial": "Burial"
+    },
+    "role": {
+      "baptism": {
+        "child": "Child",
+        "father": "Father",
+        "mother": "Mother",
+        "godparent": "Godparent",
+        "officiant": "Officiant",
+        "other": "Other"
+      },
+      "marriage": {
+        "groom": "Groom",
+        "bride": "Bride",
+        "groomFather": "Groom's father",
+        "groomMother": "Groom's mother",
+        "brideFather": "Bride's father",
+        "brideMother": "Bride's mother",
+        "witness": "Witness",
+        "officiant": "Officiant",
+        "other": "Other"
+      },
+      "burial": {
+        "deceased": "Deceased",
+        "spouse": "Spouse",
+        "informant": "Informant",
+        "officiant": "Officiant",
+        "other": "Other"
+      }
+    },
+    "country": {
+      "dk": "Denmark",
+      "no": "Norway",
+      "se": "Sweden",
+      "gb-eng": "England & Wales",
+      "gb-sct": "Scotland",
+      "us": "United States",
+      "ca": "Canada"
+    },
+    "censusLabel": "{{country}} census {{year}}",
+    "newTitle": "New record: {{type}}",
+    "editor": {
+      "census": "Census",
+      "censusDay": "Census day",
+      "date": "Date",
+      "place": "Parish / village",
+      "placePlaceholder": "e.g. Brande, Nørvang, Vejle",
+      "sourceTitle": "Source",
+      "sourceHelp": "Every linked person's event from this record cites this source, with the page.",
+      "source": "Source",
+      "noSource": "No source",
+      "newSource": "New source",
+      "newSourceButton": "New…",
+      "page": "Page / folio",
+      "url": "Link to the scan",
+      "peopleTitle": "People in the record"
+    },
+    "address": {
+      "address": "Address or farm",
+      "church": "Church",
+      "cemetery": "Cemetery"
+    },
+    "reference": {
+      "household": "Household no.",
+      "entry": "Entry no."
+    },
+    "peopleHelp": {
+      "census": "Write each person as the census lists them. Link a row to someone in the tree, or create them from the row; each linked person gets a census event.",
+      "baptism": "Write everyone the entry names — the child, the parents, the godparents. The child gets a christening event; godparents and the officiant are recorded as associations.",
+      "marriage": "Write the couple and everyone else the entry names. The couple gets a marriage (an existing one between them is reused); witnesses and the officiant are recorded as associations.",
+      "burial": "Write the deceased and everyone else the entry names. The deceased gets a burial event; the informant and the officiant are recorded as associations."
+    },
+    "column": {
+      "role": "Role",
+      "position": "Position",
+      "name": "Name",
+      "sex": "Sex",
+      "age": "Age",
+      "maritalStatus": "Marital status",
+      "occupation": "Occupation",
+      "residence": "Residence",
+      "birthplace": "Birthplace",
+      "person": "Person in the tree",
+      "actions": "Actions"
+    },
+    "sex": {
+      "M": "M",
+      "F": "F",
+      "U": "?"
+    },
+    "link": "Link…",
+    "unlink": "Unlink {{name}}",
+    "linkTitle": "Who is {{name}}?",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "removeRow": "Remove row",
+    "addRow": "Add person",
+    "ageFits": "age fits",
+    "ageOff": "age off by {{years}} y",
+    "createFromRow": "Create a new person from this row",
+    "createHint": "Created with the row's name and sex.",
+    "createHintWithBirth": "Created with the row's name and sex, born {{birth}} (from the age) and the birthplace as written.",
+    "thisRecord": "this record",
+    "removeDescription": "The record and the events, marriages and associations it created are deleted; the people themselves are kept.",
+    "suggestions": {
+      "title": "Family links this record suggests",
+      "help": "Links between people in this record that the tree doesn't have yet. Settings can make them automatic.",
+      "parent": "{{parent}} is a parent of {{child}}",
+      "spouse": "{{a}} and {{b}} are married",
+      "link": "Add"
+    },
+    "card": {
+      "title": "Records",
+      "add": "Add record",
+      "censusCoverage": "Census coverage",
+      "needsBirth": "Add a birth date to see which censuses fall within this person's life.",
+      "foundAria": "Found in the {{census}}",
+      "notFoundAria": "Not found in the {{census}}",
+      "openAria": "{{census}} not searched yet",
+      "addFor": "Add the {{census}} record…",
+      "markNotFound": "Searched — not found",
+      "clearNotFound": "Not searched after all",
+      "legendFound": "found",
+      "legendNotFound": "searched, not found",
+      "legendOpen": "not searched yet",
+      "age": "age {{age}}",
+      "inHouseholdOf": "in the household of {{name}}",
+      "of": "for {{name}}",
+      "people_one": "{{count}} person",
+      "people_other": "{{count}} people",
+      "estimatedBirth": "Estimated birth: {{birth}} — age {{age}} in the {{record}}.",
+      "useAsBirth": "Use as birth date",
+      "birthplace": "Birthplace in the {{record}}: {{place}}.",
+      "useAsBirthplace": "Use as birth place"
+    }
   }
 }

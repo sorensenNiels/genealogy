@@ -69,6 +69,16 @@ export function eventDetailFields(
       { key: "court", label: t("person.events.detail.court") },
     ],
     residence: [{ key: "address", label: t("person.events.detail.address") }],
+    // Filled in by a census household (see `CensusService.save`), as written.
+    census: [
+      { key: "position", label: t("person.events.detail.censusPosition") },
+      { key: "age", label: t("person.events.detail.censusAge") },
+      { key: "maritalStatus", label: t("person.events.detail.maritalStatus") },
+      { key: "occupation", label: t("person.events.detail.occupation") },
+      { key: "birthplace", label: t("person.events.detail.birthplace") },
+      { key: "address", label: t("person.events.detail.address") },
+      { key: "household", label: t("person.events.detail.householdNumber") },
+    ],
     occupation: [
       { key: "employer", label: t("person.events.detail.employer") },
       { key: "jobTitle", label: t("person.events.detail.jobTitle") },

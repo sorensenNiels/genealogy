@@ -971,6 +971,14 @@ export class PersonService {
    * a union record implies a `SPOUSE_OF` edge, and letting the two halves
    * drift would break the two-store consistency this codebase otherwise
    * guarantees (see `create()` above).
+   *
+   * If the pair already has a union that hasn't ended (no end date), that
+   * one is reused instead of adding a second: it's re-linked in the graph
+   * and gets any detail it was missing from `input`. Removing a spouse in
+   * the tree keeps the union record (only the graph edge goes), so without
+   * this, adding the same spouse back created a duplicate marriage — seen
+   * in real data. A pair whose earlier union *ended* (divorced, say) can
+   * still get a new one: remarrying is a second union.
    */
   async addUnion(input: CreateUnion): Promise<UnionRow> {
     const values = {
@@ -980,6 +988,38 @@ export class PersonService {
     };
     return inGraphTransaction(this.pool, async (client) => {
       const tx = createDatabase(client);
+      const [open] = await tx
+        .select()
+        .from(unions)
+        .where(
+          and(
+            or(
+              and(eq(unions.personAId, input.personAId), eq(unions.personBId, input.personBId)),
+              and(eq(unions.personAId, input.personBId), eq(unions.personBId, input.personAId)),
+            ),
+            isNull(unions.endDate),
+          ),
+        )
+        .limit(1);
+      if (open) {
+        const fill = {
+          ...(open.startDate === null && values.startDate ? { startDate: values.startDate } : {}),
+          ...(open.startPlace === null && values.startPlace
+            ? { startPlace: values.startPlace }
+            : {}),
+          ...(open.notes === null && values.notes ? { notes: values.notes } : {}),
+        };
+        const [kept] =
+          Object.keys(fill).length > 0
+            ? await tx
+                .update(unions)
+                .set({ ...fill, updatedAt: new Date() })
+                .where(eq(unions.id, open.id))
+                .returning()
+            : [open];
+        await addSpouseOf(this.pool, input.personAId, input.personBId, { client });
+        return kept!;
+      }
       const [row] = await tx.insert(unions).values(values).returning();
       if (!row) {
         throw new Error("Insert returned no row");

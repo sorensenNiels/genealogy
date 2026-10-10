@@ -506,6 +506,106 @@ export const configurableOptions = pgTable(
 );
 
 /**
+ * A record entered as written — a census household, a baptism, a marriage,
+ * a burial (see "Records" in TECH_STACK.md and `RECORD_TEMPLATES` in core):
+ * what, when, where, and the source. Its people are `recordPeople`. What the
+ * record means for each linked person — an event, a union, a godparent or
+ * witness role — is made from it and kept in step by `RecordService`.
+ */
+export const records = pgTable(
+  "records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** A `recordTypeSchema` value; its template decides what saving creates. */
+    recordType: text("record_type").notNull(),
+    /** For a census: the census definition's key (`dk-1845`, `us-1880`, a custom one). */
+    censusKey: text("census_key"),
+    date: jsonb("date").$type<HistoricalDate>(),
+    /** Parish, village or town. */
+    place: text("place").notNull().default(""),
+    /** Address or farm (census), church (baptism/marriage) or cemetery (burial). */
+    address: text("address").notNull().default(""),
+    /** Household number (census) or entry number. */
+    reference: text("reference").notNull().default(""),
+    sourceId: uuid("source_id").references(() => sources.id, { onDelete: "set null" }),
+    page: text("page").notNull().default(""),
+    /** The scan (Rigsarkivet, DDD, FamilySearch, ...). */
+    url: text("url").notNull().default(""),
+    notes: text("notes").notNull().default(""),
+    /**
+     * A marriage's union between the groom and bride, and whether this
+     * record created it (then deleting the record deletes it) or found it
+     * already there (then it's left alone).
+     */
+    unionId: uuid("union_id").references(() => unions.id, { onDelete: "set null" }),
+    createdUnion: boolean("created_union").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("records_type_idx").on(table.recordType),
+    index("records_census_key_idx").on(table.censusKey),
+  ],
+);
+
+/**
+ * One person named in a record, as written. `personId` links the row to
+ * someone in the tree (null for a servant or godparent nobody has
+ * identified); `eventId` is the event the link created (the principal's
+ * census/christening/burial event), `associationId` the godparent/witness
+ * role — both kept in step by `RecordService` and removed with the row.
+ */
+export const recordPeople = pgTable(
+  "record_people",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recordId: uuid("record_id")
+      .notNull()
+      .references(() => records.id, { onDelete: "cascade" }),
+    sortOrder: integer("sort_order").notNull().default(0),
+    /** A template role, or for a census a `household_position` option key. */
+    role: text("role").notNull().default(""),
+    name: text("name").notNull().default(""),
+    sex: text("sex").notNull().default("U"),
+    age: text("age").notNull().default(""),
+    maritalStatus: text("marital_status").notNull().default(""),
+    occupation: text("occupation").notNull().default(""),
+    residence: text("residence").notNull().default(""),
+    birthplace: text("birthplace").notNull().default(""),
+    personId: uuid("person_id").references(() => persons.id, { onDelete: "set null" }),
+    eventId: uuid("event_id").references(() => personEvents.id, { onDelete: "set null" }),
+    associationId: uuid("association_id").references(() => associations.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("record_people_record_idx").on(table.recordId, table.sortOrder),
+    index("record_people_person_idx").on(table.personId),
+  ],
+);
+
+/**
+ * "Searched this census for this person, not found" — the third state of a
+ * person's census coverage (found comes from `recordPeople`). One per person
+ * and census.
+ */
+export const recordSearches = pgTable(
+  "record_searches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => persons.id, { onDelete: "cascade" }),
+    censusKey: text("census_key").notNull(),
+    note: text("note").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("record_searches_person_census_unique").on(table.personId, table.censusKey)],
+);
+
+/**
  * Site-wide settings, one row per section (`"tree"`, ...), the value a JSON
  * object validated by that section's Zod schema in `@genealogy/core`
  * (`treeSettingsSchema`, ...). Key/value rather than a column per setting
@@ -806,6 +906,9 @@ export const schema = {
   citations,
   configurableOptions,
   appSettings,
+  records,
+  recordPeople,
+  recordSearches,
   personImmichLinks,
   immichAlbumAssetOrder,
   albumMetadata,
@@ -842,3 +945,6 @@ export type InvitationRow = typeof invitations.$inferSelect;
 export type ResearchNoteRow = typeof researchNotes.$inferSelect;
 export type UserNoteRow = typeof userNotes.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
+export type RecordRow = typeof records.$inferSelect;
+export type RecordPersonRow = typeof recordPeople.$inferSelect;
+export type RecordSearchRow = typeof recordSearches.$inferSelect;

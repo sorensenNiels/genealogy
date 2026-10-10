@@ -474,7 +474,10 @@
       "confirmAction": "Markér som død",
       "marked_one": "{{count}} person markeret som død.",
       "marked_other": "{{count}} personer markeret som døde."
-    }
+    },
+    "recordAgeMismatches": "Aldre i kildeposter, der ikke passer med fødselsdatoen",
+    "recordAgeMismatchText": "er {{age}} år i en post fra {{year}} ({{record}}), men født {{birth}} — {{years}} år forskel.",
+    "recordAgeMismatchOpen": "Åbn posten"
   },
   "settings": {
     "title": "Indstillinger",
@@ -486,7 +489,8 @@
       "union_status": "Ægtefælleforeningsstatusser",
       "parentage": "Forældreforholdstyper",
       "research_note_type": "Forskningsnotetyper",
-      "association_role": "Roller for vidner og faddere"
+      "association_role": "Roller for vidner og faddere",
+      "household_position": "Stillinger i husstanden (folketælling)"
     },
     "add": "+ Tilføj",
     "addOptionTitle": "Tilføj {{topic}}",
@@ -532,7 +536,7 @@
       "rememberLastViewHelp": "Træet åbner igen på den person, det diagram og den retning, et medlem sidst havde, på enhver enhed; zoom huskes pr. browser."
     },
     "person": {
-      "title": "Personside",
+      "title": "Person",
       "description": "Hvordan en persons side ser ud og opfører sig, for alle medlemmer.",
       "openInEditMode": "Åbn i redigeringsvisning",
       "openInEditModeHelp": "Fra: en persons side åbner som en læsevenlig profil med en Redigér-knap på Personoplysninger. Til: formularen er åben med det samme. Læsere får altid den læsevenlige profil.",
@@ -540,6 +544,32 @@
       "showFamilyEventsInTimelineHelp": "Børns fødsler og dødsfald, en ægtefælles og forældrenes dødsfald, vist dæmpet i personens egne livsbegivenheder inden for deres levetid.",
       "presumeDeceasedAfterYears": "Formodes død efter (år)",
       "presumeDeceasedAfterYearsHelp": "En person, der stadig står som levende, men er født for længere tid siden end dette, er det sandsynligvis ikke: GEDCOM-importen markerer dem som døde, Personoplysninger foreslår det, og Værktøjer kan anvende det på alle. 0 slår det fra."
+    },
+    "records": {
+      "title": "Kilder",
+      "description": "Folketællinger og kirkebogsindførsler: hvilke slags der kan tilføjes, hvilke landes folketællinger, og hvad det gør at gemme en post.",
+      "enabledRecordTypes": "Slags poster",
+      "enabledRecordTypesHelp": "De slags poster, menuerne “Tilføj kildepost” tilbyder. Eksisterende poster af en skjult slags bevares.",
+      "censusCountries": "Folketællingslande",
+      "censusCountriesHelp": "Hvis folketællinger, der kan vælges (antal tællinger i parentes). Tilføj andre lande nedenfor som egen folketælling.",
+      "coverageCountries": "Oversigt på personsiden",
+      "coverageCountriesHelp": "Hvis folketællinger en persons oversigt viser. En person viser også ethvert land, de allerede har en folketælling fra, så en udvandret familie viser begge.",
+      "customCensuses": "Egne folketællinger",
+      "customCensusesHelp": "En folketælling, der ikke er indbygget — et andet land, en regional eller lokal tælling. Den kan vælges sammen med de indbyggede, når den er gemt.",
+      "customCountry": "Land",
+      "customCountryHelp": "Brug en kort kode (fi, de, nl…) eller et navn; folketællinger med samme land grupperes sammen.",
+      "customDate": "Tællingsdag",
+      "customLabel": "Navn (valgfrit)",
+      "customLabelPlaceholder": "fx Finsk folketælling 1880",
+      "hasRelationship": "Angiver stilling i husstanden",
+      "hasBirthplace": "Angiver fødested",
+      "addCensus": "Tilføj folketælling",
+      "citationConfidence": "Kildehenvisningens troværdighed",
+      "citationConfidenceHelp": "Troværdigheden af den kildehenvisning, en post giver hver tilknyttet persons begivenhed.",
+      "relationshipLinks": "Familierelationer fra poster",
+      "relationshipLinksHelp": "En post antyder relationer — forældrene ved en dåb, husstandens overhoved og børn i en folketælling. Foreslå viser dem på posten med ét klik hver; automatisk opretter dem, når posten gemmes (erstatter aldrig en eksisterende relation).",
+      "relationshipLinksSuggest": "Foreslå",
+      "relationshipLinksAutomatic": "Automatisk"
     }
   },
   "overview": {
@@ -773,7 +803,13 @@
         "employer": "Arbejdsgiver",
         "jobTitle": "Stilling",
         "causeOfDeath": "Dødsårsag",
-        "informant": "Anmelder"
+        "informant": "Anmelder",
+        "censusPosition": "Stilling i husstanden",
+        "censusAge": "Alder (som skrevet)",
+        "maritalStatus": "Civilstand",
+        "occupation": "Erhverv",
+        "birthplace": "Fødested (som skrevet)",
+        "householdNumber": "Husstandsnr."
       }
     },
     "citations": {
@@ -839,14 +875,6 @@
       "addSibling": "Tilføj søskende",
       "sharedParents": "Fælles forælder(e)",
       "selectAtLeastOneParent": "Vælg mindst én forælder."
-    },
-    "restriction": {
-      "label": "Privatlivsbegrænsning",
-      "description": "Læsere ser allerede levende personer kun med navn. Privat eller Fortrolig gør det samme for en afdød; Låst gemmes kun til GEDCOM.",
-      "none": "Ingen begrænsning",
-      "privacy": "Privat",
-      "confidential": "Fortrolig",
-      "locked": "Låst"
     },
     "associations": {
       "title": "Vidner og faddere",
@@ -959,6 +987,37 @@
         "F": "Død af mor",
         "U": "Død af forælder"
       }
+    },
+    "lifeSummary": {
+      "bornDatePlace": "Født {{date}} i {{place}}.",
+      "bornDate": "Født {{date}}.",
+      "bornPlace": "Født i {{place}}.",
+      "marriedDate": "Gift med {{spouse}} ({{date}}).",
+      "married": "Gift med {{spouse}}.",
+      "children_one": "Fik {{count}} barn.",
+      "children_other": "Fik {{count}} børn.",
+      "living": "Lever, {{age}} år.",
+      "diedDatePlaceAge": "Død {{date}} i {{place}}, {{age}} år gammel.",
+      "diedDatePlace": "Død {{date}} i {{place}}.",
+      "diedDateAge": "Død {{date}}, {{age}} år gammel.",
+      "diedDate": "Død {{date}}.",
+      "diedPlace": "Død i {{place}}.",
+      "empty": "Intet registreret om denne persons liv endnu.",
+      "milestone": {
+        "born": "Født",
+        "married": "Gift",
+        "died": "Død"
+      },
+      "aged": "{{age}} år",
+      "buried": "Begravet {{what}}",
+      "cause": "Dødsårsag: {{cause}}",
+      "alsoKnownAs": "Også kendt som",
+      "missing": {
+        "birthDate": "Fødselsdato",
+        "birthPlace": "Fødested",
+        "deathDate": "Dødsdato",
+        "deathPlace": "Dødssted"
+      }
     }
   },
   "members": {
@@ -1026,5 +1085,146 @@
     "connected": "Forbundet — Immich {{version}}",
     "checkedAt": "Tjekket kl. {{time}}",
     "checkAgain": "Tjek igen"
+  },
+  "records": {
+    "type": {
+      "census": "Folketælling",
+      "baptism": "Dåb",
+      "marriage": "Vielse",
+      "burial": "Begravelse"
+    },
+    "role": {
+      "baptism": {
+        "child": "Barn",
+        "father": "Far",
+        "mother": "Mor",
+        "godparent": "Fadder",
+        "officiant": "Præst",
+        "other": "Anden"
+      },
+      "marriage": {
+        "groom": "Brudgom",
+        "bride": "Brud",
+        "groomFather": "Brudgommens far",
+        "groomMother": "Brudgommens mor",
+        "brideFather": "Brudens far",
+        "brideMother": "Brudens mor",
+        "witness": "Forlover",
+        "officiant": "Præst",
+        "other": "Anden"
+      },
+      "burial": {
+        "deceased": "Afdøde",
+        "spouse": "Ægtefælle",
+        "informant": "Anmelder",
+        "officiant": "Præst",
+        "other": "Anden"
+      }
+    },
+    "country": {
+      "dk": "Danmark",
+      "no": "Norge",
+      "se": "Sverige",
+      "gb-eng": "England og Wales",
+      "gb-sct": "Skotland",
+      "us": "USA",
+      "ca": "Canada"
+    },
+    "censusLabel": "Folketælling {{country}} {{year}}",
+    "newTitle": "Ny kilde: {{type}}",
+    "editor": {
+      "census": "Folketælling",
+      "censusDay": "Tællingsdag",
+      "date": "Dato",
+      "place": "Sogn / by",
+      "placePlaceholder": "fx Brande, Nørvang, Vejle",
+      "sourceTitle": "Kilde",
+      "sourceHelp": "Hver tilknyttet persons begivenhed fra denne post henviser til kilden, med siden.",
+      "source": "Kilde",
+      "noSource": "Ingen kilde",
+      "newSource": "Ny kilde",
+      "newSourceButton": "Ny…",
+      "page": "Side / folio",
+      "url": "Link til scanningen",
+      "peopleTitle": "Personer i posten"
+    },
+    "address": {
+      "address": "Adresse eller gård",
+      "church": "Kirke",
+      "cemetery": "Kirkegård"
+    },
+    "reference": {
+      "household": "Husstandsnr.",
+      "entry": "Opslagsnr."
+    },
+    "peopleHelp": {
+      "census": "Skriv hver person, som folketællingen angiver dem. Knyt en række til en person i træet, eller opret personen fra rækken; hver tilknyttet person får en folketællingsbegivenhed.",
+      "baptism": "Skriv alle, som indførslen nævner — barnet, forældrene, fadderne. Barnet får en dåbsbegivenhed; faddere og præsten registreres som tilknytninger.",
+      "marriage": "Skriv parret og alle andre, som indførslen nævner. Parret får et ægteskab (et eksisterende mellem dem genbruges); forlovere og præsten registreres som tilknytninger.",
+      "burial": "Skriv afdøde og alle andre, som indførslen nævner. Afdøde får en begravelsesbegivenhed; anmelderen og præsten registreres som tilknytninger."
+    },
+    "column": {
+      "role": "Rolle",
+      "position": "Stilling i husstanden",
+      "name": "Navn",
+      "sex": "Køn",
+      "age": "Alder",
+      "maritalStatus": "Civilstand",
+      "occupation": "Erhverv",
+      "residence": "Bopæl",
+      "birthplace": "Fødested",
+      "person": "Person i træet",
+      "actions": "Handlinger"
+    },
+    "sex": {
+      "M": "M",
+      "F": "K",
+      "U": "?"
+    },
+    "link": "Knyt…",
+    "unlink": "Fjern tilknytning til {{name}}",
+    "linkTitle": "Hvem er {{name}}?",
+    "moveUp": "Flyt op",
+    "moveDown": "Flyt ned",
+    "removeRow": "Fjern række",
+    "addRow": "Tilføj person",
+    "ageFits": "alder passer",
+    "ageOff": "alder afviger {{years}} år",
+    "createFromRow": "Opret en ny person fra denne række",
+    "createHint": "Oprettes med rækkens navn og køn.",
+    "createHintWithBirth": "Oprettes med rækkens navn og køn, født {{birth}} (ud fra alderen) og fødestedet som skrevet.",
+    "thisRecord": "denne post",
+    "removeDescription": "Posten og de begivenheder, ægteskaber og tilknytninger, den oprettede, slettes; personerne selv bevares.",
+    "suggestions": {
+      "title": "Familierelationer, posten foreslår",
+      "help": "Relationer mellem personer i posten, som træet ikke har endnu. Under Indstillinger kan de gøres automatiske.",
+      "parent": "{{parent}} er forælder til {{child}}",
+      "spouse": "{{a}} og {{b}} er gift",
+      "link": "Tilføj"
+    },
+    "card": {
+      "title": "Kilder",
+      "add": "Tilføj kildepost",
+      "censusCoverage": "Folketællinger",
+      "needsBirth": "Tilføj en fødselsdato for at se, hvilke folketællinger der falder inden for personens liv.",
+      "foundAria": "Fundet i {{census}}",
+      "notFoundAria": "Ikke fundet i {{census}}",
+      "openAria": "{{census}} ikke gennemsøgt endnu",
+      "addFor": "Tilføj posten fra {{census}}…",
+      "markNotFound": "Gennemsøgt — ikke fundet",
+      "clearNotFound": "Alligevel ikke gennemsøgt",
+      "legendFound": "fundet",
+      "legendNotFound": "gennemsøgt, ikke fundet",
+      "legendOpen": "ikke gennemsøgt endnu",
+      "age": "{{age}} år",
+      "inHouseholdOf": "i husstanden hos {{name}}",
+      "of": "for {{name}}",
+      "people_one": "{{count}} person",
+      "people_other": "{{count}} personer",
+      "estimatedBirth": "Anslået fødsel: {{birth}} — {{age}} år i {{record}}.",
+      "useAsBirth": "Brug som fødselsdato",
+      "birthplace": "Fødested i {{record}}: {{place}}.",
+      "useAsBirthplace": "Brug som fødested"
+    }
   }
 }

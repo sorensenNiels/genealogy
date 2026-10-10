@@ -1,0 +1,205 @@
+0 HEAD
+1 SOUR genealogy-app
+1 DATE 10 OCT 2026
+1 SUBM @U1@
+1 GEDC
+2 VERS 5.5.1
+2 FORM LINEAGE-LINKED
+1 CHAR UTF-8
+0 @U1@ SUBM
+1 NAME Niels P. Sørensen
+0 @I1@ INDI
+1 NAME David Victor /Sørensen/
+2 GIVN David Victor
+2 SURN Sørensen
+1 SEX M
+1 BIRT
+2 DATE 3 MAR 2004
+1 FAMC @F3@
+2 PEDI birth
+0 @I2@ INDI
+1 NAME Julie Chanie /Sørensen/
+2 GIVN Julie Chanie
+2 SURN Sørensen
+1 SEX F
+1 BIRT
+2 DATE 25 AUG 2001
+1 FAMC @F3@
+2 PEDI birth
+0 @I3@ INDI
+1 NAME Jens Peter Nørager /Sørensen/
+2 GIVN Jens Peter Nørager
+2 SURN Sørensen
+1 SEX M
+1 BIRT
+2 DATE 26 DEC 1973
+2 PLAC Køge, Danmark
+1 FAMC @F2@
+2 PEDI birth
+0 @I4@ INDI
+1 NAME Jesper Jack /Nielsen/
+2 GIVN Jesper Jack
+2 SURN Nielsen
+1 SEX M
+1 FAMC @F6@
+2 PEDI birth
+0 @I5@ INDI
+1 NAME Esther /Olsen/
+2 GIVN Esther
+2 SURN Olsen
+1 SEX F
+1 FAMS @F6@
+0 @I6@ INDI
+1 NAME Jørgen Valdemar /Nielsen/
+2 GIVN Jørgen Valdemar
+2 SURN Nielsen
+1 SEX M
+1 DEAT
+1 FAMS @F6@
+0 @I7@ INDI
+1 NAME Peter Emil /Schneidelbach/
+2 GIVN Peter Emil
+2 SURN Schneidelbach
+1 SEX M
+1 DEAT
+1 FAMS @F4@
+0 @I8@ INDI
+1 NAME Ove Peter /Schneidelbach/
+2 GIVN Ove Peter
+2 SURN Schneidelbach
+1 SEX M
+1 BIRT
+2 DATE 28 JUL 1949
+1 FAMC @F5@
+2 PEDI birth
+0 @I9@ INDI
+1 NAME Betty /Jensen/
+2 GIVN Betty
+2 SURN Jensen
+1 SEX F
+1 NAME Betty /Schneidelbach/
+2 GIVN Betty
+2 SURN Schneidelbach
+2 TYPE married
+1 BIRT
+2 DATE 18 DEC 1926
+2 PLAC Denmark, Nørresundby, Aalborg
+1 DEAT
+2 DATE 1 APR 2000
+2 PLAC Denmark, Højer, Tønder 
+1 FAMS @F4@
+1 FAMS @F5@
+0 @I10@ INDI
+1 NAME Charlotte Fryd /Nielsen/
+2 GIVN Charlotte Fryd
+2 SURN Nielsen
+1 SEX F
+1 NAME Charlotte Fryd /Sørensen/
+2 GIVN Charlotte Fryd
+2 SURN Sørensen
+2 TYPE married
+2 _DATE 21 SEP 1996
+1 BIRT
+2 DATE 4 DEC 1971
+2 PLAC St. Heddinge, Stevns, Denmark
+1 FAMC @F6@
+2 PEDI birth
+1 FAMS @F3@
+0 @I11@ INDI
+1 NAME Niels Peter Nørager /Sørensen/
+2 GIVN Niels Peter Nørager
+2 SURN Sørensen
+1 SEX M
+1 BIRT
+2 DATE 18 NOV 1970
+2 PLAC Køge
+1 FAMC @F2@
+2 PEDI birth
+1 FAMS @F3@
+1 NOTE test
+0 @I12@ INDI
+1 NAME Henry /Sørensen/
+2 GIVN Henry
+2 SURN Sørensen
+1 SEX M
+1 BIRT
+2 DATE 18 APR 1923
+2 PLAC Pedersborg, Sorø, Danmark
+1 DEAT
+2 DATE 30 JAN 1986
+2 PLAC Himlingøje, Stevns, Danmark
+2 CAUS Alderdomssvaghed
+1 BURI
+2 DATE ABT NOV 1986
+2 PLAC Himlingøje Kirkegård
+1 FAMS @F1@
+0 @I13@ INDI
+1 NAME Asta /Kristiansen/
+2 GIVN Asta
+2 SURN Kristiansen
+1 SEX F
+1 DEAT
+2 DATE 3 OCT 2006
+2 PLAC Himlingøje, Stevns, Danmark
+1 BIRT
+2 DATE 1 MAY 1918
+2 PLAC Maglebrænde, Maribo, Danmark
+1 FAMS @F1@
+0 @I14@ INDI
+1 NAME Peter Nørager /Sørensen/
+2 GIVN Peter Nørager
+2 SURN Sørensen
+1 SEX M
+1 BIRT
+2 DATE 27 DEC 1946
+1 FAMC @F1@
+2 PEDI birth
+1 FAMS @F2@
+0 @I15@ INDI
+1 NAME Ulla Mette /Schneidelbach/
+2 GIVN Ulla Mette
+2 SURN Schneidelbach
+2 NPFX Mrs.
+1 SEX F
+1 NAME Ulla Mette /Sørensen/
+2 GIVN Ulla Mette
+2 SURN Sørensen
+2 TYPE married
+1 BIRT
+2 DATE 21 DEC 1946
+1 FAMC @F4@
+2 PEDI birth
+1 FAMS @F2@
+0 @F1@ FAM
+1 HUSB @I12@
+1 WIFE @I13@
+1 CHIL @I14@
+1 MARR
+0 @F2@ FAM
+1 HUSB @I14@
+1 WIFE @I15@
+1 CHIL @I3@
+1 CHIL @I11@
+1 MARR
+0 @F3@ FAM
+1 HUSB @I11@
+1 WIFE @I10@
+1 CHIL @I2@
+1 CHIL @I1@
+1 MARR
+2 DATE 21 SEP 1996
+2 PLAC Store Heddinge, Stevns, Denmark
+0 @F4@ FAM
+1 HUSB @I7@
+1 WIFE @I9@
+1 CHIL @I15@
+1 MARR
+0 @F5@ FAM
+1 WIFE @I9@
+1 CHIL @I8@
+0 @F6@ FAM
+1 HUSB @I6@
+1 WIFE @I5@
+1 CHIL @I10@
+1 CHIL @I4@
+0 TRLR

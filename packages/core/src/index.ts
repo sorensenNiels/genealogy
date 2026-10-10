@@ -1,6 +1,7 @@
 export * from "./album-category.js";
 export * from "./association.js";
 export * from "./app-settings.js";
+export * from "./census.js";
 export * from "./citation.js";
 export * from "./configurable-options.js";
 export * from "./gedcom-import.js";
@@ -16,6 +17,7 @@ export * from "./person-event.js";
 export * from "./person-external-id.js";
 export * from "./person.js";
 export * from "./profile.js";
+export * from "./records.js";
 export * from "./relationship.js";
 export * from "./research-note.js";
 export * from "./source.js";

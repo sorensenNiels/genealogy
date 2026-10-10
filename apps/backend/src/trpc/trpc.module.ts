@@ -12,6 +12,7 @@ import { MembersModule } from "../members/members.module.js";
 import { NotificationModule } from "../notification/notification.module.js";
 import { PersonModule } from "../person/person.module.js";
 import { ProfileModule } from "../profile/profile.module.js";
+import { RecordModule } from "../records/record.module.js";
 import { ResearchNoteModule } from "../research-note/research-note.module.js";
 import { SettingsModule } from "../settings/settings.module.js";
 import { SourceModule } from "../source/source.module.js";
@@ -36,6 +37,7 @@ import { TrpcRouter } from "./trpc.router.js";
     AlbumCategoryModule,
     ExternalIdModule,
     MembersModule,
+    RecordModule,
   ],
   providers: [TrpcRouter],
   exports: [TrpcRouter],

@@ -281,6 +281,27 @@
       "when": 1791519501319,
       "tag": "0039_last_tree_view",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791577417239,
+      "tag": "0040_census",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1791578630847,
+      "tag": "0041_drop_census",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791578631348,
+      "tag": "0042_records",
+      "breakpoints": true
     }
   ]
 }

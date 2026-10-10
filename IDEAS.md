@@ -30,8 +30,8 @@ Decided on, not built yet.
   page per person. Replaces the earlier "deceased only" idea.
 
   _Decided:_
-  - **Privacy:** everyone is included, but living (and `privacy`/
-    `confidential`) people are name only — the Viewer rule (`isRedactedFor`
+  - **Privacy:** everyone is included, but living people are name only —
+    the Viewer rule (`isRedactedFor`
     with the `viewer` role, so the exporting admin's own living person is
     redacted too). A redacted person keeps name, gender and their place in
     the tree; no dates, places, events, notes, citations or photo.
@@ -184,6 +184,56 @@ Picked on 2026-09-28 as the next two to scope, one from each focus area:
   witnesses, neighbours in a census), which is the classic way through a brick
   wall. _Builds on:_ the associations table and its "name only" associates.
 
+**Census records** (October 2026 review). A census page lists a whole
+household — family, servants, lodgers — with each person's position in it,
+and genealogists work from the values _as written_ (age, occupation,
+birthplace). Today a census can only be a per-person event with a free
+detail, and citations have no URL for the scan.
+
+- 💡 🆕 **A URL on citations.** A `url` column on `citations` for a scan
+  at Rigsarkivet/DDD, useful for every source type. (Records — census,
+  church books — already have their own; the `census` event type now
+  exists, seeded with the census feature.)
+- 💡 🆕 **Faster entry.** A keyboard-friendly transcription grid, and import
+  from a Dansk Demografisk Database (DDD) search result (format not yet
+  checked).
+
+**Record-based research** (October 2026 review). Census showed the pattern:
+enter _one record_ as written, link _everyone in it_, and let the app
+create the events, roles and citations. Generalised into a record
+framework with templates (census, baptism, marriage, burial — see
+FEATURES.md); further record types become further templates:
+
+- 💡 🆕 **Probate (skifteprotokoller).** Deceased, surviving spouse, every
+  heir with age and residence, married daughters with husbands, guardians
+  for minors — often the best evidence of who someone's children were.
+  Heirs suggest parent–child links and married names, and flag children
+  missing from the tree. Needs a `probate` event type (GEDCOM `PROB`).
+- 💡 🆕 **Confirmation lists** — a template like baptism (the confirmand,
+  parents, the parish), giving a confirmation event.
+- 💡 🆕 **Church book moves (tilgang/afgang).** Arrival and departure lists:
+  where people moved from and to — a residence/migration event each.
+- 💡 🆕 **Military levy rolls (lægdsruller).** Danish: boys and men followed
+  from birth with father's name, age and moves between parishes, year after
+  year — how you trace a man who moved. A residence event per roll entry.
+- 💡 🆕 **Emigration (Copenhagen Police emigration records, 1869–1940).**
+  Destination, ship, contract number, travel companions (often relatives) —
+  onto the existing Emigration event type (ship/port fields).
+- 💡 🆕 **Farm and place histories (gårdhistorie).** Everyone who owned or
+  lived at "Nørregaard" over time, from record addresses (census, church
+  books) and deeds — Danish research often follows the farm, not the
+  surname. _Builds on:_ record addresses and the `places` table.
+- 💡 🆕 **FAN club view** (Friends, Associates, Neighbours). Who keeps
+  appearing around a person across records — godparents, witnesses, census
+  neighbours, guardians — often hidden relatives; a classic brick-wall
+  method. _Builds on:_ associations and record rows.
+- 💡 🆕 **Search log per source.** "Which church books have I searched, for
+  which parish and years?" — the place-based counterpart of census
+  coverage. Extends the research log idea above.
+- 💡 🆕 **DNA matches** (unresearched). Matches from Ancestry/MyHeritage
+  with shared cM, placed in the tree, clustered by branch. Needs a design
+  decision on how much DNA data to keep.
+
 ## Places & maps
 
 - 💡 **Map view.** Plot birthplaces and migrations across generations, with a
@@ -283,10 +333,9 @@ Ideas from the October 2026 review of the person page
 (`apps/frontend/src/routes/people/$personId.tsx` and its `-*.tsx` cards).
 Person-page settings live in the `"person"` section of `app_settings`
 (`personSettingsSchema` in `packages/core/src/app-settings.ts`: a schema
-field with a default, plus a form field on the Settings page's "Person
-page" section; no migration). Already built from this list: the read view,
-family events in the timeline, and "presumed deceased after N years" — see
-FEATURES.md.
+field with a default, plus a form field on the Settings page's "Person" section; no migration). Already built from this list: the read view (as "life at a glance",
+with the generated summary), family events in the timeline, and "presumed
+deceased after N years" — see FEATURES.md.
 
 _Reading and getting around_
 
@@ -304,11 +353,6 @@ _Reading and getting around_
 
 _More on the page_
 
-- 💡 🆕 **Generated summary sentence.** A template-built line (no AI) at the
-  top: "Anders Jensen (1850–1921) was born in Ribe, married Karen Hansdatter
-  in 1874, had 6 children and died in Esbjerg." From vitals, unions and
-  relatives; localized per language as whole sentences, not glued fragments.
-  Complements the LLM "Narrative generation" idea below.
 - 💡 🆕 **Citation dots on Personal details.** The timeline shows a
   confidence dot per event; birth/death/burial in Personal details don't
   show whether they're sourced. Their citations are on the birth/death
