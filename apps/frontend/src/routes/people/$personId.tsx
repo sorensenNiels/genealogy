@@ -153,7 +153,8 @@ function PersonDetailRoute() {
           names={names.data ?? []}
           citations={citationsList.data ?? []}
           sourcesList={sourcesList.data ?? []}
-          hasParent={parents.length > 0}
+          events={events.data ?? []}
+          parentCount={parents.length}
           onChanged={refresh}
           canDelete={canDelete}
           onDeleted={() => navigate({ to: "/people" })}

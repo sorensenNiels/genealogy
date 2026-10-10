@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   chosenParents,
   directLine,
+  marriageKey,
+  marriageLabel,
   toTopolaJson,
   treeCard,
   type TopolaSourcePerson,
@@ -215,6 +217,7 @@ describe("treeCard", () => {
   it("shows years with * and † on one line, then the birth place, and initials", () => {
     expect(treeCard(anders, cardOptions({ isDirectLine: true }))).toEqual({
       name: "Anders Jensen",
+      relation: null,
       lines: ["* 1850   † 1921", "Ribe"],
       gender: "M",
       photoUrl: null,
@@ -263,5 +266,19 @@ describe("directLine", () => {
       { parentId: "inlaw", childId: "kid" },
     ];
     expect(directLine("me", edges)).toEqual(new Set(["me", "dad", "gp", "kid"]));
+  });
+});
+
+describe("marriage labels", () => {
+  it("shows the start year with the marriage sign, and nothing undated", () => {
+    expect(
+      marriageLabel({ original: "12 May 1874", earliest: "1874-05-12", latest: "1874-05-12" }),
+    ).toBe("⚭ 1874");
+    expect(marriageLabel({ original: "unknown", earliest: null, latest: null })).toBeNull();
+    expect(marriageLabel(null)).toBeNull();
+  });
+
+  it("keys a couple the same whichever partner comes first", () => {
+    expect(marriageKey("b", "a")).toBe(marriageKey("a", "b"));
   });
 });

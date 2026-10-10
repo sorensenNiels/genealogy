@@ -15,6 +15,7 @@ import { PersonModule } from "../person/person.module.js";
 import { ProfileModule } from "../profile/profile.module.js";
 import { RecordModule } from "../records/record.module.js";
 import { ResearchNoteModule } from "../research-note/research-note.module.js";
+import { SearchModule } from "../search/search.module.js";
 import { SettingsModule } from "../settings/settings.module.js";
 import { SourceModule } from "../source/source.module.js";
 import { StaticSiteModule } from "../static-site/static-site.module.js";
@@ -31,6 +32,7 @@ import { TrpcRouter } from "./trpc.router.js";
     ProfileModule,
     ThemeModule,
     ResearchNoteModule,
+    SearchModule,
     UserNoteModule,
     MailModule,
     NotificationModule,

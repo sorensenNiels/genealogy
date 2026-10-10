@@ -323,6 +323,13 @@
       "when": 1791642900787,
       "tag": "0045_duplicate_dismissals",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1791644333568,
+      "tag": "0046_full_text_search",
+      "breakpoints": true
     }
   ]
 }

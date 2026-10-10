@@ -11,6 +11,7 @@ import {
   listUnions,
 } from "../server/functions/person.functions";
 import { listNotes } from "../server/functions/research-note.functions";
+import { searchFullText } from "../server/functions/search.functions";
 import { listOptions } from "../server/functions/settings.functions";
 import { listCitations, listSources } from "../server/functions/source.functions";
 import { getActiveTheme, getThemeState } from "../server/functions/theme.functions";
@@ -124,3 +125,11 @@ export const activeThemeQuery = () =>
 /** The theme pickers' data: every theme, the site default, the member's own. */
 export const themeStateQuery = () =>
   queryOptions({ queryKey: ["theme", "state"], queryFn: () => getThemeState() });
+
+/** The /search page's full-text results for one query (at least two characters — the server refuses less). */
+export const fullTextSearchQuery = (query: string) =>
+  queryOptions({
+    queryKey: ["search", "fullText", query],
+    queryFn: () => searchFullText({ data: { query } }),
+    enabled: query.trim().length >= 2,
+  });

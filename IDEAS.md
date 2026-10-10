@@ -40,9 +40,6 @@ Picked on 2026-09-28 as the next two to scope, one from each focus area
 
 ## Research aids
 
-- 💡 **Full-text search** across citation text and notes, not just names.
-- 💡 **Per-person completeness indicator** (e.g. missing birth place, no
-  citations) to guide where to research next.
 - 💡 🆕 **Consistency warnings.** Flag facts that can't all be true: a child born
   before a parent was 12 or after a mother died, death before birth, marriage
   before 14, a "living" person over 110, events after burial. Shown on the
@@ -78,7 +75,8 @@ Picked on 2026-09-28 as the next two to scope, one from each focus area
   possible matches (Søren/Sören, Christensen/Kristensen, Sørensen/Sörensen,
   æ/ø/å vs. ae/oe/aa) in search. Duplicate detection already does this
   (`foldName`/`soundKey`/`surnameStem` in `packages/core/src/duplicate-match.ts`);
-  person search is still a plain `ILIKE`. _Builds on:_ those keys.
+  the People list's name search is still a plain `ILIKE`, and full-text
+  search uses Postgres' `simple` configuration, which folds neither. _Builds on:_ those keys.
 - 💡 🆕 **FAN-club view.** Show who keeps appearing around a person (godparents,
   witnesses, neighbours in a census), which is the classic way through a brick
   wall. _Builds on:_ the associations table and its "name only" associates.
@@ -151,7 +149,8 @@ FEATURES.md); further record types become further templates:
 ## Tree & visualization
 
 - 💡 **Relationship calculator.** "How are X and Y related" (e.g. second cousin
-  once removed).
+  once removed) for any two people, not just the tree's centre. _Builds on:_
+  `kinshipsFrom`/`formatKinship` in core, which the tree's card labels use.
 - 💡 **Printable chart exports.** Fan chart and large-format pedigree or
   descendant posters (PDF or image), for printing and framing.
 - 💡 🆕 **Pedigree collapse highlighting.** Mark ancestors who appear more than
@@ -166,9 +165,10 @@ FEATURES.md); further record types become further templates:
 **Tree view, after the move to topola** (October 2026). The tree is drawn by
 topola with our own card renderer — see "Tree view: topola" in TECH_STACK.md.
 Files these ideas touch: `apps/frontend/src/routes/tree.tsx` (page, side
-panel, data merging), `routes/-topola-chart.tsx` (topola + d3-zoom wrapper),
-`routes/-tree-card-renderer.ts` (the cards, drawn with D3),
-`lib/topola-data.ts` (our data → topola families, card text), and tree
+panel, data merging), `routes/-topola-chart.tsx` (React wrapper), and in
+`packages/tree-chart/src/` (shared with the static site) `chart.ts` (topola +
+d3-zoom), `card-renderer.ts` (the cards, drawn with D3) and `topola-data.ts`
+(our data → topola families, card text), and tree
 display settings in `packages/core/src/app-settings.ts` (a new setting is a
 schema field with a default plus a form field in `routes/settings.tsx`; no
 migration).
@@ -182,16 +182,6 @@ _More on each card_
   `PersonService.tree`), carried into `TreeCard`; "parents unknown" is "in
   `parentsKnownIds` and has no parent edge". A tree setting to turn badges on
   and off.
-- 💡 🆕 **Relationship label on cards.** Under the name in the Relatives
-  chart: "Great-grandfather", "Aunt", "2nd cousin". Depends on the
-  relationship calculator above; compute from `merged` (common ancestor via
-  parent edges) in the frontend, localized in i18n. Only for the centre
-  person's relatives, so it changes with the centre.
-- 💡 🆕 **Marriage year on the marriage line.** "⚭ 1874" on the short line
-  between partners. Needs the union's date in `person.tree`'s result (from
-  `unions`, keyed by the pair); draw it in `-tree-card-renderer.ts` where the
-  `marriage` line is drawn. Watch the gap width (`PAD_X` × 2 = 28px) — the
-  label may need to sit above the line or the gap may need widening.
 - 💡 🆕 **Hover preview.** A small pop-up on hover with a larger photo, full
   dates and places, without changing the panel. Render it in React (a
   positioned div over the canvas), positioned from the hovered card's screen

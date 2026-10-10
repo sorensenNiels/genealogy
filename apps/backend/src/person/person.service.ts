@@ -13,6 +13,7 @@ import type {
   Parentage,
   PedigreeNode,
   RelationshipToRoot,
+  ResearchCheckKey,
   UpdateNameVariant,
   UpdatePerson,
   UpdatePersonEvent,
@@ -21,6 +22,7 @@ import type {
 import {
   addParentOf,
   addSpouseOf,
+  allParentOfEdges,
   ancestorsOf,
   associations,
   birthEvents,
@@ -64,9 +66,11 @@ import {
   inArray,
   isNotNull,
   isNull,
+  notInArray,
   or,
   sql,
   type SQL,
+  type SQLWrapper,
 } from "drizzle-orm";
 import type { Pool } from "pg";
 
@@ -127,9 +131,12 @@ export interface ListPersonsInput {
   /** ISO `YYYY-MM-DD`, inclusive — compared directly against the resolved `earliest` bound. */
   bornAfter: string | null;
   bornBefore: string | null;
-  /** "Has primary source" in the UI — any citation at all, same signal as `calculateResearchCompleteness`'s `hasCitation`. */
-  hasCitation: boolean;
-  missingBirthRecord: boolean;
+  /**
+   * People still missing one item of the person page's research checklist
+   * (`researchChecklist` in `@genealogy/core`) — "where to research next".
+   * The death items leave out the living, who have no death to find.
+   */
+  missing: ResearchCheckKey | null;
   hasOpenResearchNote: boolean;
   /**
    * Restricts to ancestors of whichever person `viewerUserId` has identified
@@ -169,6 +176,33 @@ export interface TreeResult {
   /** See `TreeGraph` in `@genealogy/db` for what these mean. */
   parentsKnownIds: string[];
   childrenKnownIds: string[];
+  /** When each couple in the tree married — dated unions only, the earliest per couple — for the chart's "⚭ 1874". */
+  marriages: TreeMarriage[];
+}
+
+export interface TreeMarriage {
+  personAId: string;
+  personBId: string;
+  startDate: HistoricalDate;
+}
+
+/** For the people list's "Missing…" filter: a date with no parsed bounds counts as missing, as in `researchChecklist`. */
+function unknownDate(date: SQLWrapper): SQL {
+  return sql`(${date} is null or (${date}->>'earliest' is null and ${date}->>'latest' is null))`;
+}
+
+function blank(column: SQLWrapper): SQL {
+  return sql`coalesce(trim(${column}), '') = ''`;
+}
+
+/** Orders dates by their earliest bound; undated last. */
+function dateSortKey(date: HistoricalDate): string {
+  return date.earliest ?? date.latest ?? "9999";
+}
+
+/** No citation on this event — a missing event (null id) counts as uncited too. */
+function uncited(eventId: SQLWrapper): SQL {
+  return sql`not exists (select 1 from ${citations} where ${citations.factType} = 'event' and ${citations.factId} = ${eventId})`;
 }
 
 @Injectable()
@@ -187,7 +221,11 @@ export class PersonService {
       return { items: [], total: 0 };
     }
 
-    const where = this.listFilter(input, ancestorIds);
+    // Parents live in the graph, which a SQL filter can't see: collect who
+    // already has both, and filter on that set instead.
+    const withBothParents =
+      input.missing === "parents" ? await this.idsWithBothParents() : new Set<string>();
+    const where = this.listFilter(input, ancestorIds, withBothParents);
 
     const items = await personsWithVitals(this.db)
       .where(where)
@@ -247,7 +285,42 @@ export class PersonService {
     return new Set(ancestors.map((node) => node.personId));
   }
 
-  private listFilter(input: ListPersonsInput, ancestorIds: Set<string> | null): SQL | undefined {
+  private async idsWithBothParents(): Promise<Set<string>> {
+    const parentCounts = new Map<string, number>();
+    for (const edge of await allParentOfEdges(this.pool)) {
+      parentCounts.set(edge.childId, (parentCounts.get(edge.childId) ?? 0) + 1);
+    }
+    return new Set([...parentCounts].filter(([, total]) => total >= 2).map(([id]) => id));
+  }
+
+  /** The SQL for "missing this checklist item" — mirrors `researchChecklist`'s idea of done. */
+  private missingClause(key: ResearchCheckKey, withBothParents: Set<string>): SQL | undefined {
+    const deceased = eq(persons.isLiving, false);
+    switch (key) {
+      case "birthDate":
+        return unknownDate(birthEvents.date);
+      case "birthPlace":
+        return blank(birthEvents.place);
+      case "parents":
+        return withBothParents.size > 0 ? notInArray(persons.id, [...withBothParents]) : undefined;
+      case "birthSource":
+        return uncited(birthEvents.id);
+      case "deathDate":
+        return and(deceased, unknownDate(deathEvents.date));
+      case "deathPlace":
+        return and(deceased, blank(deathEvents.place));
+      case "deathSource":
+        return and(deceased, uncited(deathEvents.id));
+      case "photo":
+        return isNull(persons.photoPath);
+    }
+  }
+
+  private listFilter(
+    input: ListPersonsInput,
+    ancestorIds: Set<string> | null,
+    withBothParents: Set<string>,
+  ): SQL | undefined {
     const clauses: SQL[] = [];
 
     if (input.search && input.search.trim() !== "") {
@@ -270,13 +343,9 @@ export class PersonService {
     if (input.bornBefore != null) {
       clauses.push(sql`(${birthEvents.date}->>'earliest') <= ${input.bornBefore}`);
     }
-    if (input.missingBirthRecord) {
-      clauses.push(isNull(birthEvents.date));
-    }
-    if (input.hasCitation) {
-      clauses.push(
-        sql`exists (select 1 from ${citations} where ${citations.personId} = ${persons.id})`,
-      );
+    if (input.missing) {
+      const clause = this.missingClause(input.missing, withBothParents);
+      if (clause) clauses.push(clause);
     }
     if (input.hasOpenResearchNote) {
       clauses.push(
@@ -843,7 +912,37 @@ export class PersonService {
       spouseEdges: graph.spouseEdges,
       parentsKnownIds: graph.parentsKnownIds,
       childrenKnownIds: graph.childrenKnownIds,
+      marriages: await this.marriagesAmong(graph.personIds),
     } satisfies TreeResult;
+  }
+
+  /** Dated unions with both partners among `personIds`, the earliest per couple. */
+  private async marriagesAmong(personIds: string[]): Promise<TreeMarriage[]> {
+    if (personIds.length < 2) return [];
+    const rows = await this.db
+      .select({
+        personAId: unions.personAId,
+        personBId: unions.personBId,
+        startDate: unions.startDate,
+      })
+      .from(unions)
+      .where(
+        and(
+          inArray(unions.personAId, personIds),
+          inArray(unions.personBId, personIds),
+          isNotNull(unions.startDate),
+        ),
+      );
+    const earliest = new Map<string, TreeMarriage>();
+    for (const row of rows) {
+      if (!row.startDate) continue;
+      const key = [row.personAId, row.personBId].toSorted().join("|");
+      const seen = earliest.get(key);
+      if (!seen || dateSortKey(row.startDate) < dateSortKey(seen.startDate)) {
+        earliest.set(key, { ...row, startDate: row.startDate });
+      }
+    }
+    return [...earliest.values()];
   }
 
   /** Birth name, married name(s), spelling variants found in records. */

@@ -22,7 +22,7 @@ import {
   TEXT_CLIP_ID,
   type CardPosition,
 } from "./card-renderer";
-import type { TreeCard } from "./topola-data";
+import { marriageKey, type TreeCard } from "./topola-data";
 import { ARROW_DIRECTIONS, nearestCard } from "./tree-navigation";
 
 /** A point inside the chart's own box, in CSS pixels from its top-left corner. */
@@ -41,6 +41,12 @@ export interface TreeChartData {
   rootId: string;
   /** Draw the "+" add-a-relative button on cards (editors in the app; never on the static site). */
   canAdd: boolean;
+  /**
+   * The text on the line between two partners ("⚭ 1874"), by `marriageKey`
+   * — only couples with a dated union are in it. Optional: a host with no
+   * union data just gets plain lines.
+   */
+  marriages?: ReadonlyMap<string, string>;
 }
 
 /** The chart's own text, in the host's language — the chart has no i18n of its own. */
@@ -234,6 +240,7 @@ export function createTreeChart(host: HTMLElement, options: TreeChartOptions): T
     }[chartKind],
     renderer: createCardRendererClass({
       cardFor: (id) => current.cards.get(id),
+      marriageLabel: (aId, bId) => current.marriages?.get(marriageKey(aId, bId)) ?? null,
       settings: () => current.settings,
       onContextMenu: (id, clientX, clientY) => {
         const box = outer.getBoundingClientRect();

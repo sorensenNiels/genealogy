@@ -802,6 +802,54 @@ seeded with head, wife, husband, son, daughter, child, stepchild, foster
 child, grandchild, parent, sibling, in-law, servant, lodger and other.
 Church-book roles are fixed per template, because they drive what's created.
 
+### Full-text search: Postgres text search, `simple`, prefix matches
+
+`/search` searches the free text in the tree — person notes, name, event,
+union and association notes (events and unions with their places too),
+research notes, citations (page, volume, entry, certificate number, note),
+and records with the people in them. Names aren't included; the People
+list searches those. No search engine or new dependency: Postgres' own
+text search, one GIN expression index per searched table, all in
+`packages/db/src/search.ts` and `apps/backend/src/search/`.
+
+- **The `simple` configuration, not `danish` or `english`.** The tree mixes
+  Danish records with English notes, and a stemmer for one language mangles
+  the other. `simple` only lower-cases and splits words; every typed word
+  becomes a required _prefix_ (`searchQuery`: `fød` → `fød:*`), which covers
+  most of what stemming would ("fød" finds "født" and "fødsel"). It doesn't
+  fold ø/oe or spelling variants — duplicate detection's name keys do that
+  for names; free text is searched as written.
+- **One definition of what's searched.** `SEARCHED_COLUMNS` lists each
+  table's columns once; the index (`schema.ts`) and the query both build
+  their `to_tsvector(...)` from it, because Postgres only uses an expression
+  index for the _identical_ expression. Verified with `EXPLAIN` (a bitmap
+  index scan on `person_events_search_idx`).
+- **One query, ranked, then headlined.** A `UNION ALL` of one branch per
+  table, ordered by `ts_rank`, cut at 100 — and only then `ts_headline` for
+  the snippets, since it re-parses each document. Matches are wrapped in two
+  private-use characters (`SEARCH_MATCH_START`/`END`) that no typed text
+  contains, and the frontend splits on them to render `<mark>` — the snippet
+  is never treated as HTML.
+- **Privacy:** any member may search, but the router drops every hit tied to
+  someone the viewer may only see by name (a union or a role counts both
+  people) — notes and citations are exactly what the person page hides from
+  a Viewer. A record's own fields stay searchable for everyone, as they're
+  visible on the record page.
+
+### Research checklist: equal items, in research order
+
+The "research completeness" bar on the person page is `researchChecklist`
+(`packages/core/src/research-checklist.ts`): birth date, birthplace, both
+parents, a citation on the birth event, then death date, place and citation
+(left out for the living rather than failed), then a photo. Every item
+counts the same — a predictable "what's missing?", not a weighted score —
+and the first missing one is shown as "next to research". The bar opens the
+list. The same keys drive the People list's "Missing" filter
+(`PersonService.missingClause`), so "missing a source for the birth" means
+the same thing in both places; "both parents" reads the graph
+(`allParentOfEdges`) and filters on the set, since SQL can't see edges. The
+keys are a `z.enum`, not a configurable option: code branches on each one.
+
 ### Configurable dropdown options, not hardcoded enums
 
 Closed-vocabulary dropdowns are backed by a single `configurableOptions` table
@@ -1053,6 +1101,28 @@ generations), so each card reports a box padded on every side and draws
 inside it — that padding is the spacing; and lines run to box centres, so
 cards are opaque and drawn over them. Colours are in `styles.css` under
 `.topola-chart`, from the theme tokens.
+
+**Relationship labels and marriage years** (both on by default, each a
+Settings switch). Under each name, how the person is related to the centre
+— "Grandfather", "2nd cousin once removed", "Farbror", "Svigerinde" — from
+`kinshipsFrom`/`formatKinship` (`packages/core/src/kinship.ts`, unit-tested),
+computed in the browser from the merged tree, so it follows the centre as it
+moves and only knows the links this visit has loaded. Blood relationships
+come from the closest common ancestor (generations up from the centre, down
+to the relative); in-laws, step-parents and aunts/uncles by marriage are one
+marriage away; anything further is left unlabelled rather than spelled out
+as a chain. The words are composed in core, not the i18n files, because
+they're built from parts (greats, Danish olde/tip, ordinals) — and Danish
+needs which side of the family a grandparent or aunt/uncle is on
+(farfar/morfar, farbror/morbror, faster/moster), which the ancestor path
+carries. A `SPOUSE_OF` link reads as husband/wife whether or not the union is
+a marriage. On the line between partners, "⚭ 1874" from the couple's
+earliest dated union (`marriages` in `person.tree`, hidden from a Viewer if
+either partner is living, like a birth date). The gap between partners is
+only 28px, so the label is a small pill that overlaps each card's inner
+margin — never a photo or the text — rather than widening every gap in the
+chart. The static site doesn't pass either yet; both are optional in
+`TreeChartData`/`treeCard`.
 
 On the data side, `treeAround` (`packages/db/src/graph.ts`) walks one
 generation at a time via `parentsOf`/`childrenOf`, rather than a single

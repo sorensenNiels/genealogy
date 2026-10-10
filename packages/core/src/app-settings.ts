@@ -39,6 +39,10 @@ export const treeSettingsSchema = z.object({
   showPhotos: z.boolean().default(true),
   /** The black band across a deceased person's photo corner. */
   showMourningBand: z.boolean().default(true),
+  /** "Grandfather", "Cousin", "Farbror" under each name — how they're related to the centre person. */
+  showRelationshipLabels: z.boolean().default(true),
+  /** "⚭ 1874" on the line between partners, from their union's start date. */
+  showMarriageYear: z.boolean().default(true),
   /** `years`: "* 1850   † 1921" plus a place; `full`: a line per date, place only if there's room. */
   dateDetail: treeDateDetailSchema.default("years"),
   /** What the tree opens with when the link doesn't say — "View in tree", the nav link. */

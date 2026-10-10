@@ -1,0 +1,9 @@
+CREATE INDEX "associations_search_idx" ON "associations" USING gin (to_tsvector('simple', coalesce("associate_name", '') || ' ' || coalesce("label", '') || ' ' || coalesce("notes", '')));--> statement-breakpoint
+CREATE INDEX "citations_search_idx" ON "citations" USING gin (to_tsvector('simple', coalesce("page", '') || ' ' || coalesce("volume", '') || ' ' || coalesce("entry_id", '') || ' ' || coalesce("certificate_number", '') || ' ' || coalesce("note", '')));--> statement-breakpoint
+CREATE INDEX "person_events_search_idx" ON "person_events" USING gin (to_tsvector('simple', coalesce("label", '') || ' ' || coalesce("place", '') || ' ' || coalesce("notes", '')));--> statement-breakpoint
+CREATE INDEX "person_names_search_idx" ON "person_names" USING gin (to_tsvector('simple', coalesce("notes", '')));--> statement-breakpoint
+CREATE INDEX "persons_search_idx" ON "persons" USING gin (to_tsvector('simple', coalesce("notes", '')));--> statement-breakpoint
+CREATE INDEX "record_people_search_idx" ON "record_people" USING gin (to_tsvector('simple', coalesce("name", '') || ' ' || coalesce("occupation", '') || ' ' || coalesce("residence", '') || ' ' || coalesce("birthplace", '')));--> statement-breakpoint
+CREATE INDEX "records_search_idx" ON "records" USING gin (to_tsvector('simple', coalesce("place", '') || ' ' || coalesce("address", '') || ' ' || coalesce("reference", '') || ' ' || coalesce("page", '') || ' ' || coalesce("notes", '')));--> statement-breakpoint
+CREATE INDEX "research_notes_search_idx" ON "research_notes" USING gin (to_tsvector('simple', coalesce("body", '')));--> statement-breakpoint
+CREATE INDEX "unions_search_idx" ON "unions" USING gin (to_tsvector('simple', coalesce("start_place", '') || ' ' || coalesce("end_place", '') || ' ' || coalesce("notes", '')));

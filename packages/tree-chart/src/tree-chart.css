@@ -128,6 +128,26 @@
   font-size: 13.5px;
   font-weight: 600;
 }
+/* How they're related to the centre person, between the name and the dates. */
+.topola-chart .card-relation {
+  fill: var(--primary);
+  font-size: 11px;
+  font-weight: 500;
+}
+/* "⚭ 1874" on the line between partners — see `drawMarriageLabel`. */
+.topola-chart .marriage-label {
+  pointer-events: none;
+}
+.topola-chart .marriage-label rect {
+  fill: var(--card);
+  stroke: var(--tree-line);
+  stroke-width: 1px;
+}
+.topola-chart .marriage-label text {
+  fill: var(--muted-foreground);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
 .topola-chart .card-meta {
   fill: var(--muted-foreground);
   font-size: 12px;

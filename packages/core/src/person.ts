@@ -226,31 +226,6 @@ export function formatAge(
 }
 
 /**
- * A plain 5-point checklist, 20% each, for the "research completeness" bar
- * on the person-page header — deliberately not a weighted or fuzzy score,
- * so it stays predictable ("what's missing?") rather than a black box.
- * Takes an explicit, minimal shape rather than a full `Person` (or query
- * result) so it stays a pure function callers can test and reuse without
- * needing to fetch anything beyond what they already have on hand.
- */
-export function calculateResearchCompleteness(input: {
-  hasBirthDate: boolean;
-  hasDeathDateOrLiving: boolean;
-  hasParent: boolean;
-  hasCitation: boolean;
-  hasPhoto: boolean;
-}): number {
-  const checks = [
-    input.hasBirthDate,
-    input.hasDeathDateOrLiving,
-    input.hasParent,
-    input.hasCitation,
-    input.hasPhoto,
-  ];
-  return (checks.filter(Boolean).length / checks.length) * 100;
-}
-
-/**
  * The newest birth date that would still count as "born more than
  * `afterYears` years ago" on `today`, as an ISO date — the cut-off
  * `isPresumedDeceased` compares against, and the one a database query uses.

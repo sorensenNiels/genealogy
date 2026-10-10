@@ -18,6 +18,7 @@ import { PersonRouter } from "../person/person.router.js";
 import { ProfileRouter } from "../profile/profile.router.js";
 import { RecordRouter } from "../records/record.router.js";
 import { ResearchNoteRouter } from "../research-note/research-note.router.js";
+import { SearchRouter } from "../search/search.router.js";
 import { SettingsRouter } from "../settings/settings.router.js";
 import { SourceRouter } from "../source/source.router.js";
 import { StaticSiteRouter } from "../static-site/static-site.router.js";
@@ -38,6 +39,7 @@ export class TrpcRouter {
     private readonly profile: ProfileRouter,
     private readonly theme: ThemeRouter,
     private readonly researchNote: ResearchNoteRouter,
+    private readonly search: SearchRouter,
     private readonly userNote: UserNoteRouter,
     private readonly mail: MailRouter,
     private readonly notification: NotificationRouter,
@@ -67,6 +69,7 @@ export class TrpcRouter {
       profile: this.profile.build(),
       theme: this.theme.build(),
       researchNote: this.researchNote.build(),
+      search: this.search.build(),
       userNote: this.userNote.build(),
       mail: this.mail.build(),
       notification: this.notification.build(),

@@ -1,13 +1,21 @@
 import {
   defaultTreeSettings,
+  formatKinship,
   formatLifespan,
   formatPersonName,
+  kinshipsFrom,
   type Gender,
   treeChartKindSchema,
   type TreeOrientation,
   treeOrientationSchema,
 } from "@genealogy/core";
-import { directLine, toTopolaJson, treeCard } from "@genealogy/tree-chart";
+import {
+  directLine,
+  marriageKey,
+  marriageLabel,
+  toTopolaJson,
+  treeCard,
+} from "@genealogy/tree-chart";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Button, buttonVariants } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
@@ -426,6 +434,23 @@ function FamilyTree({
     () => (merged ? directLine(merged.rootId, merged.parentEdges) : new Set<string>()),
     [merged],
   );
+  // How everyone is related to the centre person, from the links this
+  // visit knows — so the labels follow the centre as it moves.
+  const kinships = useMemo(() => (merged ? kinshipsFrom(merged.rootId, merged) : null), [merged]);
+  // "⚭ 1874" per couple, from every fetched tree's dated unions. Read off
+  // the fetches directly rather than merged: a couple whose link was
+  // removed in the panel isn't drawn as a family, so its label never shows.
+  const marriages = useMemo(() => {
+    const labels = new Map<string, string>();
+    for (const tree of trees) {
+      for (const marriage of tree.marriages) {
+        const key = marriageKey(marriage.personAId, marriage.personBId);
+        const label = marriageLabel(marriage.startDate);
+        if (label && !labels.has(key)) labels.set(key, label);
+      }
+    }
+    return labels;
+  }, [trees]);
   const cards = useMemo(
     () =>
       new Map(
@@ -433,6 +458,10 @@ function FamilyTree({
           person.id,
           treeCard(person, {
             name: formatPersonName(person),
+            relation: (() => {
+              const kinship = kinships?.get(person.id);
+              return kinship ? formatKinship(kinship, person.gender, language) : null;
+            })(),
             photoUrl: (path) => `${publicBackendUrl}/uploads/${path}`,
             formatDate: (date) => formatDisplayDate(date, language),
             dateDetail: treeSettings.dateDetail,
@@ -444,7 +473,7 @@ function FamilyTree({
           }),
         ]),
       ),
-    [merged, language, treeSettings.dateDetail, directLineIds, view],
+    [merged, kinships, language, treeSettings.dateDetail, directLineIds, view],
   );
 
   // Defaults to the root rather than nobody, so the detail panel is already
@@ -690,6 +719,7 @@ function FamilyTree({
           <TopolaChart
             data={chartData}
             cards={cards}
+            marriages={marriages}
             settings={treeSettings}
             rootId={rootId}
             chartKind={view}

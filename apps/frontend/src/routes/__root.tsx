@@ -9,6 +9,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@genealogy/ui/components/dropdown-menu";
+import { Input } from "@genealogy/ui/components/input";
 import { ThemeToggle } from "@genealogy/ui/components/theme-toggle";
 import { cn } from "@genealogy/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
@@ -30,6 +31,7 @@ import {
   LanguagesIcon,
   LogOutIcon,
   NotebookTextIcon,
+  SearchIcon,
   SettingsIcon,
   UserIcon,
   UsersIcon,
@@ -296,6 +298,7 @@ function RootLayout() {
             <PhotosNavLink />
           </span>
           <span className="ml-auto flex items-center gap-3">
+            <HeaderSearch />
             <NotificationsBell />
             <ToolsLink />
             <SettingsLink />
@@ -479,6 +482,46 @@ function PhotosNavLinkWhenAvailable() {
     <Link to="/photos" className={NAV_LINK_CLASS} activeProps={NAV_LINK_ACTIVE_PROPS}>
       {t("nav.photos")}
     </Link>
+  );
+}
+
+/**
+ * Full-text search from anywhere: Enter opens /search with the query, where
+ * the results (and a bigger box) are. Signed-in only, like the search
+ * procedure itself, and left out on /search, which has its own box.
+ */
+function HeaderSearch() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { data: session } = useSession();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const [query, setQuery] = useState("");
+  if (!session || pathname === "/search") return null;
+  return (
+    <search className="hidden md:block">
+      <form
+        className="relative"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const q = query.trim();
+          setQuery("");
+          void navigate({ to: "/search", search: q ? { q } : {} });
+        }}
+      >
+        <SearchIcon
+          className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+          aria-hidden="true"
+        />
+        <Input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t("search.headerPlaceholder")}
+          aria-label={t("search.label")}
+          className="h-8 w-48 pl-8"
+        />
+      </form>
+    </search>
   );
 }
 

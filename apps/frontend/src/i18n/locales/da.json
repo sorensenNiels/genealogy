@@ -552,7 +552,11 @@
       "initialZoomPerson": "Centerperson ved 100 %",
       "initialZoomHelp": "\"Centerperson\" passer til store træer, hvor hele træet bliver for småt til at læse.",
       "rememberLastView": "Husk hvor hvert medlem var",
-      "rememberLastViewHelp": "Træet åbner igen på den person, det diagram og den retning, et medlem sidst havde, på enhver enhed; zoom huskes pr. browser."
+      "rememberLastViewHelp": "Træet åbner igen på den person, det diagram og den retning, et medlem sidst havde, på enhver enhed; zoom huskes pr. browser.",
+      "showRelationshipLabels": "Slægtskab med midterpersonen",
+      "showRelationshipLabelsHelp": "\"Farfar\", \"Moster\", \"Næstsøskendebarn\" under hvert navn, udregnet fra forældre- og ægtefællerelationerne.",
+      "showMarriageYear": "Vielsesår",
+      "showMarriageYearHelp": "\"⚭ 1874\" på stregen mellem partnere, når deres ægteskab eller forhold har en dato."
     },
     "person": {
       "title": "Person",
@@ -654,7 +658,9 @@
     "viewInTree": "Vis {{name}} i slægtstræet",
     "deleteTitle": "Slet {{name}}?",
     "deleteDescription": "Dette fjerner personen og alt registreret om vedkommende permanent — alternative navne, livsbegivenheder, kilder og citationer. Dette kan ikke fortrydes.",
-    "deleteAriaLabel": "Slet {{name}}"
+    "deleteAriaLabel": "Slet {{name}}",
+    "filterMissing": "Mangler",
+    "missingAny": "Hvad som helst (intet filter)"
   },
   "person": {
     "firstNames": "Fornavne",
@@ -1040,6 +1046,24 @@
         "deathDate": "Dødsdato",
         "deathPlace": "Dødssted"
       }
+    },
+    "checklist": {
+      "title": "Tjekliste for forskning",
+      "next": "Næste at undersøge: {{item}}.",
+      "complete": "Alt på tjeklisten er registreret.",
+      "open": "Forskningsfuldstændighed {{percent}} % — vis tjeklisten",
+      "done": "registreret",
+      "missing": "mangler",
+      "item": {
+        "birthDate": "Fødselsdato",
+        "birthPlace": "Fødested",
+        "parents": "Begge forældre",
+        "birthSource": "En kilde til fødslen",
+        "deathDate": "Dødsdato",
+        "deathPlace": "Dødssted",
+        "deathSource": "En kilde til dødsfaldet",
+        "photo": "Foto"
+      }
     }
   },
   "members": {
@@ -1366,5 +1390,40 @@
     "clearDescription_one": "Det {{count}} par, der er markeret som ikke samme person, foreslås igen.",
     "clearDescription_other": "Alle {{count}} par, der er markeret som ikke samme person, foreslås igen.",
     "clearAction": "Foreslå igen"
+  },
+  "search": {
+    "title": "Søg",
+    "description": "Søger i det, der er skrevet ind i træet — noter, kildehenvisninger, begivenheder, steder, forskningsnoter og kilder. Brug Personer for at finde nogen ved navn.",
+    "label": "Søg i noter, kildehenvisninger og kilder",
+    "placeholder": "Ord at lede efter, fx \"Brande skifte\"",
+    "headerPlaceholder": "Søg…",
+    "tooShort": "Skriv mindst to tegn.",
+    "searching": "Søger…",
+    "noResults": "Intet matcher \"{{query}}\".",
+    "truncated": "Kun de 100 bedste resultater vises — tilføj et ord for at indsnævre søgningen.",
+    "filterLabel": "Vis",
+    "group": {
+      "all_one": "Alle ({{count}})",
+      "all_other": "Alle ({{count}})",
+      "people_one": "Personer ({{count}})",
+      "people_other": "Personer ({{count}})",
+      "citations_one": "Kildehenvisninger ({{count}})",
+      "citations_other": "Kildehenvisninger ({{count}})",
+      "records_one": "Kilder ({{count}})",
+      "records_other": "Kilder ({{count}})",
+      "researchNotes_one": "Forskningsnoter ({{count}})",
+      "researchNotes_other": "Forskningsnoter ({{count}})"
+    },
+    "kind": {
+      "personNote": "Noter",
+      "name": "Navnenote",
+      "event": "Livsbegivenhed",
+      "union": "Ægteskab/forhold",
+      "association": "Vidne/fadder",
+      "researchNote": "Forskningsnote",
+      "citation": "Kildehenvisning",
+      "record": "Kilde",
+      "recordPerson": "Person i kilde"
+    }
   }
 }

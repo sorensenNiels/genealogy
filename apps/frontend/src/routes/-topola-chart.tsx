@@ -39,6 +39,7 @@ export interface TreeChartApi {
 export function TopolaChart({
   data,
   cards,
+  marriages,
   settings,
   rootId,
   chartKind,
@@ -54,6 +55,8 @@ export function TopolaChart({
   data: JsonGedcomData;
   /** What each person's card shows, by id. */
   cards: ReadonlyMap<string, TreeCard>;
+  /** The marriage line's "⚭ 1874", by `marriageKey`. */
+  marriages: ReadonlyMap<string, string>;
   /** Display settings from the Settings page — see `treeSettingsSchema`. */
   settings: TreeSettings;
   rootId: string;
@@ -82,6 +85,7 @@ export function TopolaChart({
   const latest = useRef({
     data,
     cards,
+    marriages,
     settings,
     rootId,
     canAdd,
@@ -96,6 +100,7 @@ export function TopolaChart({
     latest.current = {
       data,
       cards,
+      marriages,
       settings,
       rootId,
       canAdd,
@@ -121,6 +126,7 @@ export function TopolaChart({
         chart = createTreeChart(host, {
           data: props.data,
           cards: props.cards,
+          marriages: props.marriages,
           settings: { ...props.settings, animateTransitions, initialZoom },
           rootId: props.rootId,
           canAdd: props.canAdd,
@@ -155,8 +161,8 @@ export function TopolaChart({
   }, [chartKind, horizontal, i18n.language, animateTransitions, initialZoom]);
 
   useEffect(() => {
-    chartRef.current?.update({ data, cards, settings, canAdd, rootId });
-  }, [data, cards, settings, canAdd, rootId]);
+    chartRef.current?.update({ data, cards, marriages, settings, canAdd, rootId });
+  }, [data, cards, marriages, settings, canAdd, rootId]);
 
   useEffect(() => {
     chartRef.current?.select(selectedId);

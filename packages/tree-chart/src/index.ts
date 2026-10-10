@@ -8,6 +8,8 @@
 export {
   chosenParents,
   directLine,
+  marriageKey,
+  marriageLabel,
   toTopolaJson,
   treeCard,
   type TopolaConversionOptions,

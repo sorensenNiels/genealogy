@@ -1,8 +1,9 @@
 import {
   calculateAge,
-  calculateResearchCompleteness,
   formatFullPersonName,
   formatPersonName,
+  researchChecklist,
+  type ResearchChecklist,
 } from "@genealogy/core";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Badge } from "@genealogy/ui/components/badge";
@@ -10,12 +11,13 @@ import { Button, buttonVariants } from "@genealogy/ui/components/button";
 import { Card, CardContent } from "@genealogy/ui/components/card";
 import { CopyableText } from "@genealogy/ui/components/copyable-text";
 import { DropdownMenu, DropdownMenuItem } from "@genealogy/ui/components/dropdown-menu";
+import { Popover } from "@genealogy/ui/components/popover";
 import { ProgressBar } from "@genealogy/ui/components/progress-bar";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { cn } from "@genealogy/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { CameraIcon, Network, Trash2Icon } from "lucide-react";
+import { CameraIcon, CheckCircle2Icon, CircleIcon, Network, Trash2Icon } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -28,7 +30,7 @@ import { genderLabel, initials, relationshipToRootLabel } from "../../lib/person
 import { removePerson } from "../../server/functions/person.functions";
 import { MergePersonDialog } from "./-merge-person-dialog";
 import { SetPhotoFromImmichDialog } from "./-set-photo-from-immich-dialog";
-import type { CitationRow, NameVariantRow, PersonRow, SourceRow } from "./-types";
+import type { CitationRow, NameVariantRow, PersonEventRow, PersonRow, SourceRow } from "./-types";
 
 /**
  * The identity header: photo, name, badges, birth/death summary, the
@@ -43,7 +45,8 @@ export function PersonHeaderCard({
   names,
   citations,
   sourcesList,
-  hasParent,
+  events,
+  parentCount,
   onChanged,
   canDelete,
   onDeleted,
@@ -52,7 +55,8 @@ export function PersonHeaderCard({
   names: NameVariantRow[];
   citations: CitationRow[];
   sourcesList: SourceRow[];
-  hasParent: boolean;
+  events: PersonEventRow[];
+  parentCount: number;
   onChanged: () => Promise<void>;
   canDelete: boolean;
   onDeleted: () => void;
@@ -86,12 +90,22 @@ export function PersonHeaderCard({
     ? sourcesList.find((source) => source.id === akaCitation.sourceId)
     : undefined;
 
-  const completeness = calculateResearchCompleteness({
-    hasBirthDate: person.birth?.earliest != null || person.birth?.latest != null,
-    hasDeathDateOrLiving:
-      person.isLiving || person.death?.earliest != null || person.death?.latest != null,
-    hasParent,
-    hasCitation: citations.length > 0,
+  const isCited = (eventType: "birth" | "death") => {
+    const event = events.find((row) => row.eventType === eventType);
+    return (
+      !!event &&
+      citations.some((citation) => citation.factType === "event" && citation.factId === event.id)
+    );
+  };
+  const checklist = researchChecklist({
+    birth: person.birth,
+    birthPlace: person.birthPlace,
+    death: person.death,
+    deathPlace: person.deathPlace,
+    isLiving: person.isLiving,
+    parentCount,
+    birthCited: isCited("birth"),
+    deathCited: isCited("death"),
     hasPhoto: person.photoPath != null,
   });
 
@@ -176,13 +190,60 @@ export function PersonHeaderCard({
               />
             )}
           </div>
-          <ProgressBar label={t("person.header.researchCompleteness")} value={completeness} />
+          <ResearchChecklistPopover checklist={checklist} />
           {removePersonMutation.isError && (
             <p className="text-sm text-destructive">{removePersonMutation.error.message}</p>
           )}
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * The research-completeness bar, opening the checklist behind it: what's
+ * recorded, what's missing, and which missing fact to look for next — so
+ * the percentage is a pointer to the next search rather than a grade.
+ */
+function ResearchChecklistPopover({ checklist }: { checklist: ResearchChecklist }) {
+  const { t } = useTranslation();
+  return (
+    <Popover
+      align="end"
+      title={t("person.checklist.title")}
+      description={
+        checklist.next
+          ? t("person.checklist.next", { item: t(`person.checklist.item.${checklist.next}`) })
+          : t("person.checklist.complete")
+      }
+      trigger={
+        <button
+          type="button"
+          className="w-full rounded-md p-1 text-left transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          aria-label={t("person.checklist.open", { percent: checklist.percent })}
+        >
+          <ProgressBar label={t("person.header.researchCompleteness")} value={checklist.percent} />
+        </button>
+      }
+    >
+      <ul className="space-y-1.5 text-sm">
+        {checklist.checks.map((check) => (
+          <li key={check.key} className="flex items-center gap-2">
+            {check.done ? (
+              <CheckCircle2Icon className="size-4 shrink-0 text-primary" aria-hidden="true" />
+            ) : (
+              <CircleIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            )}
+            <span className={cn(!check.done && "text-muted-foreground")}>
+              {t(`person.checklist.item.${check.key}`)}
+            </span>
+            <span className="sr-only">
+              {check.done ? t("person.checklist.done") : t("person.checklist.missing")}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Popover>
   );
 }
 

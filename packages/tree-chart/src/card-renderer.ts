@@ -62,6 +62,8 @@ export interface CardPosition {
 /** What the renderer reads and reports — `createTreeChart` passes closures over its current state, so it's always current. */
 export interface CardRendererHooks {
   cardFor: (id: string) => CardInfo | undefined;
+  /** The text for the line between two partners ("⚭ 1874"), or null for none. */
+  marriageLabel: (aId: string, bId: string) => string | null;
   /** Read at draw time, so a settings change shows on the next render. */
   settings: () => TreeSettings;
   /** A card was right-clicked, at this point on the page (`clientX`/`clientY`). */
@@ -170,6 +172,24 @@ export function createCardRendererClass(hooks: CardRendererHooks) {
       card.each(function (datum) {
         drawCard(select(this), cardFor(datum.indi.id), current);
       });
+
+      // After the cards, so the label sits over their inner edges: it's
+      // wider than the 28px gap it's centred in (see `drawMarriageLabel`).
+      if (current.showMarriageYear) {
+        cards
+          .filter((node) => Boolean(node.data.indi && node.data.spouse))
+          .each(function (node) {
+            const label = hooks.marriageLabel(node.data.indi!.id, node.data.spouse!.id);
+            if (!label) return;
+            const indi = node.data.indi!;
+            drawMarriageLabel(
+              select(this),
+              label,
+              horizontal ? PAD_X + CARD_WIDTH / 2 : indi.width!,
+              horizontal ? indi.height! : PAD_Y + CARD_HEIGHT / 2,
+            );
+          });
+      }
       if (hooks.canAdd()) {
         card.each(function (datum) {
           drawAddButton(select(this), datum.indi.id, hooks);
@@ -221,24 +241,31 @@ function drawCard(
     .attr("height", CARD_HEIGHT)
     .attr("rx", CARD_RADIUS);
   const text = card.append("g").attr("clip-path", `url(#${TEXT_CLIP_ID})`);
-  const name = info?.name ?? "";
-  const lines = info?.lines ?? [];
-  // Vertically centre the block: one name line plus up to two detail lines.
-  const top = lines.length === 0 ? 41 : lines.length === 1 ? 32 : 25;
-  text
-    .append("text")
-    .attr("class", "card-name")
-    .attr("x", TEXT_X)
-    .attr("y", top)
-    .text(truncate(name, 22));
-  lines.forEach((line, index) => {
+  const relation = settings.showRelationshipLabels ? (info?.relation ?? null) : null;
+  // The name, then the relationship (smaller, tighter), then up to two
+  // detail lines — each row's baseline below the previous, and the whole
+  // block centred on the card. With all four rows it still clears the
+  // bottom edge (the last baseline lands at ~65 of 72).
+  const rows: { className: string; text: string; gap: number }[] = [
+    { className: "card-name", text: truncate(info?.name ?? "", 22), gap: 0 },
+    ...(relation ? [{ className: "card-relation", text: truncate(relation, 30), gap: 15 }] : []),
+    ...(info?.lines ?? []).map((line, index) => ({
+      className: "card-meta",
+      text: truncate(line, 26),
+      gap: index === 0 && !relation ? 18 : 16,
+    })),
+  ];
+  const span = rows.reduce((total, row) => total + row.gap, 0);
+  let baseline = (CARD_HEIGHT - span) / 2 + 5;
+  for (const row of rows) {
+    baseline += row.gap;
     text
       .append("text")
-      .attr("class", "card-meta")
+      .attr("class", row.className)
       .attr("x", TEXT_X)
-      .attr("y", top + 18 + index * 16)
-      .text(truncate(line, 26));
-  });
+      .attr("y", baseline)
+      .text(row.text);
+  }
 
   // With photos turned off in Settings, everyone gets the initials square.
   if (info?.photoUrl && settings.showPhotos) {
@@ -279,6 +306,40 @@ function drawCard(
     .attr("width", CARD_WIDTH)
     .attr("height", CARD_HEIGHT)
     .attr("rx", CARD_RADIUS);
+}
+
+/**
+ * "⚭ 1874" as a small pill centred on the marriage line. The gap between
+ * partners is only 28px (`PAD_X` × 2) — too narrow for the text — so the
+ * pill overlaps each card's inner edge by up to `INSET`, the margin before
+ * the photo on one side and after the text clip on the other; it never
+ * covers a photo or a name. Width is estimated from the character count,
+ * like `truncate`, so topola never has to measure text.
+ */
+function drawMarriageLabel(
+  node: Selection<SVGGElement, unknown, null, undefined>,
+  label: string,
+  cx: number,
+  cy: number,
+) {
+  const width = Math.min(PAD_X * 2 + INSET * 2, label.length * 6 + 8);
+  const height = 16;
+  const group = node
+    .append("g")
+    .attr("class", "marriage-label")
+    .attr("transform", `translate(${cx}, ${cy})`);
+  group
+    .append("rect")
+    .attr("x", -width / 2)
+    .attr("y", -height / 2)
+    .attr("width", width)
+    .attr("height", height)
+    .attr("rx", height / 2);
+  group
+    .append("text")
+    .attr("text-anchor", "middle")
+    .attr("dominant-baseline", "central")
+    .text(label);
 }
 
 /**

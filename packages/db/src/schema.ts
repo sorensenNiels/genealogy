@@ -17,6 +17,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+import { SEARCHED_COLUMNS, searchVector } from "./search.js";
+
 export const genderEnum = pgEnum("gender", ["M", "F", "U"]);
 
 /**
@@ -73,7 +75,10 @@ export const persons = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("persons_surname_idx").on(table.surname, table.given)],
+  (table) => [
+    index("persons_surname_idx").on(table.surname, table.given),
+    index("persons_search_idx").using("gin", searchVector(...SEARCHED_COLUMNS.persons(table))),
+  ],
 );
 
 /**
@@ -101,7 +106,13 @@ export const personNames = pgTable(
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("person_names_person_idx").on(table.personId)],
+  (table) => [
+    index("person_names_person_idx").on(table.personId),
+    index("person_names_search_idx").using(
+      "gin",
+      searchVector(...SEARCHED_COLUMNS.personNames(table)),
+    ),
+  ],
 );
 
 /**
@@ -147,7 +158,13 @@ export const personEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("person_events_person_idx").on(table.personId)],
+  (table) => [
+    index("person_events_person_idx").on(table.personId),
+    index("person_events_search_idx").using(
+      "gin",
+      searchVector(...SEARCHED_COLUMNS.personEvents(table)),
+    ),
+  ],
 );
 
 /**
@@ -183,6 +200,7 @@ export const unions = pgTable(
   (table) => [
     index("unions_person_a_idx").on(table.personAId),
     index("unions_person_b_idx").on(table.personBId),
+    index("unions_search_idx").using("gin", searchVector(...SEARCHED_COLUMNS.unions(table))),
   ],
 );
 
@@ -252,6 +270,10 @@ export const associations = pgTable(
   (table) => [
     index("associations_person_idx").on(table.personId),
     index("associations_associate_idx").on(table.associatePersonId),
+    index("associations_search_idx").using(
+      "gin",
+      searchVector(...SEARCHED_COLUMNS.associations(table)),
+    ),
     check("associations_one_context", sql`${table.eventId} is null or ${table.unionId} is null`),
     check(
       "associations_one_associate",
@@ -377,6 +399,7 @@ export const citations = pgTable(
   (table) => [
     index("citations_person_idx").on(table.personId),
     index("citations_fact_idx").on(table.factType, table.factId),
+    index("citations_search_idx").using("gin", searchVector(...SEARCHED_COLUMNS.citations(table))),
   ],
 );
 
@@ -545,6 +568,7 @@ export const records = pgTable(
   (table) => [
     index("records_type_idx").on(table.recordType),
     index("records_census_key_idx").on(table.censusKey),
+    index("records_search_idx").using("gin", searchVector(...SEARCHED_COLUMNS.records(table))),
   ],
 );
 
@@ -583,6 +607,10 @@ export const recordPeople = pgTable(
   (table) => [
     index("record_people_record_idx").on(table.recordId, table.sortOrder),
     index("record_people_person_idx").on(table.personId),
+    index("record_people_search_idx").using(
+      "gin",
+      searchVector(...SEARCHED_COLUMNS.recordPeople(table)),
+    ),
   ],
 );
 
@@ -787,7 +815,13 @@ export const researchNotes = pgTable(
     resolved: boolean("resolved").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("research_notes_person_idx").on(table.personId)],
+  (table) => [
+    index("research_notes_person_idx").on(table.personId),
+    index("research_notes_search_idx").using(
+      "gin",
+      searchVector(...SEARCHED_COLUMNS.researchNotes(table)),
+    ),
+  ],
 );
 
 /**

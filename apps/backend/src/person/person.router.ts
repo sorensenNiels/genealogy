@@ -8,6 +8,7 @@ import {
   parentageSchema,
   personEventIdSchema,
   personIdSchema,
+  researchCheckKeySchema,
   unionIdSchema,
   updateNameVariantSchema,
   updatePersonEventSchema,
@@ -31,8 +32,7 @@ const listInput = z.object({
   place: z.string().nullable().default(null),
   bornAfter: z.iso.date().nullable().default(null),
   bornBefore: z.iso.date().nullable().default(null),
-  hasCitation: z.boolean().default(false),
-  missingBirthRecord: z.boolean().default(false),
+  missing: researchCheckKeySchema.nullable().default(null),
   hasOpenResearchNote: z.boolean().default(false),
   directAncestorsOnly: z.boolean().default(false),
   sort: z.enum(["surname_asc", "given_asc", "birth_asc", "birth_desc"]).default("surname_asc"),
@@ -192,7 +192,16 @@ export class PersonRouter {
           input.ancestorGenerations,
           input.descendantGenerations,
         );
-        return { ...tree, people: await this.redactor.people(viewerOf(ctx), tree.people) };
+        const people = await this.redactor.people(viewerOf(ctx), tree.people);
+        // A marriage date is as private as a birth date: none for a couple
+        // where either partner is shown to this viewer by name only.
+        const hidden = new Set(
+          people.filter((person) => person.redacted).map((person) => person.id),
+        );
+        const marriages = tree.marriages.filter(
+          (marriage) => !hidden.has(marriage.personAId) && !hidden.has(marriage.personBId),
+        );
+        return { ...tree, people, marriages };
       }),
 
       listNames: protectedProcedure

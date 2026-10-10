@@ -193,9 +193,26 @@ function yearOf(date: HistoricalDate | null): string | null {
   return iso ? iso.slice(0, 4) : null;
 }
 
+/** The key a couple's marriage label is found under — the same whichever partner comes first. */
+export function marriageKey(aId: string, bId: string): string {
+  return aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`;
+}
+
+/**
+ * The marriage line's text: "⚭" (the genealogical marriage sign) and the
+ * year the union started — "⚭ 1874". Undated unions get no label rather
+ * than a bare sign, which would say nothing the line doesn't.
+ */
+export function marriageLabel(startDate: HistoricalDate | null): string | null {
+  const year = yearOf(startDate);
+  return year ? `⚭ ${year}` : null;
+}
+
 /** What a tree card shows — see `CardInfo` in `card-renderer.ts`. */
 export interface TreeCard {
   name: string;
+  /** How they're related to the centre person ("Grandfather", "Farbror"), under the name; null for the centre person and anyone unrelated. */
+  relation: string | null;
   /** Up to two lines under the name — dates, then place if there's room. */
   lines: string[];
   gender: "M" | "F" | "U";
@@ -212,6 +229,8 @@ export interface TreeCard {
 
 export interface TreeCardOptions {
   name: string;
+  /** `formatKinship`'s words for this person, if the host works them out. */
+  relation?: string | null;
   photoUrl: (photoPath: string) => string;
   /** Our localized full-date display (`formatDisplayDate`), for `dateDetail: "full"`. */
   formatDate: (date: HistoricalDate) => string | null;
@@ -254,6 +273,7 @@ export function treeCard(person: TopolaSourcePerson, options: TreeCardOptions): 
     .join("");
   return {
     name: options.name,
+    relation: options.relation ?? null,
     lines,
     gender: person.gender === "M" || person.gender === "F" ? person.gender : "U",
     photoUrl: person.photoPath ? options.photoUrl(person.photoPath) : null,

@@ -690,7 +690,15 @@ function TreeSettingsForm({ initial }: { initial: TreeSettings }) {
       }}
     >
       <SettingsGroup>
-        {(["showPhotos", "showGenderBadge", "showMourningBand"] as const).map((name) => (
+        {(
+          [
+            "showPhotos",
+            "showGenderBadge",
+            "showMourningBand",
+            "showRelationshipLabels",
+            "showMarriageYear",
+          ] as const
+        ).map((name) => (
           <form.Field key={name} name={name}>
             {(field) => (
               <Switch

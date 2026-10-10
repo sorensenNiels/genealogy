@@ -2,8 +2,10 @@ import {
   calculateAge,
   formatLifespan,
   formatPersonName,
+  researchCheckKeySchema,
   resolveHistoricalDate,
   type Gender,
+  type ResearchCheckKey,
 } from "@genealogy/core";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Badge } from "@genealogy/ui/components/badge";
@@ -104,6 +106,7 @@ function People() {
   const [bornAfter, setBornAfter] = useState("");
   const [bornBefore, setBornBefore] = useState("");
   const [gender, setGender] = useState<"all" | Gender>("all");
+  const [missing, setMissing] = useState<"any" | ResearchCheckKey>("any");
   const [sort, setSort] = useState<SortOption>("surname_asc");
   const [page, setPage] = useState(0);
   const offset = page * PAGE_SIZE;
@@ -118,6 +121,7 @@ function People() {
     setBornAfter("");
     setBornBefore("");
     setGender("all");
+    setMissing("any");
     resetToFirstPage();
   };
 
@@ -139,6 +143,7 @@ function People() {
     place: place.trim() === "" ? null : place.trim(),
     bornAfter: bornAfterIso,
     bornBefore: bornBeforeIso,
+    missing: missing === "any" ? null : missing,
     sort,
   };
   const people = useQuery({
@@ -239,6 +244,24 @@ function People() {
                 resetToFirstPage();
               }}
               preview={historicalDatePreview(bornBefore, language)}
+            />
+          </LabeledField>
+
+          <LabeledField label={t("people.filterMissing")} asDiv>
+            <Select
+              aria-label={t("people.filterMissing")}
+              value={missing}
+              onValueChange={(value) => {
+                setMissing(value);
+                resetToFirstPage();
+              }}
+              options={[
+                { value: "any", label: t("people.missingAny") },
+                ...researchCheckKeySchema.options.map((key) => ({
+                  value: key,
+                  label: t(`person.checklist.item.${key}`),
+                })),
+              ]}
             />
           </LabeledField>
 
