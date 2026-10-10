@@ -16,13 +16,7 @@ import { Input } from "@genealogy/ui/components/input";
 import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
+import { Select } from "@genealogy/ui/components/select";
 import {
   Table,
   TableBody,
@@ -178,8 +172,8 @@ function People() {
         </div>
         {canEdit && (
           <Button
-            isDisabled={createPersonMutation.isPending}
-            onPress={() => createPersonMutation.mutate({ data: {} })}
+            disabled={createPersonMutation.isPending}
+            onClick={() => createPersonMutation.mutate({ data: {} })}
           >
             {createPersonMutation.isPending ? t("people.adding") : t("people.addPerson")}
           </Button>
@@ -193,7 +187,7 @@ function People() {
           titleClassName="text-base"
           contentClassName="space-y-4"
           action={
-            <Button type="button" variant="ghost" size="sm" onPress={resetFilters}>
+            <Button type="button" variant="ghost" size="sm" onClick={resetFilters}>
               {t("common.reset")}
             </Button>
           }
@@ -236,7 +230,7 @@ function People() {
           <ButtonRadioGroup
             aria-label={t("people.filterGender")}
             value={gender}
-            onChange={(value) => {
+            onValueChange={(value) => {
               setGender(value);
               resetToFirstPage();
             }}
@@ -265,28 +259,18 @@ function People() {
                 <Select
                   aria-label={t("people.sortLabel")}
                   value={sort}
-                  onChange={(value) => {
-                    if (value) {
-                      setSort(value as SortOption);
-                      resetToFirstPage();
-                    }
+                  onValueChange={(value) => {
+                    setSort(value);
+                    resetToFirstPage();
                   }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(sortLabels(t)).map(([value, label]) => (
-                      <SelectItem key={value} id={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={(Object.entries(sortLabels(t)) as [SortOption, string][]).map(
+                    ([value, label]) => ({ value, label }),
+                  )}
+                />
                 <ButtonRadioGroup
                   aria-label={t("people.viewModeLabel")}
                   value={viewMode}
-                  onChange={(value) => {
+                  onValueChange={(value) => {
                     setViewMode(value);
                     resetToFirstPage();
                   }}
@@ -376,16 +360,16 @@ function People() {
                 <Button
                   variant="outline"
                   size="sm"
-                  isDisabled={page === 0}
-                  onPress={() => setPage((current) => current - 1)}
+                  disabled={page === 0}
+                  onClick={() => setPage((current) => current - 1)}
                 >
                   {t("people.previous")}
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  isDisabled={offset + PAGE_SIZE >= total}
-                  onPress={() => setPage((current) => current + 1)}
+                  disabled={offset + PAGE_SIZE >= total}
+                  onClick={() => setPage((current) => current + 1)}
                 >
                   {t("people.next")}
                 </Button>
@@ -554,7 +538,7 @@ function DeletePersonAction({ person }: { person: PersonListItem }) {
             variant="ghost"
             size="icon"
             aria-label={t("people.deleteAriaLabel", { name: formatPersonName(person) })}
-            isDisabled={removePersonMutation.isPending}
+            disabled={removePersonMutation.isPending}
           >
             <Trash2Icon className="size-4 text-destructive" />
           </Button>

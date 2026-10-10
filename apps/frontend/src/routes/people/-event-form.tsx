@@ -13,13 +13,7 @@ import { Input } from "@genealogy/ui/components/input";
 import { MarkdownEditor } from "@genealogy/ui/components/markdown-editor";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
+import { Select } from "@genealogy/ui/components/select";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation } from "@tanstack/react-query";
@@ -209,28 +203,14 @@ export function EventForm({
         // ever just one canonical row of each), not selectable here — but an
         // existing one, once created, stays fully editable otherwise (date,
         // place, detail like cause of death).
-        isDisabled={VITAL_EVENT_TYPES.has(initialEventType)}
-        onChange={(value) => {
-          if (value) setEventType(eventTypeSchema.parse(value));
-        }}
-      >
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {optionsFor(options, "event_type")
-            // The disabled trigger above still needs its own current option
-            // present to render a label from, when that's "birth"/"death".
-            .filter(
-              (option) => !VITAL_EVENT_TYPES.has(option.key) || option.key === initialEventType,
-            )
-            .map((option) => (
-              <SelectItem key={option.key} id={option.key}>
-                {option.label}
-              </SelectItem>
-            ))}
-        </SelectContent>
-      </Select>
+        disabled={VITAL_EVENT_TYPES.has(initialEventType)}
+        onValueChange={(value) => setEventType(eventTypeSchema.parse(value))}
+        options={optionsFor(options, "event_type")
+          // The disabled trigger still needs its own current option present
+          // to render a label from, when that's "birth"/"death".
+          .filter((option) => !VITAL_EVENT_TYPES.has(option.key) || option.key === initialEventType)
+          .map((option) => ({ value: option.key, label: option.label }))}
+      />
       {eventType === "other" && (
         <form.Field name="label">
           {(field) => (
@@ -292,7 +272,7 @@ export function EventForm({
         />
       )}
       <DialogFooter>
-        <SaveButton isDirty={isDirty} isPending={isSubmitting} isDisabled={needsLabel}>
+        <SaveButton isDirty={isDirty} isPending={isSubmitting} disabled={needsLabel}>
           {event ? t("common.save") : t("common.add")}
         </SaveButton>
       </DialogFooter>
@@ -347,7 +327,7 @@ function EventCitations({
           <p className="text-xs font-medium text-muted-foreground uppercase">
             {t("person.events.addCitation")}
           </p>
-          <Button type="button" variant="ghost" size="sm" onPress={() => setMode("list")}>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setMode("list")}>
             {t("person.events.back")}
           </Button>
         </div>
@@ -377,7 +357,7 @@ function EventCitations({
         <p className="text-xs font-medium text-muted-foreground uppercase">
           {t("person.events.sources")}
         </p>
-        <Button type="button" variant="ghost" size="sm" onPress={() => setMode("add")}>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setMode("add")}>
           + {t("person.events.addCitation")}
         </Button>
       </div>

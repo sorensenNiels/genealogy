@@ -5,43 +5,26 @@ import {
   type Parentage,
   type Gender,
 } from "@genealogy/core";
+import { AddButton } from "@genealogy/ui/components/add-button";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button } from "@genealogy/ui/components/button";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-} from "@genealogy/ui/components/combobox";
 import { DialogFooter } from "@genealogy/ui/components/dialog";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import { Input } from "@genealogy/ui/components/input";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
-import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
+import { Select } from "@genealogy/ui/components/select";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { useForm } from "@tanstack/react-form";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { PlusIcon, UnlinkIcon } from "lucide-react";
+import { UnlinkIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { GenderIcon, labelFor, optionsFor } from "../../lib/person-display";
-import {
-  createPerson,
-  linkParent,
-  listPersons,
-  unlinkParent,
-} from "../../server/functions/person.functions";
+import { PersonPicker } from "../-person-picker";
+import { labelFor, optionsFor } from "../../lib/person-display";
+import { createPerson, linkParent, unlinkParent } from "../../server/functions/person.functions";
 import type { ConfigurableOptionRow, ParentRow, PersonRow } from "./-types";
 
 /**
@@ -222,20 +205,9 @@ function AddParentSlot({
   onChanged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"search" | "create">("search");
-  const [query, setQuery] = useState("");
-
-  const trimmedQuery = query.trim();
-  const searchInput = { limit: 10, offset: 0, search: trimmedQuery === "" ? null : trimmedQuery };
-  const search = useQuery({
-    queryKey: ["person", "list", searchInput],
-    queryFn: () => listPersons({ data: searchInput }),
-    enabled: open && mode === "search",
-  });
 
   const linkParentMutation = useMutation({ mutationFn: linkParent });
-  const options = (search.data?.items ?? []).filter((candidate) => !excludeIds.has(candidate.id));
   const lowerLabel = label.toLowerCase();
 
   const link = async (target: PersonRow, close: () => void) => {
@@ -255,10 +227,8 @@ function AddParentSlot({
       }
       title={t("person.family.addLabelTitle", { label: lowerLabel })}
       onOpenChange={(next) => {
-        setOpen(next);
         if (!next) {
           setMode("search");
-          setQuery("");
         }
       }}
     >
@@ -266,45 +236,23 @@ function AddParentSlot({
         <div className="space-y-3">
           {mode === "search" ? (
             <>
-              <Combobox<PersonRow>
+              <PersonPicker
                 aria-label={t("person.family.searchForLabel", { label: lowerLabel })}
-                items={options}
-                inputValue={query}
-                onInputChange={setQuery}
-                onChange={(value) => {
-                  const target = options.find((candidate) => candidate.id === value);
-                  if (target) void link(target, close);
-                }}
-              >
-                <ComboboxInput placeholder={t("person.family.searchPeople")} />
-                <ComboboxContent<PersonRow>
-                  renderEmptyState={() => (
-                    <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>
-                  )}
-                >
-                  {(item) => (
-                    <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-                      <span className="flex items-center gap-1.5">
-                        <GenderIcon gender={item.gender} className="size-3.5" />
-                        {formatPersonName(item)}
-                        {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
-                      </span>
-                    </ComboboxItem>
-                  )}
-                </ComboboxContent>
-              </Combobox>
+                onSelect={(person) => void link(person, close)}
+                excludeIds={excludeIds}
+              />
               <Button
                 variant="ghost"
                 size="sm"
                 className="w-full"
-                onPress={() => setMode("create")}
+                onClick={() => setMode("create")}
               >
                 {t("person.family.createNewPerson")}
               </Button>
             </>
           ) : (
             <>
-              <Button variant="ghost" size="sm" onPress={() => setMode("search")}>
+              <Button variant="ghost" size="sm" onClick={() => setMode("search")}>
                 {t("person.family.searchInstead")}
               </Button>
               <CreateAndLinkParentForm
@@ -337,21 +285,10 @@ function AddOtherParent({
   onChanged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"search" | "create">("search");
-  const [query, setQuery] = useState("");
   const [parentage, setParentage] = useState<Parentage>("unknown");
 
-  const trimmedQuery = query.trim();
-  const searchInput = { limit: 10, offset: 0, search: trimmedQuery === "" ? null : trimmedQuery };
-  const search = useQuery({
-    queryKey: ["person", "list", searchInput],
-    queryFn: () => listPersons({ data: searchInput }),
-    enabled: open && mode === "search",
-  });
-
   const linkParentMutation = useMutation({ mutationFn: linkParent });
-  const options = (search.data?.items ?? []).filter((candidate) => !excludeIds.has(candidate.id));
 
   const link = async (target: PersonRow, close: () => void) => {
     await linkParentMutation.mutateAsync({
@@ -363,20 +300,11 @@ function AddOtherParent({
 
   return (
     <FormDialog
-      trigger={
-        <Tooltip>
-          <Button variant="outline" size="icon" aria-label={t("person.family.addOtherParent")}>
-            <PlusIcon className="size-4" />
-          </Button>
-          <TooltipContent>{t("person.family.addOtherParent")}</TooltipContent>
-        </Tooltip>
-      }
+      trigger={<AddButton label={t("person.family.addOtherParent")} />}
       title={t("person.family.addOtherParent")}
       onOpenChange={(next) => {
-        setOpen(next);
         if (!next) {
           setMode("search");
-          setQuery("");
         }
       }}
     >
@@ -385,59 +313,32 @@ function AddOtherParent({
           <Select
             aria-label={t("person.family.parentage")}
             value={parentage}
-            onChange={(value) => {
+            onValueChange={(value) => {
               if (value) setParentage(parentageSchema.parse(value));
             }}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {optionsFor(allOptions, "parentage").map((option) => (
-                <SelectItem key={option.key} id={option.key}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={optionsFor(allOptions, "parentage").map((option) => ({
+              value: option.key,
+              label: option.label,
+            }))}
+          />
           {mode === "search" ? (
             <>
-              <Combobox<PersonRow>
-                aria-label={t("person.family.searchPeople")}
-                items={options}
-                inputValue={query}
-                onInputChange={setQuery}
-                onChange={(value) => {
-                  const target = options.find((candidate) => candidate.id === value);
-                  if (target) void link(target, close);
-                }}
-              >
-                <ComboboxInput placeholder={t("person.family.searchPeople")} />
-                <ComboboxContent<PersonRow>
-                  renderEmptyState={() => (
-                    <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>
-                  )}
-                >
-                  {(item) => (
-                    <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-                      {formatPersonName(item)}
-                      {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
-                    </ComboboxItem>
-                  )}
-                </ComboboxContent>
-              </Combobox>
+              <PersonPicker
+                onSelect={(person) => void link(person, close)}
+                excludeIds={excludeIds}
+              />
               <Button
                 variant="ghost"
                 size="sm"
                 className="w-full"
-                onPress={() => setMode("create")}
+                onClick={() => setMode("create")}
               >
                 {t("person.family.createNewPerson")}
               </Button>
             </>
           ) : (
             <>
-              <Button variant="ghost" size="sm" onPress={() => setMode("search")}>
+              <Button variant="ghost" size="sm" onClick={() => setMode("search")}>
                 {t("person.family.searchInstead")}
               </Button>
               <CreateAndLinkParentForm

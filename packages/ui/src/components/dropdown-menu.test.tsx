@@ -1,74 +1,50 @@
-import { User } from "@react-aria/test-utils";
-import { render } from "@testing-library/react";
-import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 
 import { Button } from "./button";
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "./dropdown-menu";
 
-const testUtilUser = new User({ interactionType: "mouse" });
-
-function AccountMenu({ onAction }: { onAction?: (key: string) => void }) {
-  const [lastAction, setLastAction] = useState<string | null>(null);
+function Example({ onSignOut = () => {} }: { onSignOut?: () => void }) {
   return (
-    <div data-testid="account-menu">
-      <DropdownMenu>
-        <Button variant="ghost">Account</Button>
-        <DropdownMenuContent>
-          <DropdownMenuItem
-            id="profile"
-            onAction={() => {
-              setLastAction("profile");
-              onAction?.("profile");
-            }}
-          >
-            Profile settings
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            id="sign-out"
-            onAction={() => {
-              setLastAction("sign-out");
-              onAction?.("sign-out");
-            }}
-          >
-            Sign out
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <p data-testid="last-action">{lastAction}</p>
-    </div>
+    <DropdownMenu
+      trigger={<Button>Account</Button>}
+      header={<DropdownMenuLabel>karen@example.com</DropdownMenuLabel>}
+    >
+      <DropdownMenuItem>Profile settings</DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem variant="destructive" onClick={onSignOut}>
+        Sign out
+      </DropdownMenuItem>
+    </DropdownMenu>
   );
 }
 
 describe("DropdownMenu", () => {
-  it("is closed until opened, then lists every item", async () => {
-    const { getByTestId } = render(<AccountMenu />);
-    const tester = testUtilUser.createTester("Menu", { root: getByTestId("account-menu") });
+  it("is closed until opened, then shows its header and every item", async () => {
+    render(<Example />);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 
-    expect(tester.getMenu()).toBeNull();
-    await tester.open();
-    expect(tester.getOptions().map((option) => option.textContent)).toEqual([
+    await userEvent.click(screen.getByRole("button", { name: "Account" }));
+    await screen.findByRole("menu");
+    expect(screen.getByText("karen@example.com")).toBeInTheDocument();
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
       "Profile settings",
       "Sign out",
     ]);
   });
 
-  it("runs the item's action and closes when one is chosen", async () => {
-    let lastAction: string | undefined;
-    const { getByTestId } = render(<AccountMenu onAction={(key) => (lastAction = key)} />);
-    const tester = testUtilUser.createTester("Menu", { root: getByTestId("account-menu") });
-
-    await tester.open();
-    await tester.toggleOptionSelection({ option: "Sign out" });
-
-    expect(lastAction).toBe("sign-out");
-    expect(getByTestId("last-action")).toHaveTextContent("sign-out");
-    expect(tester.getMenu()).toBeNull();
+  it("runs the item's onClick and closes when one is chosen", async () => {
+    const onSignOut = vi.fn<() => void>();
+    render(<Example onSignOut={onSignOut} />);
+    await userEvent.click(screen.getByRole("button", { name: "Account" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+    expect(onSignOut).toHaveBeenCalledOnce();
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
   });
 });

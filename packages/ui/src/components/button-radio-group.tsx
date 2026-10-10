@@ -1,10 +1,6 @@
+import { Radio } from "@base-ui/react/radio";
+import { RadioGroup } from "@base-ui/react/radio-group";
 import type { ReactNode } from "react";
-import {
-  RadioButton,
-  RadioField,
-  RadioGroup as RACRadioGroup,
-  type RadioGroupProps as RACRadioGroupProps,
-} from "react-aria-components";
 
 import { useReadOnly } from "../lib/read-only";
 import { cn } from "../lib/utils";
@@ -14,59 +10,56 @@ export interface ButtonRadioGroupOption<T extends string> {
   label: ReactNode;
 }
 
-export interface ButtonRadioGroupProps<T extends string> extends Omit<
-  RACRadioGroupProps,
-  "children" | "value" | "onChange" | "className"
-> {
+export interface ButtonRadioGroupProps<T extends string> {
   value: T;
-  onChange: (value: T) => void;
-  options: ButtonRadioGroupOption<T>[];
-  className?: string;
+  onValueChange: (value: T) => void;
+  options: readonly ButtonRadioGroupOption<T>[];
+  "aria-label"?: string | undefined;
+  "aria-labelledby"?: string | undefined;
+  disabled?: boolean | undefined;
+  className?: string | undefined;
 }
 
 const optionClassName = cn(
-  "inline-flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md border px-4 py-2 text-sm font-medium whitespace-nowrap shadow-xs transition-all outline-none",
-  "border-input bg-secondary text-secondary-foreground data-hovered:bg-secondary/80",
-  "data-selected:border-primary data-selected:bg-primary data-selected:text-primary-foreground data-selected:data-hovered:bg-primary/90",
-  "data-focus-visible:ring-[3px] data-focus-visible:ring-ring/50",
+  "inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 text-sm font-medium whitespace-nowrap transition-colors outline-none select-none",
+  "border-input bg-secondary text-secondary-foreground hover:bg-secondary/80",
+  "data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground data-checked:hover:bg-primary/90",
+  "focus-visible:ring-3 focus-visible:ring-ring/50",
   "data-disabled:pointer-events-none data-disabled:opacity-50",
 );
 
 /**
  * A radio group that reads as a row of buttons — the selected option filled
- * like the primary button, the rest like secondary buttons — rather than the
- * usual dot-plus-label radio layout. Built on React Aria's
- * RadioGroup/RadioField/RadioButton (roving tabindex, arrow-key navigation
- * and the radiogroup/radio ARIA roles come for free) instead of a row of
- * plain buttons with hand-rolled aria-pressed/keyboard bookkeeping. Uses
- * RadioField/RadioButton rather than the older `Radio` (react-aria-components
- * deprecated it in favor of this split).
+ * like the primary button, the rest like secondary ones — rather than dots
+ * and labels. Base UI's RadioGroup/Radio underneath, so it's still a
+ * `radiogroup` of `radio`s with arrow-key navigation, not a row of toggle
+ * buttons. Read-only inside a `ReadOnlyProvider`.
  */
 export function ButtonRadioGroup<T extends string>({
   value,
-  onChange,
+  onValueChange,
   options,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledby,
+  disabled,
   className,
-  ...props
 }: ButtonRadioGroupProps<T>) {
   const isReadOnly = useReadOnly();
   return (
-    <RACRadioGroup
-      {...(isReadOnly ? { isReadOnly: true } : {})}
+    <RadioGroup
       value={value}
-      onChange={(next) => onChange(next as T)}
-      orientation="horizontal"
-      className={cn("flex gap-2", className)}
-      {...props}
+      onValueChange={(next) => onValueChange(next as T)}
+      readOnly={isReadOnly}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledby}
+      className={cn("flex flex-wrap gap-2", className)}
     >
       {options.map((option) => (
-        // `contents` keeps this wrapper out of the flex layout — RadioButton
-        // (a label) is the element that should actually size and gap like a
-        // button, not this div React Aria requires around it.
-        <RadioField key={option.value} value={option.value} className="contents">
-          <RadioButton className={optionClassName}>{option.label}</RadioButton>
-        </RadioField>
+        <Radio.Root key={option.value} value={option.value} className={optionClassName}>
+          {option.label}
+        </Radio.Root>
       ))}
-    </RACRadioGroup>
+    </RadioGroup>
   );
 }

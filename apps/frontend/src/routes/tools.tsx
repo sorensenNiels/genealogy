@@ -30,6 +30,7 @@ import { useTranslation } from "react-i18next";
 import { toSupportedLanguage } from "../i18n/create-i18n-instance";
 import { formatDisplayDate } from "../lib/format-date";
 import { useImmichAvailable } from "../lib/immich-status";
+import { useIsLocalhost } from "../lib/localhost";
 import { createBackup } from "../server/functions/backup.functions";
 import {
   exportGedcom,
@@ -65,6 +66,13 @@ function toolLabels(t: TFunction): Record<Tool, string> {
   };
 }
 
+/**
+ * Development tools: pages for working on the app itself, not on the tree.
+ * Linked from the Tools page only when browsing on localhost (see
+ * `useIsLocalhost`); each is its own route, so it opens full-width.
+ */
+const DEV_TOOLS = [{ to: "/dev/components", labelKey: "tools.devTool.components" }] as const;
+
 const RESTORE_CONFIRMATION_TEXT = "RESTORE";
 
 export const Route = createFileRoute("/tools")({
@@ -87,6 +95,7 @@ function ToolsRoute() {
   // for infrastructure that isn't available.
   const immichAvailable = useImmichAvailable();
   const visibleTools = TOOLS.filter((option) => option !== "immich-faces" || immichAvailable);
+  const isLocalhost = useIsLocalhost();
 
   return (
     <div className="space-y-6">
@@ -108,6 +117,28 @@ function ToolsRoute() {
               </Link>
             ))}
           </nav>
+          {isLocalhost && (
+            <nav
+              aria-labelledby="dev-tools-heading"
+              className="mt-4 flex flex-col gap-1 border-t pt-4"
+            >
+              <h3
+                id="dev-tools-heading"
+                className="px-3 pb-1 text-xs font-medium text-muted-foreground uppercase"
+              >
+                {t("tools.devNav")}
+              </h3>
+              {DEV_TOOLS.map((devTool) => (
+                <Link
+                  key={devTool.to}
+                  to={devTool.to}
+                  className="rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  {t(devTool.labelKey)}
+                </Link>
+              ))}
+            </nav>
+          )}
         </SectionCard>
         {tool === "backup" && <BackupPanel />}
         {tool === "restore" && <RestorePanel />}
@@ -139,8 +170,8 @@ function BackupPanel() {
       <p className="text-sm text-muted-foreground">{t("tools.backupDescription")}</p>
       <div className="mt-4">
         <Button
-          isDisabled={createBackupMutation.isPending}
-          onPress={() => createBackupMutation.mutate()}
+          disabled={createBackupMutation.isPending}
+          onClick={() => createBackupMutation.mutate()}
         >
           <DatabaseBackupIcon className="size-4" aria-hidden="true" />
           {createBackupMutation.isPending ? t("tools.starting") : t("tools.startBackup")}
@@ -156,8 +187,8 @@ function BackupPanel() {
           <div className="mt-4">
             <Button
               variant="outline"
-              isDisabled={albumZipMutation.isPending}
-              onPress={() => albumZipMutation.mutate()}
+              disabled={albumZipMutation.isPending}
+              onClick={() => albumZipMutation.mutate()}
             >
               <DatabaseBackupIcon className="size-4" aria-hidden="true" />
               {albumZipMutation.isPending ? t("tools.queuing") : t("tools.downloadAllAlbums")}
@@ -223,8 +254,8 @@ function RestorePanel() {
 
         <Button
           variant="destructive"
-          isDisabled={!file || !isConfirmed || restoreMutation.isPending}
-          onPress={() => restoreMutation.mutate()}
+          disabled={!file || !isConfirmed || restoreMutation.isPending}
+          onClick={() => restoreMutation.mutate()}
         >
           <UploadIcon className="size-4" aria-hidden="true" />
           {restoreMutation.isPending ? t("tools.uploading") : t("tools.restoreDatabase")}
@@ -259,7 +290,7 @@ function FaceRescanPanel() {
     <SectionCard title={toolLabels(t)["immich-faces"]}>
       <p className="text-sm text-muted-foreground">{t("tools.faceRescanDescription")}</p>
       <div className="mt-4">
-        <Button isDisabled={rescanMutation.isPending} onPress={() => rescanMutation.mutate()}>
+        <Button disabled={rescanMutation.isPending} onClick={() => rescanMutation.mutate()}>
           <ScanFaceIcon className="size-4" aria-hidden="true" />
           {rescanMutation.isPending ? t("tools.starting") : t("tools.rescanForFaces")}
         </Button>
@@ -298,7 +329,7 @@ function GedcomExportPanel() {
         <ButtonRadioGroup
           aria-label={t("tools.gedcomVersion")}
           value={version}
-          onChange={setVersion}
+          onValueChange={setVersion}
           options={[
             { value: "5.5.1", label: t("tools.gedcomVersion551") },
             { value: "7.0", label: t("tools.gedcomVersion70") },
@@ -309,7 +340,7 @@ function GedcomExportPanel() {
         </p>
       </div>
       <div className="mt-4">
-        <Button isDisabled={exportMutation.isPending} onPress={() => exportMutation.mutate()}>
+        <Button disabled={exportMutation.isPending} onClick={() => exportMutation.mutate()}>
           <FileDownIcon className="size-4" aria-hidden="true" />
           {exportMutation.isPending ? t("tools.exporting") : t("tools.exportGedcom")}
         </Button>
@@ -484,8 +515,8 @@ function GedcomImportPanel() {
                   <Button
                     variant="outline"
                     size="sm"
-                    isDisabled={previewMutation.isPending}
-                    onPress={() => previewMutation.mutate(file.input)}
+                    disabled={previewMutation.isPending}
+                    onClick={() => previewMutation.mutate(file.input)}
                   >
                     {t("tools.gedcomImport.checkAgain")}
                   </Button>
@@ -528,8 +559,8 @@ function GedcomImportPanel() {
             )}
 
             <Button
-              isDisabled={preview.counts.persons === 0 || importMutation.isPending}
-              onPress={() => importMutation.mutate(file.input)}
+              disabled={preview.counts.persons === 0 || importMutation.isPending}
+              onClick={() => importMutation.mutate(file.input)}
             >
               <FileUpIcon className="size-4" aria-hidden="true" />
               {importMutation.isPending
@@ -594,7 +625,7 @@ function PresumedDeceasedPanel() {
     <SectionCard title={toolLabels(t)["presumed-deceased"]}>
       <p className="text-sm text-muted-foreground">{t("tools.presumedDeceased.description")}</p>
       <div className="mt-4">
-        <Button isDisabled={checkMutation.isPending} onPress={() => checkMutation.mutate()}>
+        <Button disabled={checkMutation.isPending} onClick={() => checkMutation.mutate()}>
           {checkMutation.isPending ? t("tools.checking") : t("tools.presumedDeceased.check")}
         </Button>
       </div>
@@ -648,7 +679,7 @@ function PresumedDeceasedPanel() {
                 actionLabel={t("tools.presumedDeceased.confirmAction")}
                 onConfirm={() => markMutation.mutate()}
                 trigger={
-                  <Button isDisabled={markMutation.isPending}>
+                  <Button disabled={markMutation.isPending}>
                     {t("tools.presumedDeceased.markAll", { count: result.people.length })}
                   </Button>
                 }
@@ -674,7 +705,7 @@ function DataIntegrityPanel() {
     <SectionCard title={toolLabels(t)["data-integrity"]}>
       <p className="text-sm text-muted-foreground">{t("tools.dataIntegrityDescription")}</p>
       <div className="mt-4">
-        <Button isDisabled={checkMutation.isPending} onPress={() => checkMutation.mutate()}>
+        <Button disabled={checkMutation.isPending} onClick={() => checkMutation.mutate()}>
           <SearchCheckIcon className="size-4" aria-hidden="true" />
           {checkMutation.isPending ? t("tools.checking") : t("tools.runCheck")}
         </Button>
@@ -781,7 +812,7 @@ function GraphConsistencyPanel() {
     <SectionCard title={toolLabels(t)["graph-consistency"]}>
       <p className="text-sm text-muted-foreground">{t("tools.graphConsistencyDescription")}</p>
       <div className="mt-4">
-        <Button isDisabled={checkMutation.isPending} onPress={() => checkMutation.mutate()}>
+        <Button disabled={checkMutation.isPending} onClick={() => checkMutation.mutate()}>
           <SearchCheckIcon className="size-4" aria-hidden="true" />
           {checkMutation.isPending ? t("tools.checking") : t("tools.runCheck")}
         </Button>

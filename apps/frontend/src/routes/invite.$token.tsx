@@ -77,7 +77,7 @@ function InvitePage() {
           <Button
             variant="outline"
             className="w-full"
-            onPress={() =>
+            onClick={() =>
               authClient.signIn.social({
                 provider: "google",
                 callbackURL: "/",
@@ -166,7 +166,7 @@ function SignUpForm({ token, email }: { token: string; email: string }) {
           <Button
             type="submit"
             className="w-full"
-            isDisabled={name.trim() === "" || password.length < 8}
+            disabled={name.trim() === "" || password.length < 8}
           >
             {t("invite.createAccount")}
           </Button>

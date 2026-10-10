@@ -9,11 +9,7 @@ import { Badge } from "@genealogy/ui/components/badge";
 import { Button, buttonVariants } from "@genealogy/ui/components/button";
 import { Card, CardContent } from "@genealogy/ui/components/card";
 import { CopyableText } from "@genealogy/ui/components/copyable-text";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@genealogy/ui/components/dropdown-menu";
+import { DropdownMenu, DropdownMenuItem } from "@genealogy/ui/components/dropdown-menu";
 import { ProgressBar } from "@genealogy/ui/components/progress-bar";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { cn } from "@genealogy/ui/lib/utils";
@@ -272,37 +268,38 @@ function PersonPhoto({
         }}
       />
       {immichAvailable ? (
-        <DropdownMenu>
-          <Button
-            variant="ghost"
-            className={cn("group relative p-0", dimensionClass, roundingClass)}
-            isDisabled={uploading}
-            aria-label={photoUrl ? t("person.photo.change") : t("person.photo.upload")}
-          >
-            <PersonPhotoAvatar
-              person={person}
-              photoUrl={photoUrl}
-              size={size}
-              roundingClass={roundingClass}
-              dimensionClass={dimensionClass}
-              uploading={uploading}
-            />
-          </Button>
-          <DropdownMenuContent>
-            <DropdownMenuItem onAction={() => fileInputRef.current?.click()}>
-              {t("person.photo.uploadAPhoto")}
-            </DropdownMenuItem>
-            <DropdownMenuItem onAction={() => setImmichPickerOpen(true)}>
-              {t("person.photo.chooseFromImmich")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
+        <DropdownMenu
+          trigger={
+            <Button
+              variant="ghost"
+              className={cn("group relative p-0", dimensionClass, roundingClass)}
+              disabled={uploading}
+              aria-label={photoUrl ? t("person.photo.change") : t("person.photo.upload")}
+            >
+              <PersonPhotoAvatar
+                person={person}
+                photoUrl={photoUrl}
+                size={size}
+                roundingClass={roundingClass}
+                dimensionClass={dimensionClass}
+                uploading={uploading}
+              />
+            </Button>
+          }
+        >
+          <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+            {t("person.photo.uploadAPhoto")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setImmichPickerOpen(true)}>
+            {t("person.photo.chooseFromImmich")}
+          </DropdownMenuItem>
         </DropdownMenu>
       ) : (
         <Button
           variant="ghost"
           className={cn("group relative p-0", dimensionClass, roundingClass)}
-          isDisabled={uploading}
-          onPress={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
           aria-label={photoUrl ? t("person.photo.change") : t("person.photo.upload")}
         >
           <PersonPhotoAvatar

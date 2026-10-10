@@ -100,7 +100,7 @@ function PrintRoute() {
         >
           {t("person.print.backToRecord")}
         </Link>
-        <Button onPress={() => window.print()}>{t("person.print.print")}</Button>
+        <Button onClick={() => window.print()}>{t("person.print.print")}</Button>
       </div>
 
       <div className="space-y-6">

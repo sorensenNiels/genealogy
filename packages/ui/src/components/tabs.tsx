@@ -1,72 +1,59 @@
-import {
-  Tab,
-  TabList,
-  TabPanel,
-  TabPanels,
-  Tabs as RACTabs,
-  type TabListProps,
-  type TabPanelProps,
-  type TabPanelsProps,
-  type TabProps,
-  type TabsProps,
-} from "react-aria-components";
+import type { ReactNode } from "react";
 
-import { cn } from "../lib/utils";
+import { Tabs as TabsRoot, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
-export function Tabs({ className, ...props }: TabsProps) {
-  return (
-    <RACTabs
-      data-slot="tabs"
-      className={cn("flex flex-col gap-2", typeof className === "string" ? className : undefined)}
-      {...props}
-    />
-  );
+export interface TabItem<V extends string = string> {
+  value: V;
+  label: ReactNode;
+  content: ReactNode;
+  disabled?: boolean | undefined;
 }
 
-export function TabsList<T extends object>({ className, ...props }: TabListProps<T>) {
-  return (
-    <TabList
-      data-slot="tabs-list"
-      className={cn(
-        "inline-flex w-fit items-center gap-1 rounded-lg bg-muted p-1 text-muted-foreground",
-        typeof className === "string" ? className : undefined,
-      )}
-      {...props}
-    />
-  );
-}
-
-export function TabsTrigger({ className, ...props }: TabProps) {
-  return (
-    <Tab
-      data-slot="tabs-trigger"
-      className={cn(
-        "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors outline-none data-disabled:pointer-events-none data-disabled:opacity-50 data-focus-visible:ring-[3px] data-focus-visible:ring-ring/50 data-selected:bg-background data-selected:text-foreground data-selected:shadow-sm",
-        typeof className === "string" ? className : undefined,
-      )}
-      {...props}
-    />
-  );
+export interface TabsProps<V extends string = string> {
+  tabs: readonly TabItem<V>[];
+  /** Controlled selection; leave out (and use `defaultValue`) to let Tabs own it. */
+  value?: V | undefined;
+  defaultValue?: V | undefined;
+  onValueChange?: ((value: V) => void) | undefined;
+  /** Names the tab list for screen readers — there's no visible heading for it. */
+  "aria-label": string;
+  variant?: "default" | "line" | undefined;
+  className?: string | undefined;
 }
 
 /**
- * React Aria requires every `TabsContent` to live inside one collection
- * container — unlike shadcn's Radix-based Tabs, which lets each content panel
- * stand alone. Wrap all of a `Tabs`'s `TabsContent` children in this once.
+ * Tabs from a list of `{ value, label, content }` — the list and its panels
+ * are built from the same array, so a tab can't lose its panel or the other
+ * way round. Only the active panel is mounted (Base UI's default), so a
+ * panel's queries don't run until it's shown.
  */
-export function TabsPanels<T extends object>(props: TabPanelsProps<T>) {
-  return <TabPanels {...props} />;
-}
-
-export function TabsContent({ className, ...props }: TabPanelProps) {
+export function Tabs<V extends string = string>({
+  tabs,
+  value,
+  defaultValue = tabs[0]?.value,
+  onValueChange,
+  "aria-label": ariaLabel,
+  variant,
+  className,
+}: TabsProps<V>) {
   return (
-    <TabPanel
-      data-slot="tabs-content"
-      className={cn(
-        "flex-1 text-sm outline-none data-focus-visible:ring-[3px] data-focus-visible:ring-ring/50",
-        typeof className === "string" ? className : undefined,
-      )}
-      {...props}
-    />
+    <TabsRoot
+      {...(value === undefined ? { defaultValue } : { value })}
+      onValueChange={(next) => onValueChange?.(next as V)}
+      className={className}
+    >
+      <TabsList aria-label={ariaLabel} variant={variant}>
+        {tabs.map((tab) => (
+          <TabsTrigger key={tab.value} value={tab.value} disabled={tab.disabled}>
+            {tab.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {tabs.map((tab) => (
+        <TabsContent key={tab.value} value={tab.value}>
+          {tab.content}
+        </TabsContent>
+      ))}
+    </TabsRoot>
   );
 }

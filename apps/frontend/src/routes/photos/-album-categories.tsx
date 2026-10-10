@@ -14,7 +14,7 @@ import { cn } from "@genealogy/ui/lib/utils";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PencilIcon, PlusIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState, type ReactNode, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -114,7 +114,7 @@ export function CategoriesPanel({
             label={t("albumCategories.all")}
             count={albums.length}
             isSelected={selected === "all"}
-            onPress={() => onSelect("all")}
+            onClick={() => onSelect("all")}
           />
           {categories.map((category) => (
             <CategoryRow
@@ -123,7 +123,7 @@ export function CategoriesPanel({
               color={category.color}
               count={counts.get(category.id) ?? 0}
               isSelected={selected === category.id}
-              onPress={() => onSelect(category.id)}
+              onClick={() => onSelect(category.id)}
               edit={
                 <CategoryFormDialog
                   category={category}
@@ -150,7 +150,7 @@ export function CategoriesPanel({
             label={t("albumCategories.uncategorised")}
             count={uncategorised}
             isSelected={selected === "uncategorised"}
-            onPress={() => onSelect("uncategorised")}
+            onClick={() => onSelect("uncategorised")}
             isMuted
           />
         </ul>
@@ -164,7 +164,7 @@ function CategoryRow({
   color,
   count,
   isSelected,
-  onPress,
+  onClick,
   edit,
   isMuted = false,
 }: {
@@ -172,7 +172,7 @@ function CategoryRow({
   color?: string;
   count: number;
   isSelected: boolean;
-  onPress: () => void;
+  onClick: () => void;
   edit?: ReactNode;
   isMuted?: boolean;
 }) {
@@ -183,7 +183,7 @@ function CategoryRow({
       <button
         type="button"
         aria-pressed={isSelected}
-        onClick={onPress}
+        onClick={onClick}
         className={cn(
           "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
           isSelected && "bg-accent font-medium",
@@ -207,7 +207,7 @@ function CategoryFormDialog({
   onDeleted,
 }: {
   category?: AlbumCategory;
-  trigger: ReactNode;
+  trigger: ReactElement;
   onSaved: (category: AlbumCategory) => void;
   onDeleted?: () => void;
 }) {
@@ -299,7 +299,7 @@ function CategoryForm({
         <ColorSwatchPicker
           aria-label={t("albumCategories.color")}
           value={color}
-          onChange={(value) => form.setFieldValue("color", value)}
+          onValueChange={(value) => form.setFieldValue("color", value)}
           colors={ALBUM_CATEGORY_COLORS}
         />
       </LabeledField>
@@ -319,7 +319,7 @@ function CategoryForm({
             }
           />
         )}
-        <SaveButton isDirty={isDirty} isPending={isSubmitting} isDisabled={name.trim() === ""}>
+        <SaveButton isDirty={isDirty} isPending={isSubmitting} disabled={name.trim() === ""}>
           {category ? t("common.save") : t("albumCategories.create")}
         </SaveButton>
       </DialogFooter>
@@ -370,10 +370,10 @@ export function AlbumCategoryPicker({
           {list.map((category) => (
             <Checkbox
               key={category.id}
-              isSelected={value.includes(category.id)}
-              onChange={(isSelected) =>
+              checked={value.includes(category.id)}
+              onCheckedChange={(checked) =>
                 onChange(
-                  isSelected ? [...value, category.id] : value.filter((id) => id !== category.id),
+                  checked ? [...value, category.id] : value.filter((id) => id !== category.id),
                 )
               }
             >
@@ -400,8 +400,8 @@ export function AlbumCategoryPicker({
         <Button
           type="button"
           variant="outline"
-          onPress={add}
-          isDisabled={newName.trim() === "" || createMutation.isPending}
+          onClick={add}
+          disabled={newName.trim() === "" || createMutation.isPending}
         >
           {t("albumCategories.add")}
         </Button>

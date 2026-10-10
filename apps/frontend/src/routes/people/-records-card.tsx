@@ -8,18 +8,14 @@ import {
   recordTypeSchema,
   type RecordType,
 } from "@genealogy/core";
+import { AddButton } from "@genealogy/ui/components/add-button";
 import { Button } from "@genealogy/ui/components/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@genealogy/ui/components/dropdown-menu";
+import { DropdownMenu, DropdownMenuItem } from "@genealogy/ui/components/dropdown-menu";
 import { SectionCard } from "@genealogy/ui/components/section-card";
-import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
 import { cn } from "@genealogy/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { CheckIcon, PlusIcon, XIcon } from "lucide-react";
+import { CheckIcon, XIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
@@ -133,20 +129,12 @@ export function RecordsCard({
       titleClassName="text-base"
       action={
         canEdit && enabledTypes.length > 0 ? (
-          <DropdownMenu>
-            <Tooltip>
-              <Button variant="outline" size="icon" aria-label={t("records.card.add")}>
-                <PlusIcon className="size-4" />
-              </Button>
-              <TooltipContent>{t("records.card.add")}</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent>
-              {enabledTypes.map((type) => (
-                <DropdownMenuItem key={type} onAction={() => newRecord(type)}>
-                  {t(`records.type.${type}`)}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
+          <DropdownMenu trigger={<AddButton label={t("records.card.add")} />}>
+            {enabledTypes.map((type) => (
+              <DropdownMenuItem key={type} onClick={() => newRecord(type)}>
+                {t(`records.type.${type}`)}
+              </DropdownMenuItem>
+            ))}
           </DropdownMenu>
         ) : undefined
       }
@@ -201,7 +189,7 @@ export function RecordsCard({
                           search ? "records.card.notFoundAria" : "records.card.openAria",
                           { census: label },
                         )}
-                        isDisabled={!canEdit}
+                        disabled={!canEdit}
                       >
                         {search ? (
                           <XIcon className="size-3.5" aria-hidden="true" />
@@ -213,34 +201,31 @@ export function RecordsCard({
                     );
                     if (!canEdit) return <span key={census.key}>{chip}</span>;
                     return (
-                      <DropdownMenu key={census.key}>
-                        {chip}
-                        <DropdownMenuContent>
-                          <DropdownMenuItem onAction={() => newRecord("census", census.key)}>
-                            {t("records.card.addFor", { census: label })}
+                      <DropdownMenu key={census.key} trigger={chip}>
+                        <DropdownMenuItem onClick={() => newRecord("census", census.key)}>
+                          {t("records.card.addFor", { census: label })}
+                        </DropdownMenuItem>
+                        {search ? (
+                          <DropdownMenuItem
+                            onClick={() =>
+                              clearSearch.mutate({
+                                data: { personId: person.id, censusKey: census.key },
+                              })
+                            }
+                          >
+                            {t("records.card.clearNotFound")}
                           </DropdownMenuItem>
-                          {search ? (
-                            <DropdownMenuItem
-                              onAction={() =>
-                                clearSearch.mutate({
-                                  data: { personId: person.id, censusKey: census.key },
-                                })
-                              }
-                            >
-                              {t("records.card.clearNotFound")}
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem
-                              onAction={() =>
-                                markNotFound.mutate({
-                                  data: { personId: person.id, censusKey: census.key, note: "" },
-                                })
-                              }
-                            >
-                              {t("records.card.markNotFound")}
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
+                        ) : (
+                          <DropdownMenuItem
+                            onClick={() =>
+                              markNotFound.mutate({
+                                data: { personId: person.id, censusKey: census.key, note: "" },
+                              })
+                            }
+                          >
+                            {t("records.card.markNotFound")}
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenu>
                     );
                   })}
@@ -320,8 +305,8 @@ export function RecordsCard({
               <Button
                 size="sm"
                 variant="outline"
-                isDisabled={updatePersonMutation.isPending}
-                onPress={() =>
+                disabled={updatePersonMutation.isPending}
+                onClick={() =>
                   updatePersonMutation.mutate({ data: { id: person.id, birth: estimatedBirth } })
                 }
               >
@@ -340,8 +325,8 @@ export function RecordsCard({
               <Button
                 size="sm"
                 variant="outline"
-                isDisabled={updatePersonMutation.isPending}
-                onPress={() =>
+                disabled={updatePersonMutation.isPending}
+                onClick={() =>
                   updatePersonMutation.mutate({
                     data: { id: person.id, birthPlace: birthplaceSource.row.birthplace },
                   })

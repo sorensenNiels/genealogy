@@ -1,17 +1,7 @@
 import { Button } from "@genealogy/ui/components/button";
-import {
-  ControlledDialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@genealogy/ui/components/dialog";
+import { Dialog } from "@genealogy/ui/components/dialog";
 import { ImageCropDialog } from "@genealogy/ui/components/image-crop-dialog";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsPanels,
-  TabsTrigger,
-} from "@genealogy/ui/components/tabs";
+import { Tabs } from "@genealogy/ui/components/tabs";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -81,7 +71,7 @@ export function SetPhotoFromImmichDialog({
   if (selectedAssetId) {
     return (
       <ImageCropDialog
-        isOpen={isOpen}
+        open={isOpen}
         onOpenChange={(open) => {
           if (!open) close();
         }}
@@ -94,33 +84,30 @@ export function SetPhotoFromImmichDialog({
   }
 
   return (
-    <ControlledDialogContent
-      isOpen={isOpen}
+    <Dialog
+      open={isOpen}
       onOpenChange={(open) => {
         if (!open) close();
       }}
+      title={t("person.chooseFromImmichDialog.title")}
     >
-      <DialogHeader>
-        <DialogTitle>{t("person.chooseFromImmichDialog.title")}</DialogTitle>
-      </DialogHeader>
-      <Tabs defaultSelectedKey="mine">
-        <TabsList aria-label={t("person.chooseFromImmichDialog.photoSource")}>
-          <TabsTrigger id="mine">
-            {t("person.chooseFromImmichDialog.thisPersonsPhotos")}
-          </TabsTrigger>
-          <TabsTrigger id="all">{t("person.chooseFromImmichDialog.allPhotos")}</TabsTrigger>
-        </TabsList>
-        <TabsPanels>
-          <TabsContent id="mine">
-            <PersonPhotosPicker personId={personId} onPick={setSelectedAssetId} />
-          </TabsContent>
-          <TabsContent id="all">
-            <AllPhotosPicker onPick={setSelectedAssetId} />
-          </TabsContent>
-        </TabsPanels>
-      </Tabs>
+      <Tabs
+        aria-label={t("person.chooseFromImmichDialog.photoSource")}
+        tabs={[
+          {
+            value: "mine",
+            label: t("person.chooseFromImmichDialog.thisPersonsPhotos"),
+            content: <PersonPhotosPicker personId={personId} onPick={setSelectedAssetId} />,
+          },
+          {
+            value: "all",
+            label: t("person.chooseFromImmichDialog.allPhotos"),
+            content: <AllPhotosPicker onPick={setSelectedAssetId} />,
+          },
+        ]}
+      />
       {error && <p className="text-sm text-destructive">{error}</p>}
-    </ControlledDialogContent>
+    </Dialog>
   );
 }
 
@@ -136,7 +123,7 @@ function PhotoGridButton({
     <Button
       type="button"
       variant="ghost"
-      onPress={() => onPick(assetId)}
+      onClick={() => onPick(assetId)}
       aria-label={t("person.chooseFromImmichDialog.choosePhoto")}
       className="aspect-square h-auto w-full overflow-hidden rounded-md bg-muted p-0"
     >
@@ -215,8 +202,8 @@ function AllPhotosPicker({ onPick }: { onPick: (assetId: string) => void }) {
           type="button"
           variant="outline"
           size="sm"
-          isDisabled={assetsQuery.isFetchingNextPage}
-          onPress={() => void assetsQuery.fetchNextPage()}
+          disabled={assetsQuery.isFetchingNextPage}
+          onClick={() => void assetsQuery.fetchNextPage()}
         >
           {assetsQuery.isFetchingNextPage
             ? t("common.loading")

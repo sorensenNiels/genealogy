@@ -1,19 +1,6 @@
-import {
-  formatLifespan,
-  formatPersonName,
-  isAdmin,
-  memberRoleSchema,
-  type MemberRole,
-} from "@genealogy/core";
+import { isAdmin, memberRoleSchema, type MemberRole } from "@genealogy/core";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button } from "@genealogy/ui/components/button";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-} from "@genealogy/ui/components/combobox";
 import { CopyableText } from "@genealogy/ui/components/copyable-text";
 import { DialogFooter } from "@genealogy/ui/components/dialog";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
@@ -22,13 +9,7 @@ import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
+import { Select } from "@genealogy/ui/components/select";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -47,7 +28,7 @@ import {
   revokeInvitation,
   updateMemberRole,
 } from "../server/functions/members.functions";
-import { listPersons } from "../server/functions/person.functions";
+import { PersonPicker } from "./-person-picker";
 
 export const Route = createFileRoute("/members")({
   // Admin-only (the backend enforces it too); anyone else goes home.
@@ -105,23 +86,14 @@ function RoleSelect({
     <Select
       aria-label={label}
       value={value}
-      isDisabled={isDisabled ?? false}
-      onChange={(next) => {
-        const parsed = memberRoleSchema.safeParse(next);
-        if (parsed.success) onChange(parsed.data);
-      }}
-    >
-      <SelectTrigger className="w-36">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {memberRoleSchema.options.map((role) => (
-          <SelectItem key={role} id={role}>
-            {t(`members.role.${role}`)}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+      disabled={isDisabled ?? false}
+      onValueChange={onChange}
+      className="w-36"
+      options={memberRoleSchema.options.map((role) => ({
+        value: role,
+        label: t(`members.role.${role}`),
+      }))}
+    />
   );
 }
 
@@ -257,8 +229,8 @@ function InvitationsCard() {
             <Button
               variant="outline"
               size="sm"
-              isDisabled={resendMutation.isPending}
-              onPress={() =>
+              disabled={resendMutation.isPending}
+              onClick={() =>
                 resendMutation.mutate(
                   { data: { id: row.id } },
                   {
@@ -314,14 +286,12 @@ function InvitationLink({
       <p>{emailSent ? t("members.linkSent", { email }) : t("members.linkNotSent", { email })}</p>
       <CopyableText value={link} className="font-mono text-xs break-all" />
       <p className="text-xs text-muted-foreground">{t("members.linkOnce")}</p>
-      <Button variant="ghost" size="sm" onPress={onDismiss}>
+      <Button variant="ghost" size="sm" onClick={onDismiss}>
         {t("members.dismiss")}
       </Button>
     </div>
   );
 }
-
-type PersonListItem = Awaited<ReturnType<typeof listPersons>>["items"][number];
 
 function InviteForm({
   onDone,
@@ -330,13 +300,6 @@ function InviteForm({
 }) {
   const { t } = useTranslation();
   const inviteMutation = useMutation({ mutationFn: inviteMember });
-  const [personQuery, setPersonQuery] = useState("");
-  const trimmed = personQuery.trim();
-  const searchInput = { limit: 10, offset: 0, search: trimmed === "" ? null : trimmed };
-  const people = useQuery({
-    queryKey: ["person", "list", searchInput],
-    queryFn: () => listPersons({ data: searchInput }),
-  });
 
   const form = useForm({
     defaultValues: {
@@ -391,27 +354,11 @@ function InviteForm({
         <p className="mt-1 text-xs text-muted-foreground">{t(`members.roleDescription.${role}`)}</p>
       </LabeledField>
       <LabeledField label={t("members.whoInTree")} asDiv>
-        <Combobox<PersonListItem>
+        <PersonPicker
           aria-label={t("members.whoInTree")}
-          items={people.data?.items ?? []}
-          inputValue={personQuery}
-          onInputChange={setPersonQuery}
-          onChange={(value) =>
-            form.setFieldValue("personId", typeof value === "string" ? value : null)
-          }
-        >
-          <ComboboxInput placeholder={t("members.whoInTreePlaceholder")} />
-          <ComboboxContent<PersonListItem>
-            renderEmptyState={() => <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>}
-          >
-            {(item) => (
-              <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-                {formatPersonName(item)}
-                {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
-              </ComboboxItem>
-            )}
-          </ComboboxContent>
-        </Combobox>
+          placeholder={t("members.whoInTreePlaceholder")}
+          onSelect={(person) => form.setFieldValue("personId", person.id)}
+        />
       </LabeledField>
       <form.Field name="message">
         {(field) => (
@@ -429,7 +376,7 @@ function InviteForm({
         <p className="text-sm text-destructive">{inviteMutation.error.message}</p>
       )}
       <DialogFooter>
-        <SaveButton isDirty={isDirty} isPending={isSubmitting} isDisabled={!email.includes("@")}>
+        <SaveButton isDirty={isDirty} isPending={isSubmitting} disabled={!email.includes("@")}>
           {t("members.send")}
         </SaveButton>
       </DialogFooter>

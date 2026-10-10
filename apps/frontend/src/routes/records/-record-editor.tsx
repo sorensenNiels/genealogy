@@ -19,11 +19,7 @@ import {
 } from "@genealogy/core";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button } from "@genealogy/ui/components/button";
-import {
-  ControlledDialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@genealogy/ui/components/dialog";
+import { Dialog } from "@genealogy/ui/components/dialog";
 import { HistoricalDateInput } from "@genealogy/ui/components/historical-date-input";
 import { Input } from "@genealogy/ui/components/input";
 import { LabeledField } from "@genealogy/ui/components/labeled-field";
@@ -31,13 +27,7 @@ import { MarkdownEditor } from "@genealogy/ui/components/markdown-editor";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
+import { Select } from "@genealogy/ui/components/select";
 import { cn } from "@genealogy/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -298,23 +288,16 @@ export function RecordEditor({
               <Select
                 aria-label={t("records.editor.census")}
                 value={state.censusKey ?? ""}
-                onChange={(value) => {
+                onValueChange={(value) => {
                   const chosen = findCensus(String(value), settings.customCensuses);
                   if (!chosen) return;
                   update({ censusKey: chosen.key, date: censusDateParts(chosen, language) });
                 }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {censusChoices.map((definition) => (
-                    <SelectItem key={definition.key} id={definition.key}>
-                      {censusLabel(t, definition)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={censusChoices.map((definition) => ({
+                  value: definition.key,
+                  label: censusLabel(t, definition),
+                }))}
+              />
             </LabeledField>
           ) : null}
           <LabeledField label={isCensus ? t("records.editor.censusDay") : t("records.editor.date")}>
@@ -443,7 +426,7 @@ export function RecordEditor({
                             size="icon"
                             className="size-6 shrink-0"
                             aria-label={t("records.unlink", { name: formatPersonName(row.person) })}
-                            onPress={() => updateRow(row.key, { person: null })}
+                            onClick={() => updateRow(row.key, { person: null })}
                           >
                             <XIcon className="size-3.5" />
                           </Button>
@@ -455,7 +438,7 @@ export function RecordEditor({
                         variant="outline"
                         size="sm"
                         className="h-8"
-                        onPress={() => setLinking(row.key)}
+                        onClick={() => setLinking(row.key)}
                       >
                         {t("records.link")}
                       </Button>
@@ -472,8 +455,8 @@ export function RecordEditor({
                           size="icon"
                           className="size-7"
                           aria-label={t("records.moveUp")}
-                          isDisabled={index === 0}
-                          onPress={() => moveRow(index, -1)}
+                          disabled={index === 0}
+                          onClick={() => moveRow(index, -1)}
                         >
                           <ArrowUpIcon className="size-3.5" />
                         </Button>
@@ -483,8 +466,8 @@ export function RecordEditor({
                           size="icon"
                           className="size-7"
                           aria-label={t("records.moveDown")}
-                          isDisabled={index === state.people.length - 1}
-                          onPress={() => moveRow(index, 1)}
+                          disabled={index === state.people.length - 1}
+                          onClick={() => moveRow(index, 1)}
                         >
                           <ArrowDownIcon className="size-3.5" />
                         </Button>
@@ -494,7 +477,7 @@ export function RecordEditor({
                           size="icon"
                           className="size-7"
                           aria-label={t("records.removeRow")}
-                          onPress={() =>
+                          onClick={() =>
                             update({
                               people: state.people.filter((other) => other.key !== row.key),
                             })
@@ -516,7 +499,7 @@ export function RecordEditor({
             variant="outline"
             size="sm"
             className="mt-3"
-            onPress={() => update({ people: [...state.people, emptyRow()] })}
+            onClick={() => update({ people: [...state.people, emptyRow()] })}
           >
             <PlusIcon className="size-4" aria-hidden="true" />
             {t("records.addRow")}
@@ -589,22 +572,15 @@ function RowCell({
       <Select
         aria-label={roleLabel}
         value={row.role === "" ? "none" : row.role}
-        onChange={(value) =>
+        onValueChange={(value) =>
           onChange({ role: value === "none" || value === null ? "" : String(value) })
         }
-      >
-        <SelectTrigger className="h-8">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem id="none">—</SelectItem>
-          {roleOptions.map((option) => (
-            <SelectItem key={option.key} id={option.key}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        className="h-8"
+        options={[
+          { value: "none", label: "—" },
+          ...roleOptions.map((option) => ({ value: option.key, label: option.label })),
+        ]}
+      />
     );
   }
   if (column === "sex") {
@@ -612,19 +588,16 @@ function RowCell({
       <Select
         aria-label={t("records.column.sex")}
         value={row.sex}
-        onChange={(value) => {
+        onValueChange={(value) => {
           if (value === "M" || value === "F" || value === "U") onChange({ sex: value });
         }}
-      >
-        <SelectTrigger className="h-8">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem id="M">{t("records.sex.M")}</SelectItem>
-          <SelectItem id="F">{t("records.sex.F")}</SelectItem>
-          <SelectItem id="U">{t("records.sex.U")}</SelectItem>
-        </SelectContent>
-      </Select>
+        className="h-8"
+        options={[
+          { value: "M", label: t("records.sex.M") },
+          { value: "F", label: t("records.sex.F") },
+          { value: "U", label: t("records.sex.U") },
+        ]}
+      />
     );
   }
   return (
@@ -691,8 +664,8 @@ function Suggestions({
                 type="button"
                 size="sm"
                 variant="outline"
-                isDisabled={apply.isPending}
-                onPress={() => apply.mutate(link)}
+                disabled={apply.isPending}
+                onClick={() => apply.mutate(link)}
               >
                 {t("records.suggestions.link")}
               </Button>
@@ -741,8 +714,8 @@ function SourcePicker({
             type="button"
             size="sm"
             className="h-9"
-            isDisabled={title.trim() === "" || createMutation.isPending}
-            onPress={() => createMutation.mutate()}
+            disabled={title.trim() === "" || createMutation.isPending}
+            onClick={() => createMutation.mutate()}
           >
             {t("common.add")}
           </Button>
@@ -756,27 +729,21 @@ function SourcePicker({
         <Select
           aria-label={t("records.editor.source")}
           value={sourceId ?? "none"}
-          onChange={(value) => onChange(value === "none" || value === null ? null : String(value))}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem id="none">{t("records.editor.noSource")}</SelectItem>
-            {sources.map((source) => (
-              <SelectItem key={source.id} id={source.id}>
-                {source.title}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          onValueChange={(value) =>
+            onChange(value === "none" || value === null ? null : String(value))
+          }
+          options={[
+            { value: "none", label: t("records.editor.noSource") },
+            ...sources.map((source) => ({ value: source.id, label: source.title })),
+          ]}
+        />
         {canEdit && (
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="h-9 shrink-0"
-            onPress={() => {
+            onClick={() => {
               setTitle(defaultTitle);
               setCreating(true);
             }}
@@ -838,15 +805,13 @@ function LinkPersonDialog({
   });
 
   return (
-    <ControlledDialogContent
-      isOpen
+    <Dialog
+      open
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
+      title={t("records.linkTitle", { name: row.name || "—" })}
     >
-      <DialogHeader>
-        <DialogTitle>{t("records.linkTitle", { name: row.name || "—" })}</DialogTitle>
-      </DialogHeader>
       <div className="space-y-3">
         <Input
           aria-label={t("person.family.searchPeople")}
@@ -896,8 +861,8 @@ function LinkPersonDialog({
             type="button"
             variant="outline"
             className="w-full"
-            isDisabled={row.name.trim() === "" || createMutation.isPending}
-            onPress={() => createMutation.mutate()}
+            disabled={row.name.trim() === "" || createMutation.isPending}
+            onClick={() => createMutation.mutate()}
           >
             <PlusIcon className="size-4" aria-hidden="true" />
             {t("records.createFromRow")}
@@ -914,6 +879,6 @@ function LinkPersonDialog({
           )}
         </div>
       </div>
-    </ControlledDialogContent>
+    </Dialog>
   );
 }

@@ -224,7 +224,7 @@ function EditAlbumForm({
             <ColorSwatchPicker
               aria-label={t("album.coverColor")}
               value={coverColor}
-              onChange={(value) => form.setFieldValue("coverColor", value)}
+              onValueChange={(value) => form.setFieldValue("coverColor", value)}
               colors={COVER_COLORS}
             />
           </LabeledField>
@@ -232,7 +232,7 @@ function EditAlbumForm({
           <LabeledField label={t("album.coverStyle")} asDiv>
             <ButtonRadioGroup
               value={coverStyle}
-              onChange={(value) => form.setFieldValue("coverStyle", value)}
+              onValueChange={(value) => form.setFieldValue("coverStyle", value)}
               options={[
                 { value: "foil", label: t("album.coverStyleFoil") },
                 { value: "label", label: t("album.coverStyleLabel") },

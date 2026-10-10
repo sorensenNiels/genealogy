@@ -24,13 +24,7 @@ import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
+import { Select } from "@genealogy/ui/components/select";
 import { Switch } from "@genealogy/ui/components/switch";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { cn } from "@genealogy/ui/lib/utils";
@@ -227,12 +221,13 @@ function PersonSettingsForm({ initial }: { initial: PersonSettings }) {
         {(["openInEditMode", "showFamilyEventsInTimeline"] as const).map((name) => (
           <form.Field key={name} name={name}>
             {(field) => (
-              <SwitchSetting
-                label={t(`settings.person.${name}`)}
-                help={t(`settings.person.${name}Help`)}
-                isSelected={field.state.value}
-                onChange={field.handleChange}
-              />
+              <Switch
+                checked={field.state.value}
+                onCheckedChange={field.handleChange}
+                description={t(`settings.person.${name}Help`)}
+              >
+                {t(`settings.person.${name}`)}
+              </Switch>
             )}
           </form.Field>
         ))}
@@ -473,22 +468,15 @@ function RecordSettingsForm({
                 <Select
                   aria-label={t("settings.records.citationConfidence")}
                   value={field.state.value}
-                  onChange={(value) => {
+                  onValueChange={(value) => {
                     if (typeof value === "string") field.handleChange(value);
                   }}
                   className="w-56"
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {optionsFor(options, "confidence").map((option) => (
-                      <SelectItem key={option.key} id={option.key}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={optionsFor(options, "confidence").map((option) => ({
+                    value: option.key,
+                    label: option.label,
+                  }))}
+                />
               </LabeledField>
               <p className="text-sm text-muted-foreground">
                 {t("settings.records.citationConfidenceHelp")}
@@ -542,8 +530,8 @@ function CheckboxListSetting<T extends string>({
         {items.map((item) => (
           <Checkbox
             key={item.value}
-            isSelected={value.includes(item.value)}
-            onChange={(on) => onChange(item.value, on)}
+            checked={value.includes(item.value)}
+            onCheckedChange={(on) => onChange(item.value, on)}
           >
             {item.label}
           </Checkbox>
@@ -614,18 +602,18 @@ function AddCensusForm({
         </LabeledField>
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-        <Checkbox isSelected={hasRelationship} onChange={setHasRelationship}>
+        <Checkbox checked={hasRelationship} onCheckedChange={setHasRelationship}>
           {t("settings.records.hasRelationship")}
         </Checkbox>
-        <Checkbox isSelected={hasBirthplace} onChange={setHasBirthplace}>
+        <Checkbox checked={hasBirthplace} onCheckedChange={setHasBirthplace}>
           {t("settings.records.hasBirthplace")}
         </Checkbox>
         <Button
           variant="outline"
           size="sm"
           className="ml-auto"
-          isDisabled={!parsed.success}
-          onPress={() => {
+          disabled={!parsed.success}
+          onClick={() => {
             if (!parsed.success) return;
             onAdd(parsed.data);
             setCountry("");
@@ -690,12 +678,13 @@ function TreeSettingsForm({ initial }: { initial: TreeSettings }) {
         {(["showPhotos", "showGenderBadge", "showMourningBand"] as const).map((name) => (
           <form.Field key={name} name={name}>
             {(field) => (
-              <SwitchSetting
-                label={t(`settings.tree.${name}`)}
-                help={t(`settings.tree.${name}Help`)}
-                isSelected={field.state.value}
-                onChange={field.handleChange}
-              />
+              <Switch
+                checked={field.state.value}
+                onCheckedChange={field.handleChange}
+                description={t(`settings.tree.${name}Help`)}
+              >
+                {t(`settings.tree.${name}`)}
+              </Switch>
             )}
           </form.Field>
         ))}
@@ -718,12 +707,13 @@ function TreeSettingsForm({ initial }: { initial: TreeSettings }) {
         </form.Field>
         <form.Field name="highlightDirectLine">
           {(field) => (
-            <SwitchSetting
-              label={t("settings.tree.highlightDirectLine")}
-              help={t("settings.tree.highlightDirectLineHelp")}
-              isSelected={field.state.value}
-              onChange={field.handleChange}
-            />
+            <Switch
+              checked={field.state.value}
+              onCheckedChange={field.handleChange}
+              description={t("settings.tree.highlightDirectLineHelp")}
+            >
+              {t("settings.tree.highlightDirectLine")}
+            </Switch>
           )}
         </form.Field>
       </SettingsGroup>
@@ -732,12 +722,13 @@ function TreeSettingsForm({ initial }: { initial: TreeSettings }) {
         {(["showMinimap", "animateTransitions", "rememberLastView"] as const).map((name) => (
           <form.Field key={name} name={name}>
             {(field) => (
-              <SwitchSetting
-                label={t(`settings.tree.${name}`)}
-                help={t(`settings.tree.${name}Help`)}
-                isSelected={field.state.value}
-                onChange={field.handleChange}
-              />
+              <Switch
+                checked={field.state.value}
+                onCheckedChange={field.handleChange}
+                description={t(`settings.tree.${name}Help`)}
+              >
+                {t(`settings.tree.${name}`)}
+              </Switch>
             )}
           </form.Field>
         ))}
@@ -802,27 +793,6 @@ function SettingsGroup({ children }: { children: ReactNode }) {
   return <div className="space-y-5 border-b pb-6 last-of-type:border-b-0">{children}</div>;
 }
 
-function SwitchSetting({
-  label,
-  help,
-  isSelected,
-  onChange,
-}: {
-  label: string;
-  help: string;
-  isSelected: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <div className="space-y-1">
-      <Switch isSelected={isSelected} onChange={onChange}>
-        {label}
-      </Switch>
-      <p className="pl-11 text-sm text-muted-foreground">{help}</p>
-    </div>
-  );
-}
-
 function ChoiceSetting<T extends string>({
   label,
   help,
@@ -839,7 +809,12 @@ function ChoiceSetting<T extends string>({
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium">{label}</p>
-      <ButtonRadioGroup aria-label={label} value={value} onChange={onChange} options={options} />
+      <ButtonRadioGroup
+        aria-label={label}
+        value={value}
+        onValueChange={onChange}
+        options={options}
+      />
       {help && <p className="text-sm text-muted-foreground">{help}</p>}
     </div>
   );
@@ -933,8 +908,8 @@ function OptionRow({
             variant="ghost"
             size="icon"
             aria-label={t("settings.moveUp")}
-            isDisabled={isFirst}
-            onPress={() => void move("up")}
+            disabled={isFirst}
+            onClick={() => void move("up")}
           >
             <ChevronUpIcon className="size-4" />
           </Button>
@@ -942,8 +917,8 @@ function OptionRow({
             variant="ghost"
             size="icon"
             aria-label={t("settings.moveDown")}
-            isDisabled={isLast}
-            onPress={() => void move("down")}
+            disabled={isLast}
+            onClick={() => void move("down")}
           >
             <ChevronDownIcon className="size-4" />
           </Button>
@@ -976,10 +951,9 @@ function OptionRow({
           )}
         </div>
       </div>
-      {/* Rendered here rather than inside AlertDialogContent: AlertDialogAction
-          closes the dialog on press (slot="close") independently of whether
-          `remove()` throws, so an error shown inside it would flash and
-          vanish before it could be read. */}
+      {/* Rendered here rather than inside the confirm dialog: confirming
+          closes it whether or not `remove()` throws, so an error shown inside
+          it would flash and vanish before it could be read. */}
       {removeOptionMutation.isError && (
         <p className="text-right text-sm text-destructive">{removeOptionMutation.error.message}</p>
       )}

@@ -11,7 +11,7 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-      onPress={() => setPreference(theme === "dark" ? "light" : "dark")}
+      onClick={() => setPreference(theme === "dark" ? "light" : "dark")}
     >
       {theme === "dark" ? <SunIcon className="size-4" /> : <MoonIcon className="size-4" />}
     </Button>

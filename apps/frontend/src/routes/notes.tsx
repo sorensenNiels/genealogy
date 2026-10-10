@@ -168,7 +168,7 @@ function NoteForm({ note, onDone }: { note: UserNoteRow | null; onDone: () => Pr
       <MarkdownEditor value={body} onChange={setBody} aria-label={t("notes.note")} />
       {submitError && <p className="text-sm text-destructive">{submitError.message}</p>}
       <DialogFooter>
-        <SaveButton isDirty={canSubmit} isPending={isPending} isDisabled={!canSubmit}>
+        <SaveButton isDirty={canSubmit} isPending={isPending} disabled={!canSubmit}>
           {note ? t("common.save") : t("common.add")}
         </SaveButton>
       </DialogFooter>

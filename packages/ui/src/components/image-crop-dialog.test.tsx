@@ -24,7 +24,7 @@ function ControlledCropDialog({ onBack, isSaving }: { onBack?: () => void; isSav
         Open cropper
       </button>
       <ImageCropDialog
-        isOpen={isOpen}
+        open={isOpen}
         onOpenChange={setIsOpen}
         imageSrc="/photo.jpg"
         onCropped={() => {}}

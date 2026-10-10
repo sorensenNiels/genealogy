@@ -15,13 +15,7 @@ import { MarkdownContent } from "@genealogy/ui/components/markdown-content";
 import { MarkdownEditor } from "@genealogy/ui/components/markdown-editor";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
+import { Select } from "@genealogy/ui/components/select";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation } from "@tanstack/react-query";
@@ -263,21 +257,14 @@ function NameForm({
       <Select
         aria-label={t("person.namesGender.nameType")}
         value={nameType}
-        onChange={(value) => {
+        onValueChange={(value) => {
           if (value) setNameType(nameVariantTypeSchema.parse(value));
         }}
-      >
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {optionsFor(options, "name_variant_type").map((option) => (
-            <SelectItem key={option.key} id={option.key}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        options={optionsFor(options, "name_variant_type").map((option) => ({
+          value: option.key,
+          label: option.label,
+        }))}
+      />
       <form.Field name="given">
         {(field) => (
           <Input

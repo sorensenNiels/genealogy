@@ -12,19 +12,19 @@ import {
 } from "react-aria-components";
 
 import { cn } from "../lib/utils";
-import { Button } from "./button";
+import { AriaButton } from "./aria/button";
 
 export function Calendar<T extends DateValue>({ className, ...props }: RACCalendarProps<T>) {
   return (
     <RACCalendar className={cn("w-fit", className)} {...props}>
       <header className="flex items-center justify-between pb-2">
-        <Button slot="previous" variant="ghost" size="icon" className="size-7">
+        <AriaButton slot="previous" variant="ghost" size="icon" className="size-7">
           <ChevronLeftIcon className="size-4" />
-        </Button>
+        </AriaButton>
         <CalendarHeading className="text-sm font-medium" />
-        <Button slot="next" variant="ghost" size="icon" className="size-7">
+        <AriaButton slot="next" variant="ghost" size="icon" className="size-7">
           <ChevronRightIcon className="size-4" />
-        </Button>
+        </AriaButton>
       </header>
       <CalendarGrid className="w-full border-collapse">
         <CalendarGridHeader>

@@ -4,13 +4,13 @@ import type { ReactNode } from "react";
 import { useReadOnly } from "../lib/read-only";
 import { Button, type ButtonProps } from "./button";
 
-export interface SaveButtonProps extends Omit<ButtonProps, "isDisabled" | "children"> {
+export interface SaveButtonProps extends Omit<ButtonProps, "disabled" | "children"> {
   /** Whether the form has unsaved changes, shown as a small red dot. */
   isDirty: boolean;
   /** Whether the save is in flight — replaces the dot with a spinner and disables the button. */
   isPending: boolean;
   /** An extra reason to disable the button beyond `isPending`, e.g. a required field left blank. */
-  isDisabled?: boolean;
+  disabled?: boolean;
   children: ReactNode;
 }
 
@@ -25,7 +25,7 @@ export interface SaveButtonProps extends Omit<ButtonProps, "isDisabled" | "child
  *
  * `type` defaults to "submit" (the common case: a `<form onSubmit>` calling
  * its own save logic) but can be overridden to "button" for a form embedded
- * inside another one's DOM subtree, driving `submit()` from `onPress`
+ * inside another one's DOM subtree, driving `submit()` from `onClick`
  * instead. A `type="submit"` button submits its nearest ancestor `<form>`
  * regardless of how deeply it's nested inside other elements — including,
  * for React specifically, across a `createPortal` boundary, since React's
@@ -38,7 +38,7 @@ export interface SaveButtonProps extends Omit<ButtonProps, "isDisabled" | "child
 export function SaveButton({
   isDirty,
   isPending,
-  isDisabled = false,
+  disabled = false,
   children,
   type = "submit",
   ...props
@@ -47,7 +47,7 @@ export function SaveButton({
   // Nothing to save where nothing can be edited.
   if (isReadOnly) return null;
   return (
-    <Button type={type} isDisabled={isPending || isDisabled} aria-busy={isPending} {...props}>
+    <Button type={type} disabled={isPending || disabled} aria-busy={isPending} {...props}>
       {children}
       {/* aria-hidden: a descendant's aria-label would otherwise merge into
           the button's own accessible name ("Save" becomes "Save Unsaved

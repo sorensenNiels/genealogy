@@ -1,29 +1,65 @@
-import type { ReactNode } from "react";
-import { Switch as RACSwitch, type SwitchProps as RACSwitchProps } from "react-aria-components";
+import { useId, type ReactNode } from "react";
 
 import { useReadOnly } from "../lib/read-only";
 import { cn } from "../lib/utils";
+import { Switch as SwitchPrimitive } from "./ui/switch";
 
+export interface SwitchProps {
+  checked?: boolean | undefined;
+  defaultChecked?: boolean | undefined;
+  onCheckedChange?: ((checked: boolean) => void) | undefined;
+  disabled?: boolean | undefined;
+  name?: string | undefined;
+  /** Needed only when there's no visible label (`children`). */
+  "aria-label"?: string | undefined;
+  className?: string | undefined;
+  /** The visible label, clickable along with the switch. */
+  children?: ReactNode | undefined;
+  /** Help text under the label, linked to the switch via `aria-describedby`. */
+  description?: ReactNode | undefined;
+}
+
+/**
+ * A switch with its label — the same composition as `Checkbox`: one
+ * `<label>` around primitive and text, read-only inside a
+ * `ReadOnlyProvider`, and a plain-boolean `onCheckedChange`. A
+ * `description` sits under the label text, outside the `<label>` so it
+ * describes the switch rather than becoming part of its name.
+ */
 export function Switch({
+  onCheckedChange,
   className,
   children,
+  description,
   ...props
-}: Omit<RACSwitchProps, "children" | "className"> & { className?: string; children?: ReactNode }) {
+}: SwitchProps) {
   const isReadOnly = useReadOnly();
-  return (
-    <RACSwitch
-      {...(isReadOnly ? { isReadOnly: true } : {})}
-      data-slot="switch"
+  const descriptionId = useId();
+  const control = (
+    <label
       className={cn(
-        "group inline-flex items-center gap-2 text-sm data-disabled:cursor-not-allowed data-disabled:opacity-50",
-        typeof className === "string" ? className : undefined,
+        "inline-flex items-center gap-2 text-sm has-data-disabled:cursor-not-allowed has-data-disabled:opacity-50",
+        description ? undefined : className,
       )}
-      {...props}
     >
-      <div className="flex h-5 w-9 shrink-0 items-center rounded-full border border-transparent bg-input px-px transition-colors group-data-focus-visible:ring-[3px] group-data-focus-visible:ring-ring/50 group-data-selected:bg-primary">
-        <span className="size-4 rounded-full bg-background shadow-xs transition-transform group-data-selected:translate-x-full" />
-      </div>
+      <SwitchPrimitive
+        {...props}
+        aria-describedby={description ? descriptionId : undefined}
+        readOnly={isReadOnly}
+        onCheckedChange={(checked) => onCheckedChange?.(checked)}
+      />
       {children}
-    </RACSwitch>
+    </label>
+  );
+  if (!description) return control;
+  return (
+    <div className={cn("space-y-1", className)}>
+      {control}
+      {/* ps-10 = the switch's 32px width + the label's gap-2, so the help text
+          lines up under the label text, not under the switch. */}
+      <p id={descriptionId} className="ps-10 text-sm text-muted-foreground">
+        {description}
+      </p>
+    </div>
   );
 }

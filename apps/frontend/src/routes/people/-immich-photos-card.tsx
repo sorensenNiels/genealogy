@@ -100,7 +100,7 @@ function PersonPhotosCardContent({ personId }: { personId: string }) {
                   aria-label={t("person.photos.unlinkAria", {
                     name: person.name.trim() || t("person.photos.unlinkThisFace"),
                   })}
-                  onPress={() => void unlink(person.linkId)}
+                  onClick={() => void unlink(person.linkId)}
                 >
                   <XIcon className="size-3" />
                 </Button>
@@ -118,7 +118,7 @@ function PersonPhotosCardContent({ personId }: { personId: string }) {
               <Button
                 key={asset.id}
                 variant="ghost"
-                onPress={() => setOpenIndex(index)}
+                onClick={() => setOpenIndex(index)}
                 className="aspect-square h-auto w-full overflow-hidden rounded bg-muted p-0"
               >
                 <img

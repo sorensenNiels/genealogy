@@ -38,9 +38,6 @@ describe("TagInput", () => {
 
     await userEvent.type(input, "Scanned{Enter}");
     await userEvent.type(input, "   {Enter}{Escape}");
-    // The suggestion popover marks the rest of the page aria-hidden while
-    // open (React Aria's own background-hiding behavior), so role queries
-    // only see the chip row once it's closed — {Escape} above does that.
     expect(screen.getAllByRole("row")).toHaveLength(1);
   });
 
@@ -50,5 +47,17 @@ describe("TagInput", () => {
 
     expect(screen.queryByText("Scanned")).not.toBeInTheDocument();
     expect(screen.getByText("Wedding")).toBeInTheDocument();
+  });
+});
+
+describe("TagInput suggestions", () => {
+  it("adds a suggestion picked from the list and leaves the input empty", async () => {
+    render(<ControlledTagInput />);
+    const input = screen.getByRole("combobox");
+    await userEvent.type(input, "wed");
+    await userEvent.click(await screen.findByRole("option", { name: "Wedding" }));
+
+    expect(screen.getByRole("row", { name: /Wedding/ })).toBeInTheDocument();
+    expect(input).toHaveValue("");
   });
 });

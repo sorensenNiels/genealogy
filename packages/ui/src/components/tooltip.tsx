@@ -1,35 +1,27 @@
-import type { ReactNode } from "react";
-import { OverlayArrow, Tooltip as RACTooltip, TooltipTrigger } from "react-aria-components";
+import type { ReactElement, ReactNode } from "react";
 
-import { cn } from "../lib/utils";
+import { Tooltip as TooltipRoot, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
-/** The trigger goes directly inside as the first child — no separate Trigger component needed. */
-export { TooltipTrigger as Tooltip };
+export interface TooltipProps {
+  /** What the tooltip says. */
+  content: ReactNode;
+  /** The one element it describes — usually a `Button`; it must forward props and `ref`. */
+  children: ReactElement;
+  side?: "top" | "bottom" | "left" | "right" | undefined;
+}
 
-export function TooltipContent({
-  className,
-  offset = 8,
-  children,
-}: {
-  className?: string;
-  offset?: number;
-  children: ReactNode;
-}) {
+/**
+ * A tooltip around one trigger element: `<Tooltip content="Add"><Button …/></Tooltip>`.
+ * Any other props given to `Tooltip` itself pass through to that element —
+ * which is what lets a tooltipped button be the `trigger` of a `Dialog`,
+ * `DropdownMenu` or `Popover`: their trigger props reach the button through
+ * this one.
+ */
+export function Tooltip({ content, children, side, ...triggerProps }: TooltipProps) {
   return (
-    <RACTooltip
-      offset={offset}
-      className={cn(
-        "rounded-md bg-foreground px-3 py-1.5 text-xs text-background shadow-md",
-        "transition-all duration-100 data-entering:scale-95 data-entering:opacity-0 data-exiting:opacity-0",
-        typeof className === "string" ? className : undefined,
-      )}
-    >
-      <OverlayArrow>
-        <svg width={8} height={8} viewBox="0 0 8 8" className="fill-foreground">
-          <path d="M0 0 L4 4 L8 0" />
-        </svg>
-      </OverlayArrow>
-      {children}
-    </RACTooltip>
+    <TooltipRoot>
+      <TooltipTrigger {...triggerProps} render={children} />
+      <TooltipContent side={side}>{content}</TooltipContent>
+    </TooltipRoot>
   );
 }

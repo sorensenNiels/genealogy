@@ -1,79 +1,67 @@
-import { User } from "@react-aria/test-utils";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem } from "./combobox";
+import { Combobox } from "./combobox";
 
-const testUtilUser = new User({ interactionType: "mouse" });
-
-interface Option {
+interface Person {
   id: string;
   name: string;
+  born: number;
 }
 
-const PEOPLE: Option[] = [
-  { id: "1", name: "Anne Marie Sørensen" },
-  { id: "2", name: "Niels Sørensen" },
-  { id: "3", name: "Karen Sørensen" },
+const PEOPLE: Person[] = [
+  { id: "1", name: "Anne Marie Sørensen", born: 1850 },
+  { id: "2", name: "Niels Sørensen", born: 1847 },
+  { id: "3", name: "Karen Hansdatter", born: 1852 },
 ];
 
-function PeopleCombobox({ onSelect }: { onSelect?: (option: Option) => void }) {
+/** Stands in for a remote search: filters by the query, the way the server would. */
+function PersonSearch({ onSelect }: { onSelect: (person: Person) => void }) {
   const [query, setQuery] = useState("");
-  const options = PEOPLE.filter((person) =>
-    person.name.toLowerCase().includes(query.toLowerCase()),
-  );
-
+  const items = PEOPLE.filter((person) => person.name.toLowerCase().includes(query.toLowerCase()));
   return (
-    <Combobox<Option>
+    <Combobox
       aria-label="Search people"
-      data-testid="people-combobox"
-      items={options}
+      items={items}
+      itemKey={(person) => person.id}
+      itemLabel={(person) => person.name}
+      renderItem={(person) => `${person.name} (${person.born})`}
       inputValue={query}
-      onInputChange={setQuery}
-      onChange={(id) => {
-        const match = options.find((person) => person.id === id);
-        if (match) onSelect?.(match);
-      }}
-    >
-      <ComboboxInput placeholder="Search people…" />
-      <ComboboxContent<Option> renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}>
-        {(item) => <ComboboxItem id={item.id}>{item.name}</ComboboxItem>}
-      </ComboboxContent>
-    </Combobox>
+      onInputValueChange={setQuery}
+      onSelect={onSelect}
+      emptyText="No matches"
+    />
   );
 }
 
 describe("Combobox", () => {
-  it("lists every item once opened, even before any typing", async () => {
-    const { getByTestId } = render(<PeopleCombobox />);
-    const tester = testUtilUser.createTester("ComboBox", { root: getByTestId("people-combobox") });
-
-    await tester.open();
-    expect(tester.getOptions().map((option) => option.textContent)).toEqual([
-      "Anne Marie Sørensen",
-      "Niels Sørensen",
-      "Karen Sørensen",
+  it("lists the items once opened, rendered by renderItem", async () => {
+    render(<PersonSearch onSelect={() => {}} />);
+    await userEvent.click(screen.getByRole("combobox", { name: "Search people" }));
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual([
+      "Anne Marie Sørensen (1850)",
+      "Niels Sørensen (1847)",
+      "Karen Hansdatter (1852)",
     ]);
   });
 
-  it("narrows the remote-filtered items as the query changes", async () => {
-    const { getByTestId } = render(<PeopleCombobox />);
-    const tester = testUtilUser.createTester("ComboBox", { root: getByTestId("people-combobox") });
+  it("shows the items the search narrowed to, and the empty text when none match", async () => {
+    render(<PersonSearch onSelect={() => {}} />);
+    const input = screen.getByRole("combobox", { name: "Search people" });
+    await userEvent.type(input, "sør");
+    expect(await screen.findAllByRole("option")).toHaveLength(2);
 
-    await tester.open();
-    await userEvent.type(tester.getCombobox(), "niels");
-    expect(tester.getOptions().map((option) => option.textContent)).toEqual(["Niels Sørensen"]);
+    await userEvent.type(input, "xyz");
+    expect(await screen.findByText("No matches")).toBeInTheDocument();
   });
 
-  it("calls onChange with the selected item's id", async () => {
-    let picked: Option | undefined;
-    const { getByTestId } = render(<PeopleCombobox onSelect={(option) => (picked = option)} />);
-    const tester = testUtilUser.createTester("ComboBox", { root: getByTestId("people-combobox") });
-
-    await tester.open();
-    await tester.toggleOptionSelection({ option: "Karen Sørensen" });
-    expect(picked?.id).toBe("3");
+  it("hands back the picked item", async () => {
+    const onSelect = vi.fn<(person: Person) => void>();
+    render(<PersonSearch onSelect={onSelect} />);
+    await userEvent.type(screen.getByRole("combobox", { name: "Search people" }), "karen");
+    await userEvent.click(await screen.findByRole("option", { name: /Karen Hansdatter/ }));
+    expect(onSelect).toHaveBeenCalledWith(PEOPLE[2]);
   });
 });

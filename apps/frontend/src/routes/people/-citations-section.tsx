@@ -1,4 +1,5 @@
 import { confidenceSchema, type CitationFactType, type Confidence } from "@genealogy/core";
+import { AddButton } from "@genealogy/ui/components/add-button";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button } from "@genealogy/ui/components/button";
 import { DialogFooter } from "@genealogy/ui/components/dialog";
@@ -7,17 +8,9 @@ import { Input } from "@genealogy/ui/components/input";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
-import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
+import { Select } from "@genealogy/ui/components/select";
 import { useMutation } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
-import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -129,14 +122,7 @@ export function CitationsSection({
       contentClassName="space-y-2"
       action={
         <FormDialog
-          trigger={
-            <Tooltip>
-              <Button variant="outline" size="icon" aria-label={t("person.events.addCitation")}>
-                <PlusIcon className="size-4" />
-              </Button>
-              <TooltipContent>{t("person.events.addCitation")}</TooltipContent>
-            </Tooltip>
-          }
+          trigger={<AddButton label={t("person.events.addCitation")} />}
           title={t("person.events.addCitation")}
         >
           {(close) => (
@@ -221,13 +207,14 @@ export function CitationForm({
   fixedFact?: FactOption;
   /**
    * Renders as a plain `<div>` with the Save button driving `submit()`
-   * directly via `onPress`, instead of a `<form>` relying on native submit —
+   * directly via `onClick`, instead of a `<form>` relying on native submit —
    * for use inside another dialog's own `<form>` (e.g. `EventCitations`),
    * where a nested `<form>` would be invalid HTML. Also sidesteps a real bug
    * found while building that: stacking this component's own `Dialog`
    * inside another one closes *both* on submit (traced via MutationObserver
    * to a single synchronous DOM removal covering both `ModalOverlay`s —
-   * React Aria Components doesn't cleanly support nested `Modal`s here),
+   * React Aria Components didn't cleanly support nested `Modal`s, when the
+   * dialogs were built on it),
    * so the embedded case doesn't open its own nested dialog at all; the
    * caller (`EventCitations`) swaps this form in as inline content instead.
    */
@@ -354,21 +341,11 @@ export function CitationForm({
         <Select
           aria-label={t("person.citations.whatThisCites")}
           value={factKey}
-          onChange={(value) => {
+          onValueChange={(value) => {
             if (value) setFactKey(String(value));
           }}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {factOptions.map((option) => (
-              <SelectItem key={option.key} id={option.key}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          options={factOptions.map((option) => ({ value: option.key, label: option.label }))}
+        />
       )}
 
       {sourceMode === "existing" ? (
@@ -376,26 +353,16 @@ export function CitationForm({
           <Select
             aria-label={t("person.citations.source")}
             value={sourceId}
-            onChange={(value) => {
+            onValueChange={(value) => {
               if (value) setSourceId(String(value));
             }}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {sourcesList.map((source) => (
-                <SelectItem key={source.id} id={source.id}>
-                  {source.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={sourcesList.map((source) => ({ value: source.id, label: source.title }))}
+          />
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            onPress={() => {
+            onClick={() => {
               setSourceMode("new");
             }}
           >
@@ -419,7 +386,7 @@ export function CitationForm({
               type="button"
               variant="ghost"
               size="sm"
-              onPress={() => {
+              onClick={() => {
                 setSourceMode("existing");
               }}
             >
@@ -432,21 +399,14 @@ export function CitationForm({
       <Select
         aria-label={t("person.citations.confidence")}
         value={confidence}
-        onChange={(value) => {
+        onValueChange={(value) => {
           if (value) setConfidence(confidenceSchema.parse(value));
         }}
-      >
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {optionsFor(options, "confidence").map((option) => (
-            <SelectItem key={option.key} id={option.key}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        options={optionsFor(options, "confidence").map((option) => ({
+          value: option.key,
+          label: option.label,
+        }))}
+      />
       <Input
         placeholder={t("person.citations.pagePlaceholder")}
         value={page}
@@ -462,7 +422,7 @@ export function CitationForm({
         <SaveButton
           isDirty={isDirty}
           isPending={pending}
-          isDisabled={!canSubmit}
+          disabled={!canSubmit}
           {...(embedded
             ? // Not type="submit": this form is a `<div>` nested inside
               // another `<form>` (EventForm's) when embedded, and a
@@ -471,7 +431,7 @@ export function CitationForm({
               // `SaveButton`'s `type` prop for the portal-specific version
               // of this same gotcha, hit first via the dialog-in-dialog
               // approach this embedding replaced.
-              { type: "button", onPress: () => void submit() }
+              { type: "button", onClick: () => void submit() }
             : {})}
         >
           {t("common.add")}

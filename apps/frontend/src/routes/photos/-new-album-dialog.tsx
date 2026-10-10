@@ -105,7 +105,7 @@ function NewAlbumForm({
       <LabeledField label={t("album.kindLabel")} asDiv>
         <ButtonRadioGroup
           value={kind}
-          onChange={(value) => form.setFieldValue("kind", value)}
+          onValueChange={(value) => form.setFieldValue("kind", value)}
           options={[
             { value: "physical", label: t("album.kindPhysical") },
             { value: "virtual", label: t("album.kindVirtual") },
@@ -151,7 +151,7 @@ function NewAlbumForm({
             <ColorSwatchPicker
               aria-label={t("album.coverColor")}
               value={coverColor}
-              onChange={(value) => form.setFieldValue("coverColor", value)}
+              onValueChange={(value) => form.setFieldValue("coverColor", value)}
               colors={COVER_COLORS}
             />
           </LabeledField>
@@ -159,7 +159,7 @@ function NewAlbumForm({
           <LabeledField label={t("album.coverStyle")} asDiv>
             <ButtonRadioGroup
               value={coverStyle}
-              onChange={(value) => form.setFieldValue("coverStyle", value)}
+              onValueChange={(value) => form.setFieldValue("coverStyle", value)}
               options={[
                 { value: "foil", label: t("album.coverStyleFoil") },
                 { value: "label", label: t("album.coverStyleLabel") },
@@ -206,7 +206,7 @@ function NewAlbumForm({
         <p className="text-sm text-destructive">{createAlbumMutation.error.message}</p>
       )}
       <DialogFooter>
-        <SaveButton isDirty={isDirty} isPending={isSubmitting} isDisabled={albumName.trim() === ""}>
+        <SaveButton isDirty={isDirty} isPending={isSubmitting} disabled={albumName.trim() === ""}>
           {t("album.create")}
         </SaveButton>
       </DialogFooter>

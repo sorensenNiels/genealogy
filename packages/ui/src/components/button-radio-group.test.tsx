@@ -1,70 +1,60 @@
-import { User } from "@react-aria/test-utils";
-import { render, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { ReadOnlyProvider } from "../lib/read-only";
 import { ButtonRadioGroup } from "./button-radio-group";
 
-const testUtilUser = new User({ interactionType: "mouse" });
+const OPTIONS = [
+  { value: "M", label: "Male" },
+  { value: "F", label: "Female" },
+  { value: "U", label: "Unknown" },
+] as const;
 
-type Sex = "M" | "F" | "U";
-
-function SexButtons({
-  initial = "U" as Sex,
-  onChange,
-}: {
-  initial?: Sex;
-  onChange?: (value: Sex) => void;
-}) {
-  const [value, setValue] = useState<Sex>(initial);
+function Gender({ onValueChange }: { onValueChange?: (value: "M" | "F" | "U") => void }) {
+  const [value, setValue] = useState<"M" | "F" | "U">("U");
   return (
-    <div data-testid="sex-buttons">
-      <ButtonRadioGroup
-        aria-label="Gender"
-        value={value}
-        onChange={(next) => {
-          setValue(next);
-          onChange?.(next);
-        }}
-        options={[
-          { value: "M", label: "Male" },
-          { value: "F", label: "Female" },
-          { value: "U", label: "Unknown" },
-        ]}
-      />
-    </div>
+    <ButtonRadioGroup
+      aria-label="Gender"
+      value={value}
+      onValueChange={(next) => {
+        setValue(next);
+        onValueChange?.(next);
+      }}
+      options={OPTIONS}
+    />
   );
 }
 
 describe("ButtonRadioGroup", () => {
-  it("shows every option, in order, and marks the current value selected", () => {
-    const { getByTestId } = render(<SexButtons initial="F" />);
-    const root = getByTestId("sex-buttons");
-    const tester = testUtilUser.createTester("RadioGroup", { root });
-
-    // getRadios() returns the underlying <input type="radio"> elements —
-    // they carry no text content of their own, so read the label text from
-    // the <label> React Aria's RadioButton renders each one inside.
-    const radios = tester.getRadios();
-    expect(radios.map((radio) => radio.closest("label")?.textContent)).toEqual([
+  it("is a radio group of every option, in order, with the current value checked", () => {
+    render(<Gender />);
+    expect(screen.getByRole("radiogroup", { name: "Gender" })).toBeInTheDocument();
+    expect(screen.getAllByRole("radio").map((radio) => radio.textContent)).toEqual([
       "Male",
       "Female",
       "Unknown",
     ]);
-    expect(tester.getSelectedRadio()).toBe(within(root).getByRole("radio", { name: "Female" }));
+    expect(screen.getByRole("radio", { name: "Unknown" })).toBeChecked();
   });
 
-  it("calls onChange and moves the selection when a different option is pressed", async () => {
-    let lastChange: Sex | undefined;
-    const { getByTestId } = render(
-      <SexButtons initial="U" onChange={(value) => (lastChange = value)} />,
+  it("reports and moves the selection when another option is clicked", async () => {
+    const onValueChange = vi.fn<(value: "M" | "F" | "U") => void>();
+    render(<Gender onValueChange={onValueChange} />);
+    await userEvent.click(screen.getByRole("radio", { name: "Female" }));
+    expect(onValueChange).toHaveBeenCalledWith("F");
+    expect(screen.getByRole("radio", { name: "Female" })).toBeChecked();
+  });
+
+  it("can't be changed inside a ReadOnlyProvider", async () => {
+    const onValueChange = vi.fn<(value: "M" | "F" | "U") => void>();
+    render(
+      <ReadOnlyProvider>
+        <Gender onValueChange={onValueChange} />
+      </ReadOnlyProvider>,
     );
-    const root = getByTestId("sex-buttons");
-    const tester = testUtilUser.createTester("RadioGroup", { root });
-
-    await tester.triggerRadio({ radio: within(root).getByRole("radio", { name: "Male" }) });
-
-    expect(lastChange).toBe("M");
-    expect(tester.getSelectedRadio()).toBe(within(root).getByRole("radio", { name: "Male" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Female" }));
+    expect(onValueChange).not.toHaveBeenCalled();
   });
 });

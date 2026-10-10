@@ -20,7 +20,10 @@
     "**/routeTree.gen.ts",
     "**/drizzle/**",
     ".claude/**",
-    ".agents/**"
+    ".agents/**",
+    // Vendor shadcn/ui primitives: written only by `shadcn add`, never edited
+    // by hand (see "shadcn/ui on Base UI" in TECH_STACK.md).
+    "packages/ui/src/components/ui/**"
   ],
   "rules": {
     "typescript/consistent-type-imports": "error",
@@ -42,6 +45,25 @@
         // The automatic JSX runtime ("jsx": "react-jsx") makes importing React
         // to use JSX unnecessary.
         "react/react-in-jsx-scope": "off"
+      }
+    },
+    {
+      "files": ["apps/frontend/**"],
+      "rules": {
+        // The app uses packages/ui's own components, never the vendor shadcn
+        // primitives they're composed from — that layer is free to change
+        // whenever `shadcn add` regenerates it.
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@genealogy/ui/components/ui/*"],
+                "message": "Use the composed component from @genealogy/ui/components/<name> instead."
+              }
+            ]
+          }
+        ]
       }
     },
     {

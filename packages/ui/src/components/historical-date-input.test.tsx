@@ -1,12 +1,9 @@
-import { User } from "@react-aria/test-utils";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
 import { HistoricalDateInput, type HistoricalDateQuality } from "./historical-date-input";
-
-const testUtilUser = new User({ interactionType: "mouse" });
 
 function DateField({
   initialQuality = "exact" as HistoricalDateQuality,
@@ -43,11 +40,9 @@ function BareDateField() {
 
 describe("HistoricalDateInput", () => {
   it("lists every quality option", async () => {
-    const { getByTestId } = render(<DateField />);
-    const tester = testUtilUser.createTester("Select", { root: getByTestId("date-field") });
-
-    await tester.open();
-    expect(tester.getOptions().map((option) => option.textContent)).toEqual([
+    render(<DateField />);
+    await userEvent.click(screen.getByRole("combobox", { name: "Date quality" }));
+    expect((await screen.findAllByRole("option")).map((option) => option.textContent)).toEqual([
       "Exact",
       "About",
       "Before",
@@ -58,24 +53,22 @@ describe("HistoricalDateInput", () => {
 
   it("shows a second date input only once Between is selected", async () => {
     let lastQuality: HistoricalDateQuality | undefined;
-    const { getByTestId } = render(<DateField onQualityChange={(q) => (lastQuality = q)} />);
+    render(<DateField onQualityChange={(q) => (lastQuality = q)} />);
     expect(screen.queryByLabelText("End date")).not.toBeInTheDocument();
 
-    const tester = testUtilUser.createTester("Select", { root: getByTestId("date-field") });
-    await tester.open();
-    await tester.toggleOptionSelection({ option: "Between" });
+    await userEvent.click(screen.getByRole("combobox", { name: "Date quality" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Between" }));
 
     expect(lastQuality).toBe("between");
     expect(screen.getByLabelText("End date")).toBeInTheDocument();
   });
 
   it("hides the second date input again when switching back to Exact", async () => {
-    const { getByTestId } = render(<DateField initialQuality="between" />);
+    render(<DateField initialQuality="between" />);
     expect(screen.getByLabelText("End date")).toBeInTheDocument();
 
-    const tester = testUtilUser.createTester("Select", { root: getByTestId("date-field") });
-    await tester.open();
-    await tester.toggleOptionSelection({ option: "Exact" });
+    await userEvent.click(screen.getByRole("combobox", { name: "Date quality" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Exact" }));
 
     expect(screen.queryByLabelText("End date")).not.toBeInTheDocument();
   });

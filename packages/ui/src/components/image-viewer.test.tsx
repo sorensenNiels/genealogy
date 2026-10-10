@@ -5,14 +5,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ImageViewer } from "./image-viewer";
 
-/**
- * Not built on a `DialogTrigger` (see image-viewer.tsx's own comment) — so
- * unlike dialog.test.tsx, there's no trigger button whose own aria wiring to
- * assert against, and `@react-aria/test-utils`'s `Dialog` tester assumes
- * exactly that trigger shape. Plain render/userEvent covers this component's
- * actual contract just as well: open/closed state, the close button, and the
- * previous/next controls.
- */
 function ControlledViewer({
   onPrevious,
   onNext,
@@ -27,7 +19,7 @@ function ControlledViewer({
         Open viewer
       </button>
       <ImageViewer
-        isOpen={isOpen}
+        open={isOpen}
         onOpenChange={setIsOpen}
         title="A photo"
         {...(onPrevious ? { onPrevious } : {})}

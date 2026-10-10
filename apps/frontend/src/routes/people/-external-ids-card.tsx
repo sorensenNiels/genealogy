@@ -4,6 +4,7 @@ import {
   type PersonExternalId,
   type PersonExternalIdSystem,
 } from "@genealogy/core";
+import { AddButton } from "@genealogy/ui/components/add-button";
 import { Button } from "@genealogy/ui/components/button";
 import { DialogFooter } from "@genealogy/ui/components/dialog";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
@@ -12,18 +13,11 @@ import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
-import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
+import { Select } from "@genealogy/ui/components/select";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLinkIcon, PlusIcon, XIcon } from "lucide-react";
+import { ExternalLinkIcon, XIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -57,14 +51,7 @@ export function ExternalIdsCard({ personId }: { personId: string }) {
       contentClassName="space-y-2"
       action={
         <FormDialog
-          trigger={
-            <Tooltip>
-              <Button variant="outline" size="icon" aria-label={t("person.externalIds.add")}>
-                <PlusIcon className="size-4" />
-              </Button>
-              <TooltipContent>{t("person.externalIds.add")}</TooltipContent>
-            </Tooltip>
-          }
+          trigger={<AddButton label={t("person.externalIds.add")} />}
           title={t("person.externalIds.add")}
         >
           {(close) => (
@@ -141,7 +128,7 @@ function ExternalIdRow({
             size="icon"
             className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
             aria-label={t("person.externalIds.removeAria", { value: externalId.value })}
-            isDisabled={isRemoving}
+            disabled={isRemoving}
           >
             <XIcon className="size-3.5" />
           </Button>
@@ -185,22 +172,12 @@ function ExternalIdForm({ personId, onDone }: { personId: string; onDone: () => 
         <Select
           aria-label={t("person.externalIds.systemLabel")}
           value={system}
-          onChange={(next) => {
-            const parsed = personExternalIdSystemSchema.safeParse(next);
-            if (parsed.success) form.setFieldValue("system", parsed.data);
-          }}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {personExternalIdSystemSchema.options.map((option) => (
-              <SelectItem key={option} id={option}>
-                {t(`person.externalIds.system.${option}`)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          onValueChange={(next) => form.setFieldValue("system", next)}
+          options={personExternalIdSystemSchema.options.map((option) => ({
+            value: option,
+            label: t(`person.externalIds.system.${option}`),
+          }))}
+        />
       </LabeledField>
       <form.Field name="value">
         {(field) => (
@@ -236,7 +213,7 @@ function ExternalIdForm({ personId, onDone }: { personId: string; onDone: () => 
         <p className="text-sm text-destructive">{addMutation.error.message}</p>
       )}
       <DialogFooter>
-        <SaveButton isDirty={isDirty} isPending={isSubmitting} isDisabled={value.trim() === ""}>
+        <SaveButton isDirty={isDirty} isPending={isSubmitting} disabled={value.trim() === ""}>
           {t("common.add")}
         </SaveButton>
       </DialogFooter>

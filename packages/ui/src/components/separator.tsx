@@ -1,18 +1,11 @@
-import { Separator as RACSeparator, type SeparatorProps } from "react-aria-components";
+import { Separator as SeparatorPrimitive } from "./ui/separator";
 
-import { cn } from "../lib/utils";
+export interface SeparatorProps {
+  orientation?: "horizontal" | "vertical" | undefined;
+  className?: string | undefined;
+}
 
-export function Separator({ className, orientation = "horizontal", ...props }: SeparatorProps) {
-  return (
-    <RACSeparator
-      data-slot="separator"
-      orientation={orientation}
-      className={cn(
-        "shrink-0 bg-border",
-        orientation === "vertical" ? "h-full w-px" : "h-px w-full",
-        className,
-      )}
-      {...props}
-    />
-  );
+/** A thin rule between groups of content, announced as a separator. */
+export function Separator({ orientation = "horizontal", className }: SeparatorProps) {
+  return <SeparatorPrimitive orientation={orientation} className={className} />;
 }

@@ -1,19 +1,11 @@
 import {
+  isAdmin,
   joinHistoricalDateText,
   paginate,
   resolveHistoricalDate,
   splitHistoricalDateText,
 } from "@genealogy/core";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@genealogy/ui/components/alert-dialog";
+import { AddButton } from "@genealogy/ui/components/add-button";
 import { Autocomplete } from "@genealogy/ui/components/autocomplete";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Badge } from "@genealogy/ui/components/badge";
@@ -29,24 +21,12 @@ import {
 } from "@genealogy/ui/components/card";
 import { Checkbox } from "@genealogy/ui/components/checkbox";
 import { ColorSwatchPicker } from "@genealogy/ui/components/color-swatch-picker";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-} from "@genealogy/ui/components/combobox";
+import { Combobox } from "@genealogy/ui/components/combobox";
+import { ConfirmDialog } from "@genealogy/ui/components/confirm-dialog";
 import { CopyableText } from "@genealogy/ui/components/copyable-text";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@genealogy/ui/components/dialog";
+import { Dialog, DialogClose, DialogFooter } from "@genealogy/ui/components/dialog";
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -58,6 +38,7 @@ import {
   HistoricalDateInput,
   type HistoricalDateQuality,
 } from "@genealogy/ui/components/historical-date-input";
+import { IconButton } from "@genealogy/ui/components/icon-button";
 import { ImageCropDialog } from "@genealogy/ui/components/image-crop-dialog";
 import { ImageViewer } from "@genealogy/ui/components/image-viewer";
 import { Input } from "@genealogy/ui/components/input";
@@ -66,18 +47,12 @@ import { MarkdownContent } from "@genealogy/ui/components/markdown-content";
 import { MarkdownEditor } from "@genealogy/ui/components/markdown-editor";
 import { PhotoBook, type PhotoBookPage } from "@genealogy/ui/components/photo-book";
 import { PhotoGrid, type Selection } from "@genealogy/ui/components/photo-grid";
-import { Popover, PopoverContent } from "@genealogy/ui/components/popover";
+import { Popover } from "@genealogy/ui/components/popover";
 import { ProgressBar } from "@genealogy/ui/components/progress-bar";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
+import { Select } from "@genealogy/ui/components/select";
 import { Separator } from "@genealogy/ui/components/separator";
 import { Switch } from "@genealogy/ui/components/switch";
 import {
@@ -88,26 +63,40 @@ import {
   TableHeader,
   TableRow,
 } from "@genealogy/ui/components/table";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsPanels,
-  TabsTrigger,
-} from "@genealogy/ui/components/tabs";
+import { Tabs } from "@genealogy/ui/components/tabs";
 import { TagInput } from "@genealogy/ui/components/tag-input";
 import { ThemeToggle } from "@genealogy/ui/components/theme-toggle";
-import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
-import { createFileRoute } from "@tanstack/react-router";
-import { LogOutIcon, PlusIcon, UserIcon } from "lucide-react";
+import { Tooltip } from "@genealogy/ui/components/tooltip";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { LogOutIcon, PencilIcon, PlusIcon, UserIcon, XIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
-// Not linked from the main nav — a dev-only reference for checking every
-// packages/ui component (and both themes) at a glance. Every new component
-// added to the package should get a section here.
+import { useIsLocalhost } from "../lib/localhost";
+
+// A development tool, linked from the Tools page's "Development tools"
+// section on localhost only: every packages/ui component (and both themes)
+// at a glance. Every new component added to the package should get a
+// section here.
+
 export const Route = createFileRoute("/dev/components")({
-  component: ComponentsShowcase,
+  // Admin-only like the Tools page it's linked from.
+  beforeLoad: ({ context }) => {
+    if (!isAdmin(context.role)) throw redirect({ to: "/" });
+  },
+  component: DevComponentsRoute,
 });
+
+function DevComponentsRoute() {
+  const { t } = useTranslation();
+  const isLocalhost = useIsLocalhost();
+  // Unknown until mounted (see useIsLocalhost) — render nothing rather than
+  // flash the "localhost only" notice on the very machine it's meant for.
+  if (isLocalhost === null) return null;
+  if (!isLocalhost)
+    return <p className="text-sm text-muted-foreground">{t("tools.devOnlyLocalhost")}</p>;
+  return <ComponentsShowcase />;
+}
 
 const SAMPLE_PEOPLE = [
   { id: "1", name: "Anne Marie Sørensen" },
@@ -198,7 +187,7 @@ function ButtonRadioGroupDemo() {
     <ButtonRadioGroup
       aria-label="Gender"
       value={gender}
-      onChange={setGender}
+      onValueChange={setGender}
       options={[
         { value: "M", label: "Male" },
         { value: "F", label: "Female" },
@@ -214,7 +203,7 @@ function ColorSwatchPickerDemo() {
     <ColorSwatchPicker
       aria-label="Cover colour"
       value={color}
-      onChange={setColor}
+      onValueChange={setColor}
       colors={["#2f4034", "#6b2b2b", "#4a3322", "#23344a", "#e3dccb", "#3b3b3f"]}
     />
   );
@@ -224,11 +213,11 @@ function ImageViewerDemo() {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <>
-      <Button variant="outline" onPress={() => setIsOpen(true)}>
+      <Button variant="outline" onClick={() => setIsOpen(true)}>
         Open image viewer
       </Button>
       <ImageViewer
-        isOpen={isOpen}
+        open={isOpen}
         onOpenChange={setIsOpen}
         title="Family photo, 1962"
         onPrevious={() => {}}
@@ -244,11 +233,11 @@ function ImageCropDialogDemo() {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <>
-      <Button variant="outline" onPress={() => setIsOpen(true)}>
+      <Button variant="outline" onClick={() => setIsOpen(true)}>
         Open cropper
       </Button>
       <ImageCropDialog
-        isOpen={isOpen}
+        open={isOpen}
         onOpenChange={setIsOpen}
         imageSrc={PLACEHOLDER_IMAGE}
         onCropped={() => setIsOpen(false)}
@@ -324,11 +313,11 @@ function PhotoBookDemo() {
 
   return (
     <div className="flex flex-wrap gap-2">
-      <Button variant="outline" onPress={() => setPhysicalOpen(true)}>
+      <Button variant="outline" onClick={() => setPhysicalOpen(true)}>
         Open physical-style book
       </Button>
       <PhotoBook
-        isOpen={physicalOpen}
+        open={physicalOpen}
         onOpenChange={setPhysicalOpen}
         title="Mormor Else's album"
         coverNode={demoCover("Mormor Else's album", "#2f4034")}
@@ -336,11 +325,11 @@ function PhotoBookDemo() {
         pages={pages}
         paperStyle="black"
       />
-      <Button variant="outline" onPress={() => setVirtualOpen(true)}>
+      <Button variant="outline" onClick={() => setVirtualOpen(true)}>
         Open virtual-style book
       </Button>
       <PhotoBook
-        isOpen={virtualOpen}
+        open={virtualOpen}
         onOpenChange={setVirtualOpen}
         title="Christmas through the years"
         coverNode={demoCover("Christmas through the years", "#e9ece8")}
@@ -354,6 +343,9 @@ function PhotoBookDemo() {
 
 function ComponentsShowcase() {
   const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<string | null>(null);
+  const [gender, setGender] = useState<"M" | "F" | "U">("U");
+  const [source, setSource] = useState<string | null>(null);
   const [switchOn, setSwitchOn] = useState(true);
   const [checked, setChecked] = useState(true);
   const [titlePrefix, setTitlePrefix] = useState("");
@@ -386,7 +378,7 @@ function ComponentsShowcase() {
         <Button variant="link">Link</Button>
         <Button size="sm">Small</Button>
         <Button size="lg">Large</Button>
-        <Button isDisabled>Disabled</Button>
+        <Button disabled>Disabled</Button>
       </Section>
 
       <Section title="Save Button">
@@ -513,7 +505,7 @@ function ComponentsShowcase() {
             aria-label="Title / prefix"
             placeholder="e.g. Dr., Rev."
             value={titlePrefix}
-            onChange={setTitlePrefix}
+            onValueChange={setTitlePrefix}
             options={["Mr.", "Mrs.", "Miss", "Ms.", "Dr.", "Rev.", "Prof.", "Sir"]}
           />
         </div>
@@ -523,9 +515,9 @@ function ComponentsShowcase() {
             aria-label="Clearable suffix example"
             placeholder="e.g. Jr., III"
             value={suffix}
-            onChange={setSuffix}
+            onValueChange={setSuffix}
             options={["Jr.", "Sr.", "II", "III", "IV"]}
-            isClearable
+            clearable
           />
         </div>
       </Section>
@@ -542,13 +534,16 @@ function ComponentsShowcase() {
       </Section>
 
       <Section title="Switch">
-        <Switch isSelected={switchOn} onChange={setSwitchOn}>
+        <Switch checked={switchOn} onCheckedChange={setSwitchOn}>
           Living
+        </Switch>
+        <Switch description="Shown under the label, and read out with the switch.">
+          With a description
         </Switch>
       </Section>
 
       <Section title="Checkbox">
-        <Checkbox isSelected={checked} onChange={setChecked}>
+        <Checkbox checked={checked} onCheckedChange={setChecked}>
           Notify me
         </Checkbox>
       </Section>
@@ -599,80 +594,111 @@ function ComponentsShowcase() {
       </Section>
 
       <Section title="Tooltip">
-        <Tooltip>
+        <Tooltip content="A helpful hint">
           <Button variant="outline">Hover me</Button>
-          <TooltipContent>A helpful hint</TooltipContent>
         </Tooltip>
       </Section>
 
+      <Section title="Icon Button">
+        <IconButton label="Edit name" icon={<PencilIcon />} />
+        <IconButton label="Edit name" icon={<PencilIcon />} variant="outline" />
+        <IconButton label="Close" icon={<XIcon />} tooltip={false} />
+      </Section>
+
+      <Section title="Add Button">
+        <AddButton label="Add a parent" />
+        <FormDialog trigger={<AddButton label="Add a citation" />} title="Add a citation">
+          {(close) => (
+            <DialogFooter>
+              <Button onClick={close}>Save</Button>
+            </DialogFooter>
+          )}
+        </FormDialog>
+      </Section>
+
       <Section title="Tabs">
-        <Tabs defaultSelectedKey="details" className="w-72">
-          <TabsList aria-label="Person">
-            <TabsTrigger id="details">Details</TabsTrigger>
-            <TabsTrigger id="sources">Sources</TabsTrigger>
-          </TabsList>
-          <TabsPanels>
-            <TabsContent id="details">First/last names, dates, notes.</TabsContent>
-            <TabsContent id="sources">Citations will show here.</TabsContent>
-          </TabsPanels>
-        </Tabs>
+        <Tabs
+          aria-label="Person"
+          className="w-72"
+          tabs={[
+            { value: "details", label: "Details", content: "First/last names, dates, notes." },
+            { value: "sources", label: "Sources", content: "Citations will show here." },
+          ]}
+        />
       </Section>
 
       <Section title="Select">
-        <Select aria-label="Gender" defaultValue="U">
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem id="M">M</SelectItem>
-            <SelectItem id="F">F</SelectItem>
-            <SelectItem id="U">U</SelectItem>
-          </SelectContent>
-        </Select>
+        <Select
+          aria-label="Gender"
+          value={gender}
+          onValueChange={setGender}
+          options={[
+            { value: "M", label: "Male" },
+            { value: "F", label: "Female" },
+            { value: "U", label: "Unknown" },
+          ]}
+        />
+        <Select
+          aria-label="Source"
+          value={source}
+          onValueChange={setSource}
+          placeholder="Choose a source"
+          className="w-56"
+          options={[
+            { value: "census-1880", label: "Folketælling 1880, Ribe" },
+            { value: "church-1850", label: "Kirkebog, Ribe Domsogn 1850" },
+          ]}
+        />
       </Section>
 
       <Section title="Popover">
-        <Popover>
-          <Button variant="outline">Open popover</Button>
-          <PopoverContent>This is a popover, animated on entry and exit.</PopoverContent>
+        <Popover trigger={<Button variant="outline">Open popover</Button>}>
+          This is a popover, animated on entry and exit.
+        </Popover>
+        <Popover
+          trigger={<Button variant="outline">With a title</Button>}
+          title="Sources"
+          description="Where this date comes from."
+        >
+          {(close) => (
+            <Button size="sm" onClick={close}>
+              Got it
+            </Button>
+          )}
         </Popover>
       </Section>
 
       <Section title="Dropdown Menu">
-        <DropdownMenu>
-          <Button variant="outline">Open menu</Button>
-          <DropdownMenuContent
-            header={
-              <DropdownMenuLabel className="mb-1 border-b font-normal text-muted-foreground">
-                anne@example.com
-              </DropdownMenuLabel>
-            }
-          >
-            <DropdownMenuItem>
-              <UserIcon className="size-4" aria-hidden="true" />
-              Profile settings
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <LogOutIcon className="size-4" aria-hidden="true" />
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
+        <DropdownMenu
+          trigger={<Button variant="outline">Open menu</Button>}
+          header={
+            <DropdownMenuLabel className="mb-1 border-b font-normal text-muted-foreground">
+              anne@example.com
+            </DropdownMenuLabel>
+          }
+        >
+          <DropdownMenuItem>
+            <UserIcon className="size-4" aria-hidden="true" />
+            Profile settings
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive">
+            <LogOutIcon className="size-4" aria-hidden="true" />
+            Sign out
+          </DropdownMenuItem>
         </DropdownMenu>
       </Section>
 
       <Section title="Dialog">
-        <Dialog>
-          <Button variant="outline">Open dialog</Button>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Example dialog</DialogTitle>
-            </DialogHeader>
-            <p className="text-sm text-muted-foreground">Dialog body content.</p>
-            <DialogFooter>
-              <Button slot="close">Close</Button>
-            </DialogFooter>
-          </DialogContent>
+        <Dialog
+          trigger={<Button variant="outline">Open dialog</Button>}
+          title="Example dialog"
+          description="An optional description under the title."
+        >
+          <p className="text-sm text-muted-foreground">Dialog body content.</p>
+          <DialogFooter>
+            <DialogClose>Close</DialogClose>
+          </DialogFooter>
         </Dialog>
       </Section>
 
@@ -685,29 +711,28 @@ function ComponentsShowcase() {
             <>
               <p className="text-sm text-muted-foreground">Form fields go here.</p>
               <DialogFooter>
-                <Button onPress={close}>Save</Button>
+                <Button onClick={close}>Save</Button>
               </DialogFooter>
             </>
           )}
         </FormDialog>
       </Section>
 
-      <Section title="Alert dialog">
-        <AlertDialog>
-          <Button variant="destructive">Delete…</Button>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete this record?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This cannot be undone. Body text explains what will happen.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction>Delete</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+      <Section title="Confirm Dialog">
+        <ConfirmDialog
+          trigger={<Button variant="destructive">Delete…</Button>}
+          title="Delete this record?"
+          description="This cannot be undone. Body text explains what will happen."
+          confirmLabel="Delete"
+          onConfirm={() => {}}
+        />
+        <ConfirmDialog
+          trigger={<Button variant="outline">Mark all deceased…</Button>}
+          title="Mark 12 people as deceased?"
+          confirmLabel="Mark deceased"
+          destructive={false}
+          onConfirm={() => {}}
+        />
       </Section>
 
       <Section title="Remove Button">
@@ -723,19 +748,20 @@ function ComponentsShowcase() {
       </Section>
 
       <Section title="Combobox">
-        <Combobox<(typeof SAMPLE_PEOPLE)[number]>
-          aria-label="Search people"
-          items={options}
-          inputValue={query}
-          onInputChange={setQuery}
-        >
-          <ComboboxInput placeholder="Search people…" />
-          <ComboboxContent<(typeof SAMPLE_PEOPLE)[number]>
-            renderEmptyState={() => <ComboboxEmpty>No matches.</ComboboxEmpty>}
-          >
-            {(item) => <ComboboxItem id={item.id}>{item.name}</ComboboxItem>}
-          </ComboboxContent>
-        </Combobox>
+        <div className="w-72 space-y-1">
+          <Combobox
+            aria-label="Search people"
+            placeholder="Search people…"
+            items={options}
+            itemKey={(person) => person.id}
+            itemLabel={(person) => person.name}
+            inputValue={query}
+            onInputValueChange={setQuery}
+            onSelect={(person) => setPicked(person.name)}
+            emptyText="No matches."
+          />
+          <p className="text-xs text-muted-foreground">Picked: {picked ?? "—"}</p>
+        </div>
       </Section>
 
       <Section title="Table">

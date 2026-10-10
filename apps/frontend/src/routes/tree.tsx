@@ -10,21 +10,10 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Button, buttonVariants } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-} from "@genealogy/ui/components/combobox";
-import {
-  ControlledDialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@genealogy/ui/components/dialog";
+import { Combobox } from "@genealogy/ui/components/combobox";
+import { Dialog } from "@genealogy/ui/components/dialog";
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -56,7 +45,6 @@ import {
   getTree,
   linkParent,
   linkSpouse,
-  listPersons,
   unlinkParent,
   unlinkSpouse,
 } from "../server/functions/person.functions";
@@ -66,6 +54,7 @@ import {
   saveLastTreeView,
 } from "../server/functions/profile.functions";
 import { getTreeSettings } from "../server/functions/settings.functions";
+import { formatPersonWithLifespan, PersonPicker } from "./-person-picker";
 import { TopolaChart, type ChartKind, type ChartPoint, type TreeChartApi } from "./-topola-chart";
 
 export const Route = createFileRoute("/tree")({
@@ -131,7 +120,6 @@ function treeSearch(personId: string, view: ChartKind, orientation: Orientation)
 type TreeData = Awaited<ReturnType<typeof getTree>>;
 type TreePersonRow = TreeData["people"][number];
 type TreeEdgeRow = TreeData["parentEdges"][number];
-type PersonListItem = Awaited<ReturnType<typeof listPersons>>["items"][number];
 
 function TreePage() {
   const { t } = useTranslation();
@@ -174,14 +162,6 @@ function TreePage() {
 function RootPicker() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [query, setQuery] = useState("");
-  const trimmedQuery = query.trim();
-  const searchInput = { limit: 10, offset: 0, search: trimmedQuery === "" ? null : trimmedQuery };
-  const search = useQuery({
-    queryKey: ["person", "list", searchInput],
-    queryFn: () => listPersons({ data: searchInput }),
-  });
-  const options = search.data?.items ?? [];
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 rounded-lg border border-dashed text-center">
@@ -192,29 +172,10 @@ function RootPicker() {
         </Link>
         .
       </p>
-      <Combobox<PersonListItem>
-        aria-label={t("person.family.searchPeople")}
+      <PersonPicker
         className="w-full max-w-sm"
-        items={options}
-        inputValue={query}
-        onInputChange={setQuery}
-        onChange={(value) => {
-          if (typeof value !== "string") return;
-          void navigate({ to: "/tree", search: { personId: value } });
-        }}
-      >
-        <ComboboxInput placeholder={t("person.family.searchPeople")} />
-        <ComboboxContent<PersonListItem>
-          renderEmptyState={() => <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>}
-        >
-          {(item) => (
-            <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-              {formatPersonName(item)}
-              {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
-            </ComboboxItem>
-          )}
-        </ComboboxContent>
-      </Combobox>
+        onSelect={(person) => void navigate({ to: "/tree", search: { personId: person.id } })}
+      />
     </div>
   );
 }
@@ -648,7 +609,7 @@ function FamilyTree({
             <ButtonRadioGroup
               aria-label={t("tree.view.label")}
               value={view}
-              onChange={(next) =>
+              onValueChange={(next) =>
                 void navigate({ to: "/tree", search: treeSearch(rootId, next, orientation) })
               }
               options={[
@@ -658,31 +619,32 @@ function FamilyTree({
               ]}
             />
           </div>
-          <DropdownMenu>
-            <Button
-              variant="outline"
-              className="bg-card shadow-sm"
-              isDisabled={exportState.pending}
-              aria-label={t("tree.export.label")}
-            >
-              {exportState.pending ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <DownloadIcon className="size-4" aria-hidden="true" />
-              )}
-              {t("tree.export.label")}
-            </Button>
-            <DropdownMenuContent>
-              <DropdownMenuItem onAction={() => void exportChart("png")}>
-                {t("tree.export.png")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onAction={() => void exportChart("pdf")}>
-                {t("tree.export.pdf")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onAction={() => void exportChart("svg")}>
-                {t("tree.export.svg")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
+          <DropdownMenu
+            trigger={
+              <Button
+                variant="outline"
+                className="bg-card shadow-sm"
+                disabled={exportState.pending}
+                aria-label={t("tree.export.label")}
+              >
+                {exportState.pending ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <DownloadIcon className="size-4" aria-hidden="true" />
+                )}
+                {t("tree.export.label")}
+              </Button>
+            }
+          >
+            <DropdownMenuItem onClick={() => void exportChart("png")}>
+              {t("tree.export.png")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void exportChart("pdf")}>
+              {t("tree.export.pdf")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void exportChart("svg")}>
+              {t("tree.export.svg")}
+            </DropdownMenuItem>
           </DropdownMenu>
           {exportState.error && (
             <p className="rounded-md bg-card px-2.5 py-1.5 text-sm text-destructive shadow-sm">
@@ -704,7 +666,7 @@ function FamilyTree({
             <ButtonRadioGroup
               aria-label={t("tree.orientation.label")}
               value={orientation}
-              onChange={(next) =>
+              onValueChange={(next) =>
                 void navigate({ to: "/tree", search: treeSearch(rootId, view, next) })
               }
               options={[
@@ -827,19 +789,20 @@ function PointMenu({
 }) {
   return (
     <DropdownMenu
-      isOpen
+      open
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
+      trigger={
+        <Button
+          aria-label={label}
+          className="pointer-events-none absolute size-px p-0 opacity-0"
+          style={{ left: point.x, top: point.y }}
+        />
+      }
+      header={<DropdownMenuLabel>{title}</DropdownMenuLabel>}
     >
-      <Button
-        aria-label={label}
-        className="pointer-events-none absolute size-px p-0 opacity-0"
-        style={{ left: point.x, top: point.y }}
-      />
-      <DropdownMenuContent header={<DropdownMenuLabel>{title}</DropdownMenuLabel>}>
-        {children}
-      </DropdownMenuContent>
+      {children}
     </DropdownMenu>
   );
 }
@@ -887,31 +850,21 @@ function CardMenu({
       onClose={onClose}
     >
       {!isRoot && (
-        <DropdownMenuItem id="center" onAction={() => onCenter(id)}>
-          {t("tree.centerTreeHere")}
-        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onCenter(id)}>{t("tree.centerTreeHere")}</DropdownMenuItem>
       )}
-      <DropdownMenuItem id="profile" onAction={() => onOpenProfile(id)}>
+      <DropdownMenuItem onClick={() => onOpenProfile(id)}>
         {t("tree.viewFullProfile")}
       </DropdownMenuItem>
       {options.load.length > 0 && <DropdownMenuSeparator />}
       {options.load.map((direction) => (
-        <DropdownMenuItem
-          key={direction}
-          id={`load-${direction}`}
-          onAction={() => onExpand(id, direction)}
-        >
+        <DropdownMenuItem key={direction} onClick={() => onExpand(id, direction)}>
           {direction === "up" ? t("tree.loadAncestors") : t("tree.loadDescendants")}
         </DropdownMenuItem>
       ))}
       {canEdit && <DropdownMenuSeparator />}
       {canEdit &&
         [...options.add, { kind: "spouse" as const }].map((option) => (
-          <DropdownMenuItem
-            key={option.kind}
-            id={`add-${option.kind}`}
-            onAction={() => onAddRelative(id, option)}
-          >
+          <DropdownMenuItem key={option.kind} onClick={() => onAddRelative(id, option)}>
             {t("tree.addLabel", { kind: t(`tree.kind.${option.kind}`) })}
           </DropdownMenuItem>
         ))}
@@ -957,31 +910,19 @@ function AddRelativeMenu({
       onClose={onClose}
     >
       {options.add.map((option) => (
-        <DropdownMenuItem
-          key={option.kind}
-          id={`add-${option.kind}`}
-          onAction={() => onAddRelative(id, option)}
-        >
+        <DropdownMenuItem key={option.kind} onClick={() => onAddRelative(id, option)}>
           {t("tree.addLabel", { kind: t(`tree.kind.${option.kind}`) })}
         </DropdownMenuItem>
       ))}
       {options.add.length > 0 && options.load.length > 0 && <DropdownMenuSeparator />}
       {options.load.map((direction) => (
-        <DropdownMenuItem
-          key={direction}
-          id={`load-${direction}`}
-          onAction={() => onExpand(id, direction)}
-        >
+        <DropdownMenuItem key={direction} onClick={() => onExpand(id, direction)}>
           {direction === "up"
             ? t("tree.addMenu.loadParentsFirst")
             : t("tree.addMenu.loadChildrenFirst")}
         </DropdownMenuItem>
       ))}
-      {isEmpty && (
-        <DropdownMenuItem id="nothing" isDisabled>
-          {t("tree.addMenu.nothing")}
-        </DropdownMenuItem>
-      )}
+      {isEmpty && <DropdownMenuItem disabled>{t("tree.addMenu.nothing")}</DropdownMenuItem>}
     </PointMenu>
   );
 }
@@ -1015,31 +956,22 @@ function FindInTree({
         className="pointer-events-none absolute top-1/2 left-2.5 z-10 size-4 -translate-y-1/2 text-muted-foreground"
         aria-hidden="true"
       />
-      <Combobox<TreePersonRow>
+      <Combobox
         aria-label={t("tree.findInTree")}
+        placeholder={t("tree.findInTree")}
+        className="[&_input]:pl-6"
         items={matches}
+        itemKey={(person) => person.id}
+        itemLabel={formatPersonName}
+        renderItem={formatPersonWithLifespan}
         inputValue={query}
-        onInputChange={setQuery}
-        onChange={(value) => {
-          if (typeof value !== "string") return;
-          onFind(value);
+        onInputValueChange={setQuery}
+        onSelect={(person) => {
+          onFind(person.id);
           setQuery("");
         }}
-      >
-        <ComboboxInput placeholder={t("tree.findInTree")} className="pl-8" />
-        <ComboboxContent<TreePersonRow>
-          renderEmptyState={() =>
-            needle === "" ? null : <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>
-          }
-        >
-          {(item) => (
-            <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-              {formatPersonName(item)}
-              {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
-            </ComboboxItem>
-          )}
-        </ComboboxContent>
-      </Combobox>
+        emptyText={needle === "" ? undefined : t("person.family.noMatches")}
+      />
     </div>
   );
 }
@@ -1098,7 +1030,7 @@ function RelativeRow({
                 size="icon"
                 className="size-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                 aria-label={t("tree.removeAria", { name, relation: remove.relationLabel })}
-                isDisabled={remove.isPending}
+                disabled={remove.isPending}
               >
                 <XIcon className="size-3.5" />
               </Button>
@@ -1148,7 +1080,7 @@ function AddRelativeButton(props: AddRelativeProps) {
         variant="outline"
         size="sm"
         className="w-full justify-start"
-        onPress={() => setOpen(true)}
+        onClick={() => setOpen(true)}
       >
         {t("tree.addLabel", { kind: t(`tree.kind.${props.kind}`) })}
       </Button>
@@ -1174,22 +1106,10 @@ function AddRelativeDialog({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { canEdit } = usePermissions();
-  const [query, setQuery] = useState("");
   const close = (next: boolean) => {
     onOpenChange(next);
-    if (!next) setQuery("");
   };
 
-  const trimmedQuery = query.trim();
-  const searchInput = { limit: 10, offset: 0, search: trimmedQuery === "" ? null : trimmedQuery };
-  const search = useQuery({
-    queryKey: ["person", "list", searchInput],
-    queryFn: () => listPersons({ data: searchInput }),
-    enabled: isOpen,
-  });
-  const options = (search.data?.items ?? []).filter(
-    (candidate) => candidate.id !== subjectId && !excludeIds?.has(candidate.id),
-  );
   const kindLabel = t(`tree.kind.${kind}`);
 
   const linkParentMutation = useMutation({ mutationFn: linkParent });
@@ -1255,44 +1175,24 @@ function AddRelativeDialog({
   if (!canEdit) return null;
 
   return (
-    <ControlledDialogContent isOpen={isOpen} onOpenChange={close}>
-      <DialogHeader>
-        <DialogTitle>{t("tree.addTitle", { kind: kindLabel })}</DialogTitle>
-      </DialogHeader>
+    <Dialog open={isOpen} onOpenChange={close} title={t("tree.addTitle", { kind: kindLabel })}>
       <div className="space-y-3">
-        <Combobox<PersonListItem>
+        <PersonPicker
           aria-label={t("tree.searchForKind", { kind: kindLabel })}
-          items={options}
-          inputValue={query}
-          onInputChange={setQuery}
-          onChange={(value) => {
-            const target = options.find((candidate) => candidate.id === value);
-            if (target) void link(target);
-          }}
-        >
-          <ComboboxInput placeholder={t("person.family.searchPeople")} />
-          <ComboboxContent<PersonListItem>
-            renderEmptyState={() => <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>}
-          >
-            {(item) => (
-              <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-                {formatPersonName(item)}
-                {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
-              </ComboboxItem>
-            )}
-          </ComboboxContent>
-        </Combobox>
+          onSelect={(person) => void link(person)}
+          excludeIds={new Set([subjectId, ...(excludeIds ?? [])])}
+        />
         <Button
           variant="ghost"
           size="sm"
           className="w-full"
-          isDisabled={createPersonMutation.isPending}
-          onPress={() => void createAndLink()}
+          disabled={createPersonMutation.isPending}
+          onClick={() => void createAndLink()}
         >
           {t("tree.createNewPerson")}
         </Button>
       </div>
-    </ControlledDialogContent>
+    </Dialog>
   );
 }
 
@@ -1485,8 +1385,8 @@ function DetailPanel({
             variant="ghost"
             size="sm"
             className="w-full"
-            isDisabled={expandingDirection === "up"}
-            onPress={() => onExpand("up")}
+            disabled={expandingDirection === "up"}
+            onClick={() => onExpand("up")}
           >
             {expandingDirection === "up" ? t("tree.loading") : t("tree.loadAncestors")}
           </Button>
@@ -1520,8 +1420,8 @@ function DetailPanel({
             variant="ghost"
             size="sm"
             className="w-full"
-            isDisabled={expandingDirection === "down"}
-            onPress={() => onExpand("down")}
+            disabled={expandingDirection === "down"}
+            onClick={() => onExpand("down")}
           >
             {expandingDirection === "down" ? t("tree.loading") : t("tree.loadDescendants")}
           </Button>

@@ -477,7 +477,12 @@
     },
     "recordAgeMismatches": "Ages in records that don't fit the birth date",
     "recordAgeMismatchText": "is {{age}} in a {{year}} record ({{record}}), but born {{birth}} — {{years}} years off.",
-    "recordAgeMismatchOpen": "Open the record"
+    "recordAgeMismatchOpen": "Open the record",
+    "devNav": "Development tools",
+    "devTool": {
+      "components": "Component showcase"
+    },
+    "devOnlyLocalhost": "Development tools are only available when the app runs on localhost."
   },
   "settings": {
     "title": "Settings",

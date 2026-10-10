@@ -1,6 +1,6 @@
 {
   "$schema": "https://ui.shadcn.com/schema.json",
-  "style": "new-york",
+  "style": "base-nova",
   "rsc": false,
   "tsx": true,
   "tailwind": {
@@ -13,7 +13,7 @@
   "iconLibrary": "lucide",
   "aliases": {
     "components": "@genealogy/ui/components",
-    "ui": "@genealogy/ui/components",
+    "ui": "@genealogy/ui/components/ui",
     "utils": "@genealogy/ui/lib/utils",
     "lib": "@genealogy/ui/lib",
     "hooks": "@genealogy/ui/hooks"

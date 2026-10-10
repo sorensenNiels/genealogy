@@ -9,14 +9,8 @@ import {
   type Parentage,
   type UnionStatus,
 } from "@genealogy/core";
+import { AddButton } from "@genealogy/ui/components/add-button";
 import { Button } from "@genealogy/ui/components/button";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-} from "@genealogy/ui/components/combobox";
 import { DialogFooter } from "@genealogy/ui/components/dialog";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import {
@@ -28,22 +22,16 @@ import { MarkdownContent } from "@genealogy/ui/components/markdown-content";
 import { MarkdownEditor } from "@genealogy/ui/components/markdown-editor";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
-import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
+import { Select } from "@genealogy/ui/components/select";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { PencilIcon, PlusIcon, UnlinkIcon } from "lucide-react";
+import { PencilIcon, UnlinkIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { PersonPicker } from "../-person-picker";
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { formatDisplayDate } from "../../lib/format-date";
 import { labelFor, optionsFor } from "../../lib/person-display";
@@ -52,7 +40,6 @@ import {
   createPerson,
   getPersonById,
   linkParent,
-  listPersons,
   removeUnion,
   unlinkParent,
   unlinkSpouse,
@@ -399,21 +386,14 @@ function UnionForm({
       <Select
         aria-label={t("person.family.unionStatus")}
         value={status}
-        onChange={(value) => {
+        onValueChange={(value) => {
           if (value) setStatus(unionStatusSchema.parse(value));
         }}
-      >
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {optionsFor(options, "union_status").map((option) => (
-            <SelectItem key={option.key} id={option.key}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        options={optionsFor(options, "union_status").map((option) => ({
+          value: option.key,
+          label: option.label,
+        }))}
+      />
       <HistoricalDateInput
         placeholder={t("person.family.marriageDatePlaceholder")}
         quality={startQuality}
@@ -467,9 +447,7 @@ function AddRelative({
 }) {
   const { t, i18n } = useTranslation();
   const language = toSupportedLanguage(i18n.language);
-  const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"search" | "create">("search");
-  const [query, setQuery] = useState("");
   const [parentage, setParentage] = useState<Parentage>("unknown");
   const [unionStatus, setUnionStatus] = useState<UnionStatus>("married");
   const [unionQuality, setUnionQuality] = useState<HistoricalDateQuality>("exact");
@@ -478,18 +456,8 @@ function AddRelative({
   const [unionPlace, setUnionPlace] = useState("");
   const [unionNotes, setUnionNotes] = useState("");
 
-  const trimmedQuery = query.trim();
-  const searchInput = { limit: 10, offset: 0, search: trimmedQuery === "" ? null : trimmedQuery };
-  const search = useQuery({
-    queryKey: ["person", "list", searchInput],
-    queryFn: () => listPersons({ data: searchInput }),
-    enabled: open && mode === "search",
-  });
-
   const linkParentMutation = useMutation({ mutationFn: linkParent });
   const addUnionMutation = useMutation({ mutationFn: addUnion });
-
-  const options = (search.data?.items ?? []).filter((candidate) => !excludeIds.has(candidate.id));
 
   const unionOriginal = joinHistoricalDateText(
     {
@@ -528,20 +496,11 @@ function AddRelative({
 
   return (
     <FormDialog
-      trigger={
-        <Tooltip>
-          <Button variant="outline" size="icon" aria-label={kindLabel}>
-            <PlusIcon className="size-4" />
-          </Button>
-          <TooltipContent>{kindLabel}</TooltipContent>
-        </Tooltip>
-      }
+      trigger={<AddButton label={kindLabel} />}
       title={kindLabel}
       onOpenChange={(next) => {
-        setOpen(next);
         if (!next) {
           setMode("search");
-          setQuery("");
         }
       }}
     >
@@ -551,42 +510,28 @@ function AddRelative({
             <Select
               aria-label={t("person.family.parentage")}
               value={parentage}
-              onChange={(value) => {
+              onValueChange={(value) => {
                 if (value) setParentage(parentageSchema.parse(value));
               }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {optionsFor(allOptions, "parentage").map((option) => (
-                  <SelectItem key={option.key} id={option.key}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={optionsFor(allOptions, "parentage").map((option) => ({
+                value: option.key,
+                label: option.label,
+              }))}
+            />
           )}
           {kind === "spouse" && (
             <div className="space-y-2">
               <Select
                 aria-label={t("person.family.unionStatus")}
                 value={unionStatus}
-                onChange={(value) => {
+                onValueChange={(value) => {
                   if (value) setUnionStatus(unionStatusSchema.parse(value));
                 }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {optionsFor(allOptions, "union_status").map((option) => (
-                    <SelectItem key={option.key} id={option.key}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={optionsFor(allOptions, "union_status").map((option) => ({
+                  value: option.key,
+                  label: option.label,
+                }))}
+              />
               <HistoricalDateInput
                 placeholder={t("person.family.datePlaceholder")}
                 quality={unionQuality}
@@ -617,42 +562,22 @@ function AddRelative({
           )}
           {mode === "search" ? (
             <>
-              <Combobox<PersonRow>
-                aria-label={t("person.family.searchPeople")}
-                items={options}
-                inputValue={query}
-                onInputChange={setQuery}
-                onChange={(value) => {
-                  const target = options.find((candidate) => candidate.id === value);
-                  if (target) void link(target, close);
-                }}
-              >
-                <ComboboxInput placeholder={t("person.family.searchPeople")} />
-                <ComboboxContent<PersonRow>
-                  renderEmptyState={() => (
-                    <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>
-                  )}
-                >
-                  {(item) => (
-                    <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-                      {formatPersonName(item)}
-                      {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
-                    </ComboboxItem>
-                  )}
-                </ComboboxContent>
-              </Combobox>
+              <PersonPicker
+                onSelect={(person) => void link(person, close)}
+                excludeIds={excludeIds}
+              />
               <Button
                 variant="ghost"
                 size="sm"
                 className="w-full"
-                onPress={() => setMode("create")}
+                onClick={() => setMode("create")}
               >
                 {t("person.family.createNewPerson")}
               </Button>
             </>
           ) : (
             <>
-              <Button variant="ghost" size="sm" onPress={() => setMode("search")}>
+              <Button variant="ghost" size="sm" onClick={() => setMode("search")}>
                 {t("person.family.searchInstead")}
               </Button>
               <CreateAndLinkForm

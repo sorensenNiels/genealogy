@@ -12,8 +12,8 @@ import {
 export type { Selection };
 
 import { cn } from "../lib/utils";
-import { Button } from "./button";
-import { Checkbox } from "./checkbox";
+import { AriaButton } from "./aria/button";
+import { AriaCheckbox } from "./aria/checkbox";
 
 export interface PhotoGridProps<T extends { id: string }> {
   "aria-label": string;
@@ -113,7 +113,7 @@ export function PhotoGrid<T extends { id: string }>({
             <>
               {children(item)}
               {allowsDragging && (
-                <Button
+                <AriaButton
                   slot="drag"
                   variant="ghost"
                   size="icon"
@@ -121,9 +121,9 @@ export function PhotoGrid<T extends { id: string }>({
                   aria-label="Drag to reorder"
                 >
                   <GripVertical className="size-3.5" />
-                </Button>
+                </AriaButton>
               )}
-              <Checkbox
+              <AriaCheckbox
                 slot="selection"
                 aria-label="Select photo"
                 className="absolute top-1 left-1 rounded bg-background/80 p-0.5 backdrop-blur-sm"

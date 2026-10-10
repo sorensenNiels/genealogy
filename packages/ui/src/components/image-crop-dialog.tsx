@@ -2,11 +2,11 @@ import { useState } from "react";
 import Cropper, { type Area } from "react-easy-crop";
 
 import { Button } from "./button";
-import { ControlledDialogContent, DialogFooter, DialogHeader, DialogTitle } from "./dialog";
+import { Dialog, DialogFooter } from "./dialog";
 
 export interface ImageCropDialogProps {
-  isOpen: boolean;
-  onOpenChange: (isOpen: boolean) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   /** Re-mount the cropper fresh for a new image (e.g. when a caller keeps this component mounted across multiple crops) by changing `key` at the call site — this component doesn't reset `zoom`/`crop` on its own if `imageSrc` changes underneath it. */
   imageSrc: string;
   onCropped: (blob: Blob) => void;
@@ -29,7 +29,7 @@ export interface ImageCropDialogProps {
  * viewer.
  */
 export function ImageCropDialog({
-  isOpen,
+  open,
   onOpenChange,
   imageSrc,
   onCropped,
@@ -47,11 +47,7 @@ export function ImageCropDialog({
   };
 
   return (
-    <ControlledDialogContent isOpen={isOpen} onOpenChange={onOpenChange}>
-      <DialogHeader>
-        <DialogTitle>Choose a photo</DialogTitle>
-      </DialogHeader>
-
+    <Dialog open={open} onOpenChange={onOpenChange} title="Choose a photo">
       <div className="relative h-80 w-full overflow-hidden rounded-md bg-muted">
         <Cropper
           image={imageSrc}
@@ -82,19 +78,15 @@ export function ImageCropDialog({
 
       <DialogFooter>
         {onBack && (
-          <Button type="button" variant="outline" isDisabled={isSaving} onPress={onBack}>
+          <Button variant="outline" disabled={isSaving} onClick={onBack}>
             Back
           </Button>
         )}
-        <Button
-          type="button"
-          isDisabled={isSaving || !croppedAreaPixels}
-          onPress={() => void confirm()}
-        >
+        <Button disabled={isSaving || !croppedAreaPixels} onClick={() => void confirm()}>
           {isSaving ? "Saving…" : "Use this photo"}
         </Button>
       </DialogFooter>
-    </ControlledDialogContent>
+    </Dialog>
   );
 }
 

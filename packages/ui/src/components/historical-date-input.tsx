@@ -1,14 +1,13 @@
 import { parseDate } from "@internationalized/date";
 import { CalendarCheckIcon, CalendarIcon, TriangleAlertIcon } from "lucide-react";
 import type { ComponentProps } from "react";
-import { useState } from "react";
 
 import { cn } from "../lib/utils";
 import { Button } from "./button";
 import { Calendar } from "./calendar";
 import { Input } from "./input";
-import { Popover, PopoverContent } from "./popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./select";
+import { Popover } from "./popover";
+import { Select, type SelectOption } from "./select";
 
 /** `value`/`endValue` are free text, not always a bare ISO date — this is just a best-effort seed for where the calendar opens. */
 function tryParseDate(text: string) {
@@ -29,12 +28,12 @@ function tryParseDate(text: string) {
  */
 export type HistoricalDateQuality = "exact" | "about" | "before" | "after" | "between";
 
-const QUALITY_OPTIONS: { id: HistoricalDateQuality; label: string }[] = [
-  { id: "exact", label: "Exact" },
-  { id: "about", label: "About" },
-  { id: "before", label: "Before" },
-  { id: "after", label: "After" },
-  { id: "between", label: "Between" },
+const QUALITY_OPTIONS: SelectOption<HistoricalDateQuality>[] = [
+  { value: "exact", label: "Exact" },
+  { value: "about", label: "About" },
+  { value: "before", label: "Before" },
+  { value: "after", label: "After" },
+  { value: "between", label: "Between" },
 ];
 
 export interface HistoricalDatePreview {
@@ -113,21 +112,9 @@ export function HistoricalDateInput({
           <Select
             aria-label="Date quality"
             value={quality}
-            onChange={(key) => {
-              if (key) onQualityChange(key as HistoricalDateQuality);
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {QUALITY_OPTIONS.map((option) => (
-                <SelectItem key={option.id} id={option.id}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onValueChange={onQualityChange}
+            options={QUALITY_OPTIONS}
+          />
         )}
         <Input
           value={value}
@@ -189,22 +176,24 @@ function DatePickerButton({
   onChange: (value: string) => void;
   "aria-label": string;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
-
   return (
-    <Popover isOpen={isOpen} onOpenChange={setIsOpen}>
-      <Button type="button" variant="outline" size="icon" aria-label={ariaLabel}>
-        <CalendarIcon className="size-4" />
-      </Button>
-      <PopoverContent className="w-fit p-3">
+    <Popover
+      trigger={
+        <Button variant="outline" size="icon" aria-label={ariaLabel}>
+          <CalendarIcon className="size-4" />
+        </Button>
+      }
+      className="w-fit p-3"
+    >
+      {(close) => (
         <Calendar
           value={tryParseDate(value) ?? null}
           onChange={(date) => {
             onChange(date.toString());
-            setIsOpen(false);
+            close();
           }}
         />
-      </PopoverContent>
+      )}
     </Popover>
   );
 }

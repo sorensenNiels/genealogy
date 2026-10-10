@@ -35,6 +35,17 @@ export function optionsFor<T extends ConfigurableOptionLike>(all: T[], topic: st
 }
 
 /**
+ * One topic's configurable options as `Select` options —
+ * `<Select options={selectOptionsFor(options, "confidence")} … />`.
+ */
+export function selectOptionsFor<T extends ConfigurableOptionLike>(
+  all: T[],
+  topic: string,
+): { value: string; label: string }[] {
+  return optionsFor(all, topic).map((option) => ({ value: option.key, label: option.label }));
+}
+
+/**
  * A key's display label, looked up from the fetched configurable options —
  * falling back to the raw key so a record referencing an option that was
  * since deleted from Settings still renders something instead of going blank.

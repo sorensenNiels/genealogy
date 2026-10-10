@@ -217,7 +217,7 @@ export function AssetViewer({
   return (
     <>
       <ImageViewer
-        isOpen
+        open
         onOpenChange={(open) => {
           if (!open) onClose();
         }}

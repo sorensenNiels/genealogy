@@ -1,95 +1,63 @@
-import { motion } from "motion/react";
-import type * as React from "react";
-import {
-  DialogTrigger,
-  Heading,
-  Popover as RACPopover,
-  Text,
-  type DialogTriggerProps,
-} from "react-aria-components";
+import { useState, type ReactElement, type ReactNode } from "react";
 
-import {
-  OverlayTransitionProvider,
-  useOverlayTransition,
-  useOverlayTransitionState,
-} from "../hooks/use-overlay-transition";
 import { cn } from "../lib/utils";
+import {
+  Popover as PopoverRoot,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "./ui/popover";
 
-const MotionPopover = motion.create(RACPopover);
-
-/** The trigger goes directly inside as the first child — no separate Trigger component needed. */
-export function Popover({ isOpen, onOpenChange, children, ...props }: DialogTriggerProps) {
-  const { contextValue, handleOpenChange } = useOverlayTransition(isOpen, onOpenChange);
-  return (
-    <DialogTrigger
-      {...props}
-      {...(isOpen !== undefined ? { isOpen } : {})}
-      onOpenChange={handleOpenChange}
-    >
-      <OverlayTransitionProvider value={contextValue}>{children}</OverlayTransitionProvider>
-    </DialogTrigger>
-  );
+export interface PopoverProps {
+  /** The element it's anchored to and opened by — a `Button` or `IconButton`. */
+  trigger: ReactElement;
+  /** Optional heading; leave out for a popover whose content speaks for itself (a calendar). */
+  title?: ReactNode | undefined;
+  description?: ReactNode | undefined;
+  open?: boolean | undefined;
+  onOpenChange?: ((open: boolean) => void) | undefined;
+  /** As a function it gets `close`, e.g. to close once a date is picked. */
+  children: ReactNode | ((close: () => void) => ReactNode);
+  side?: "top" | "bottom" | "left" | "right" | undefined;
+  align?: "start" | "center" | "end" | undefined;
+  className?: string | undefined;
 }
 
-export function PopoverContent({
-  className,
-  offset = 4,
+/**
+ * Non-modal content anchored to its trigger: `<Popover trigger={<Button…/>}>…</Popover>`.
+ * Controlled or not, the body can close it through the `close` it's given.
+ */
+export function Popover({
+  trigger,
+  title,
+  description,
+  open,
+  onOpenChange,
   children,
-}: {
-  className?: string;
-  offset?: number;
-  children: React.ReactNode;
-}) {
-  const { animation, onAnimationComplete } = useOverlayTransitionState();
-  if (animation === "unmounted") return null;
-
+  side,
+  align,
+  className,
+}: PopoverProps) {
+  const [ownOpen, setOwnOpen] = useState(false);
+  const isOpen = open ?? ownOpen;
+  const setOpen = (next: boolean) => {
+    if (open === undefined) setOwnOpen(next);
+    onOpenChange?.(next);
+  };
   return (
-    <MotionPopover
-      offset={offset}
-      isExiting={animation === "hidden"}
-      initial="hidden"
-      animate={animation}
-      variants={{ hidden: { opacity: 0, scale: 0.95 }, visible: { opacity: 1, scale: 1 } }}
-      transition={{ type: "spring", stiffness: 500, damping: 32 }}
-      onAnimationComplete={onAnimationComplete}
-      className={cn(
-        "w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-hidden",
-        className,
-      )}
-    >
-      {children}
-    </MotionPopover>
-  );
-}
-
-export function PopoverHeader({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="popover-header"
-      className={cn("flex flex-col gap-1 text-sm", className)}
-      {...props}
-    />
-  );
-}
-
-export function PopoverTitle({ className, ...props }: React.ComponentProps<typeof Heading>) {
-  return (
-    <Heading
-      slot="title"
-      data-slot="popover-title"
-      className={cn("font-medium", className)}
-      {...props}
-    />
-  );
-}
-
-export function PopoverDescription({ className, ...props }: React.ComponentProps<typeof Text>) {
-  return (
-    <Text
-      slot="description"
-      data-slot="popover-description"
-      className={cn("text-muted-foreground", className)}
-      {...props}
-    />
+    <PopoverRoot open={isOpen} onOpenChange={setOpen}>
+      <PopoverTrigger render={trigger} />
+      <PopoverContent side={side} align={align} className={cn(className)}>
+        {(title || description) && (
+          <PopoverHeader>
+            {title && <PopoverTitle>{title}</PopoverTitle>}
+            {description && <PopoverDescription>{description}</PopoverDescription>}
+          </PopoverHeader>
+        )}
+        {typeof children === "function" ? children(() => setOpen(false)) : children}
+      </PopoverContent>
+    </PopoverRoot>
   );
 }

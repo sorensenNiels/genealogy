@@ -1,14 +1,7 @@
 import { formatPersonName } from "@genealogy/core";
+import { AddButton } from "@genealogy/ui/components/add-button";
 import { Badge } from "@genealogy/ui/components/badge";
-import { Button } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-} from "@genealogy/ui/components/combobox";
 import { DialogFooter } from "@genealogy/ui/components/dialog";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import { Input } from "@genealogy/ui/components/input";
@@ -18,26 +11,18 @@ import { MarkdownEditor } from "@genealogy/ui/components/markdown-editor";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
-import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { Select } from "@genealogy/ui/components/select";
+import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
-import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { PersonPicker, type PersonListItem } from "../-person-picker";
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { formatDisplayDate } from "../../lib/format-date";
 import { labelFor, optionsFor } from "../../lib/person-display";
 import { addAssociation, removeAssociation } from "../../server/functions/association.functions";
-import { listPersons } from "../../server/functions/person.functions";
 import type {
   AssociationAppearanceRow,
   AssociationRow,
@@ -46,8 +31,6 @@ import type {
   PersonRow,
   UnionRow,
 } from "./-types";
-
-type ListedPerson = Awaited<ReturnType<typeof listPersons>>["items"][number];
 
 /** "Christening (20 Jun 1830)" — the event a role is tied to. */
 function eventContextLabel(
@@ -122,14 +105,7 @@ export function AssociationsCard({
       contentClassName="space-y-4"
       action={
         <FormDialog
-          trigger={
-            <Tooltip>
-              <Button variant="outline" size="icon" aria-label={t("person.associations.add")}>
-                <PlusIcon className="size-4" />
-              </Button>
-              <TooltipContent>{t("person.associations.add")}</TooltipContent>
-            </Tooltip>
-          }
+          trigger={<AddButton label={t("person.associations.add")} />}
           title={t("person.associations.add")}
         >
           {(close) => (
@@ -271,19 +247,9 @@ function AssociationForm({
   // Godparents and witnesses are often never added as people — "just a
   // name" is a first-class choice, not a fallback.
   const [mode, setMode] = useState<"person" | "name">("person");
-  const [associate, setAssociate] = useState<ListedPerson | null>(null);
-  const [query, setQuery] = useState("");
+  const [associate, setAssociate] = useState<PersonListItem | null>(null);
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
-
-  const trimmedQuery = query.trim();
-  const searchInput = { limit: 10, offset: 0, search: trimmedQuery === "" ? null : trimmedQuery };
-  const search = useQuery({
-    queryKey: ["person", "list", searchInput],
-    queryFn: () => listPersons({ data: searchInput }),
-    enabled: mode === "person",
-  });
-  const candidates = (search.data?.items ?? []).filter((candidate) => candidate.id !== personId);
 
   const hasAssociate = mode === "person" ? associate !== null : name.trim() !== "";
   const needsLabel = role === "other" && label.trim() === "";
@@ -320,21 +286,11 @@ function AssociationForm({
         <Select
           aria-label={t("person.associations.role")}
           value={role}
-          onChange={(value) => {
+          onValueChange={(value) => {
             if (value) setRole(String(value));
           }}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {roleOptions.map((option) => (
-              <SelectItem key={option.key} id={option.key}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          options={roleOptions.map((option) => ({ value: option.key, label: option.label }))}
+        />
       </LabeledField>
       {role === "other" && (
         <LabeledField label={t("person.associations.roleLabel")}>
@@ -346,59 +302,34 @@ function AssociationForm({
         <Select
           aria-label={t("person.associations.record")}
           value={context}
-          onChange={(value) => {
+          onValueChange={(value) => {
             if (value) setContext(String(value));
           }}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem id="none">{t("person.associations.noRecord")}</SelectItem>
-            {events.map((event) => (
-              <SelectItem key={event.id} id={`event|${event.id}`}>
-                {eventContextLabel(event, options, language)}
-              </SelectItem>
-            ))}
-            {unions.map((union) => (
-              <SelectItem key={union.id} id={`union|${union.id}`}>
-                {unionContextLabel(union, personId, spouses, t)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          options={[
+            { value: "none", label: t("person.associations.noRecord") },
+            ...events.map((event) => ({
+              value: `event|${event.id}`,
+              label: eventContextLabel(event, options, language),
+            })),
+            ...unions.map((union) => ({
+              value: `union|${union.id}`,
+              label: unionContextLabel(union, personId, spouses, t),
+            })),
+          ]}
+        />
       </LabeledField>
 
       <ButtonRadioGroup
         aria-label={t("person.associations.who")}
         value={mode}
-        onChange={(value) => setMode(value === "name" ? "name" : "person")}
+        onValueChange={(value) => setMode(value === "name" ? "name" : "person")}
         options={[
           { value: "person", label: t("person.associations.someoneInTree") },
           { value: "name", label: t("person.associations.justAName") },
         ]}
       />
       {mode === "person" ? (
-        <Combobox<ListedPerson>
-          aria-label={t("person.family.searchPeople")}
-          items={candidates}
-          inputValue={query}
-          onInputChange={setQuery}
-          onChange={(value) => {
-            setAssociate(candidates.find((candidate) => candidate.id === value) ?? null);
-          }}
-        >
-          <ComboboxInput placeholder={t("person.family.searchPeople")} />
-          <ComboboxContent<ListedPerson>
-            renderEmptyState={() => <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>}
-          >
-            {(item) => (
-              <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-                {formatPersonName(item)}
-              </ComboboxItem>
-            )}
-          </ComboboxContent>
-        </Combobox>
+        <PersonPicker onSelect={setAssociate} excludeIds={new Set([personId])} />
       ) : (
         <Input
           aria-label={t("person.associations.nameAsWritten")}
@@ -416,7 +347,7 @@ function AssociationForm({
         <SaveButton
           isDirty={isDirty}
           isPending={addMutation.isPending}
-          isDisabled={!hasAssociate || needsLabel}
+          disabled={!hasAssociate || needsLabel}
         >
           {t("common.add")}
         </SaveButton>

@@ -650,7 +650,7 @@ export function TopolaChart({
           variant="outline"
           size="icon"
           aria-label={t("tree.zoomIn")}
-          onPress={() => controlsRef.current?.zoomBy(1.25)}
+          onClick={() => controlsRef.current?.zoomBy(1.25)}
         >
           <ZoomInIcon className="size-4" aria-hidden="true" />
         </Button>
@@ -658,7 +658,7 @@ export function TopolaChart({
           variant="outline"
           size="icon"
           aria-label={t("tree.zoomOut")}
-          onPress={() => controlsRef.current?.zoomBy(0.8)}
+          onClick={() => controlsRef.current?.zoomBy(0.8)}
         >
           <ZoomOutIcon className="size-4" aria-hidden="true" />
         </Button>
@@ -666,7 +666,7 @@ export function TopolaChart({
           variant="outline"
           size="icon"
           aria-label={t("tree.fitToView")}
-          onPress={() => controlsRef.current?.fit()}
+          onClick={() => controlsRef.current?.fit()}
         >
           <MaximizeIcon className="size-4" aria-hidden="true" />
         </Button>

@@ -4,7 +4,7 @@ import { FileDropZone } from "@genealogy/ui/components/file-drop-zone";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import { ProgressBar } from "@genealogy/ui/components/progress-bar";
 import { CheckIcon, Loader2Icon, XIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ReactElement } from "react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -47,7 +47,7 @@ export function UploadDialog({
 }: {
   /** Present → uploads land in this album (via the same request Immich's own `POST /assets` doesn't take an album for). */
   albumId?: string;
-  trigger: ReactNode;
+  trigger: ReactElement;
   onUploaded: (results: UploadResult[]) => Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -215,13 +215,13 @@ function UploadForm({
 
       <DialogFooter>
         {isFinished ? (
-          <Button onPress={() => void finish()}>{t("upload.done")}</Button>
+          <Button onClick={() => void finish()}>{t("upload.done")}</Button>
         ) : (
           // Not `SaveButton`: this dialog has no clean/dirty form baseline to
           // diff against — it's a picker-then-run-a-batch-job flow, the same
           // reasoning CitationForm's own comment gives for staying a plain
           // Button.
-          <Button isDisabled={items.length === 0 || isUploading} onPress={() => void startUpload()}>
+          <Button disabled={items.length === 0 || isUploading} onClick={() => void startUpload()}>
             {isUploading ? t("upload.uploading") : t("upload.uploadCount", { count: items.length })}
           </Button>
         )}

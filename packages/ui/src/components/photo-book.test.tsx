@@ -19,7 +19,7 @@ function ControlledBook() {
         Open book
       </button>
       <PhotoBook
-        isOpen={isOpen}
+        open={isOpen}
         onOpenChange={setIsOpen}
         title="Sample album"
         coverNode={<div>Cover</div>}

@@ -1,100 +1,53 @@
-import { User } from "@react-aria/test-utils";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { Autocomplete } from "./autocomplete";
 
-const testUtilUser = new User({ interactionType: "mouse" });
-const OPTIONS = ["Dr.", "Rev.", "Prof."];
+const PREFIXES = ["Dr.", "Pastor", "Professor", "Sir"];
 
-function TitleAutocomplete({
-  onChange,
-  isClearable = false,
-  initialValue = "",
-}: {
-  onChange?: (value: string) => void;
-  isClearable?: boolean;
-  initialValue?: string;
-}) {
-  const [value, setValue] = useState(initialValue);
+function Prefix({ clearable = false, initial = "" }: { clearable?: boolean; initial?: string }) {
+  const [value, setValue] = useState(initial);
   return (
-    <Autocomplete
-      aria-label="Title"
-      value={value}
-      onChange={(next) => {
-        setValue(next);
-        onChange?.(next);
-      }}
-      options={OPTIONS}
-      isClearable={isClearable}
-    />
+    <>
+      <Autocomplete
+        aria-label="Title prefix"
+        value={value}
+        onValueChange={setValue}
+        options={PREFIXES}
+        clearable={clearable}
+      />
+      <output>value:{value}</output>
+    </>
   );
 }
 
 describe("Autocomplete", () => {
-  it("does not warn about a missing label when aria-label is provided", () => {
-    // Regression check: aria-label was previously spread onto the inner
-    // <input> only, never passed to RAC's ComboBox itself. The DOM still
-    // ends up with a technically-valid accessible name either way (the raw
-    // HTML attribute lands on the <input> regardless), so a query like
-    // `getByRole("combobox", { name: "Title" })` passes in both cases and
-    // would not have caught this — only React Aria's own internal check,
-    // which looks at the props actually passed to ComboBox, does. That
-    // check logs exactly this console.warn when it thinks no label was
-    // given, independent of what the rendered DOM looks like.
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    render(<TitleAutocomplete />);
-    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining("visible label"));
-    warn.mockRestore();
+  it("narrows suggestions as the text changes, and fills in the one chosen", async () => {
+    render(<Prefix />);
+    const input = screen.getByRole("combobox", { name: "Title prefix" });
+    await userEvent.type(input, "pr");
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["Professor"]);
+
+    await userEvent.click(screen.getByRole("option", { name: "Professor" }));
+    expect(screen.getByText("value:Professor")).toBeInTheDocument();
   });
 
-  it("suggests every option once opened", async () => {
-    render(<TitleAutocomplete />);
-    const tester = testUtilUser.createTester("ComboBox", {
-      root: screen.getByRole("combobox", { name: "Title" }),
-    });
-
-    await tester.open();
-    expect(tester.getOptions().map((option) => option.textContent)).toEqual(OPTIONS);
+  it("keeps free text that matches nothing in the list", async () => {
+    render(<Prefix />);
+    await userEvent.type(screen.getByRole("combobox", { name: "Title prefix" }), "Biskop");
+    expect(screen.getByText("value:Biskop")).toBeInTheDocument();
   });
 
-  it("narrows suggestions as the query changes", async () => {
-    render(<TitleAutocomplete />);
-    const tester = testUtilUser.createTester("ComboBox", { root: screen.getByRole("combobox") });
-
-    await tester.open();
-    await userEvent.type(tester.getCombobox(), "re");
-    expect(tester.getOptions().map((option) => option.textContent)).toEqual(["Rev."]);
-  });
-
-  it("commits free text that matches nothing in the list", async () => {
-    let committed = "";
-    render(<TitleAutocomplete onChange={(value) => (committed = value)} />);
-
-    await userEvent.type(screen.getByRole("combobox"), "Baron");
-    expect(committed).toBe("Baron");
-  });
-
-  it("shows no clear button unless isClearable is set, even with a value", () => {
-    render(<TitleAutocomplete initialValue="Dr." />);
+  it("shows a clear button only when clearable and there's a value, and it clears", async () => {
+    const { unmount } = render(<Prefix initial="Dr." />);
     expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
-  });
+    unmount();
 
-  it("hides the clear button when isClearable but the field is empty", () => {
-    render(<TitleAutocomplete isClearable />);
-    expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
-  });
-
-  it("clears the value when the clear button is clicked", async () => {
-    let current = "";
-    render(
-      <TitleAutocomplete isClearable initialValue="Dr." onChange={(value) => (current = value)} />,
-    );
-
+    render(<Prefix clearable initial="Dr." />);
     await userEvent.click(screen.getByRole("button", { name: "Clear" }));
-    expect(current).toBe("");
-    expect(screen.getByRole("combobox")).toHaveValue("");
+    expect(screen.getByText("value:")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
   });
 });

@@ -1,140 +1,90 @@
-import { SearchIcon } from "lucide-react";
-import { motion } from "motion/react";
-import type * as React from "react";
-import {
-  ComboBox as RACComboBox,
-  Group,
-  Input,
-  ListBox,
-  ListBoxItem,
-  Popover,
-  type ComboBoxProps as RACComboBoxProps,
-  type ListBoxItemProps,
-} from "react-aria-components";
+import type { ReactNode } from "react";
 
-import {
-  OverlayTransitionProvider,
-  useOverlayTransition,
-  useOverlayTransitionState,
-} from "../hooks/use-overlay-transition";
 import { useReadOnly } from "../lib/read-only";
 import { cn } from "../lib/utils";
+import {
+  Combobox as ComboboxRoot,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "./ui/combobox";
 
-const MotionDiv = motion.create("div");
+export interface ComboboxProps<T> {
+  /** The candidates to show — already filtered (e.g. by a server search keyed off `inputValue`). */
+  items: readonly T[];
+  /** A stable key per item. */
+  itemKey: (item: T) => string;
+  /** The item as plain text — typed into the input once picked, and read out by screen readers. */
+  itemLabel: (item: T) => string;
+  /** How an item looks in the list; defaults to `itemLabel`. */
+  renderItem?: ((item: T) => ReactNode) | undefined;
+  inputValue: string;
+  onInputValueChange: (value: string) => void;
+  /** Called with the item the user picks. */
+  onSelect: (item: T) => void;
+  "aria-label": string;
+  placeholder?: string | undefined;
+  /** Shown when there are no `items`. */
+  emptyText?: ReactNode | undefined;
+  disabled?: boolean | undefined;
+  className?: string | undefined;
+}
 
 /**
- * Built for a remote-searched list: feed `items` from a query keyed off
- * `onInputChange` rather than filtering locally. `defaultFilter={() => true}`
- * turns off React Aria's own client-side "contains" filter, since the server
- * has already filtered by the time these items arrive.
+ * A search box with a list of results to pick one from. Built for a
+ * remote-searched list: feed `items` from a query keyed off `inputValue` —
+ * there's no client-side filtering on top (Base UI's own filter is off),
+ * since the server has already filtered by the time items arrive. For a
+ * small fixed list of free-text suggestions, use `Autocomplete`.
  */
-export function Combobox<T extends object>({
-  onOpenChange,
-  children,
-  ...props
-}: Omit<RACComboBoxProps<T>, "children" | "onOpenChange"> & {
-  children: React.ReactNode;
-  onOpenChange?: (isOpen: boolean) => void;
-}) {
-  // RAC's ComboBox has no controlled `isOpen` prop (its menu opens from
-  // focus/typing, not an external toggle — see `menuTrigger` below), so
-  // unlike Dialog/Popover/Select there's no controlled-close path here for
-  // `animation` to desync from.
-  const { contextValue, handleOpenChange } = useOverlayTransition(undefined, onOpenChange);
+export function Combobox<T>({
+  items,
+  itemKey,
+  itemLabel,
+  renderItem,
+  inputValue,
+  onInputValueChange,
+  onSelect,
+  "aria-label": ariaLabel,
+  placeholder,
+  emptyText,
+  disabled,
+  className,
+}: ComboboxProps<T>) {
   const isReadOnly = useReadOnly();
   return (
-    <RACComboBox
-      {...(isReadOnly ? { isReadOnly: true } : {})}
-      allowsEmptyCollection
-      defaultFilter={() => true}
-      // There's no separate trigger button here — just the search input —
-      // so the default "input" trigger (which needs an actual edit, not just
-      // focus) would never open from a plain click/tab into the field.
-      menuTrigger="focus"
-      {...props}
-      onOpenChange={handleOpenChange}
+    <ComboboxRoot<T>
+      items={items}
+      filter={null}
+      itemToStringLabel={itemLabel}
+      itemToStringValue={itemKey}
+      isItemEqualToValue={(item, value) => itemKey(item) === itemKey(value)}
+      inputValue={inputValue}
+      onInputValueChange={(next) => onInputValueChange(next)}
+      onValueChange={(item) => {
+        if (item !== null) onSelect(item);
+      }}
+      disabled={disabled}
+      readOnly={isReadOnly}
     >
-      <OverlayTransitionProvider value={contextValue}>{children}</OverlayTransitionProvider>
-    </RACComboBox>
-  );
-}
-
-export function ComboboxInput({ className, ...props }: React.ComponentProps<typeof Input>) {
-  return (
-    <Group
-      data-slot="combobox-input-group"
-      className="flex h-9 items-center gap-2 rounded-md border border-input bg-transparent px-3"
-    >
-      <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
-      <Input
-        data-slot="combobox-input"
-        className={cn(
-          "h-full w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground data-disabled:cursor-not-allowed data-disabled:opacity-50",
-          className,
-        )}
-        {...props}
+      <ComboboxInput
+        aria-label={ariaLabel}
+        placeholder={placeholder}
+        showTrigger={false}
+        className={cn("w-full", className)}
       />
-    </Group>
-  );
-}
-
-export function ComboboxContent<T extends object>({
-  className,
-  children,
-  renderEmptyState,
-}: {
-  className?: string;
-  children: React.ReactNode | ((item: T) => React.ReactNode);
-  renderEmptyState?: () => React.ReactNode;
-}) {
-  // Unlike Popover/Dialog, this can't unmount while "closed": Combobox needs
-  // its item collection discoverable at all times (e.g. so a selected item's
-  // label can resolve), even before the popup has ever been opened.
-  const { animation, onAnimationComplete } = useOverlayTransitionState();
-
-  // Motion animates a plain `motion.div` nested inside `Popover`, rather than
-  // wrapping `Popover` itself with `motion.create()` — see "Motion for
-  // animation" in TECH_STACK.md.
-  return (
-    <Popover className="w-(--trigger-width)" isExiting={animation === "hidden"}>
-      <MotionDiv
-        initial="hidden"
-        animate={animation === "visible" ? "visible" : "hidden"}
-        variants={{ hidden: { opacity: 0, scale: 0.95 }, visible: { opacity: 1, scale: 1 } }}
-        transition={{ type: "spring", stiffness: 600, damping: 35 }}
-        onAnimationComplete={onAnimationComplete}
-      >
-        <ListBox
-          className={cn(
-            "scrollbar-thin max-h-80 overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md outline-hidden",
-            className,
+      <ComboboxContent>
+        {emptyText && <ComboboxEmpty>{emptyText}</ComboboxEmpty>}
+        <ComboboxList>
+          {(item: T) => (
+            <ComboboxItem key={itemKey(item)} value={item}>
+              {renderItem ? renderItem(item) : itemLabel(item)}
+            </ComboboxItem>
           )}
-          {...(renderEmptyState ? { renderEmptyState } : {})}
-        >
-          {children}
-        </ListBox>
-      </MotionDiv>
-    </Popover>
-  );
-}
-
-export function ComboboxEmpty({ children }: { children: React.ReactNode }) {
-  return <div className="py-6 text-center text-sm text-muted-foreground">{children}</div>;
-}
-
-export function ComboboxItem({ className, children, textValue, ...props }: ListBoxItemProps) {
-  const resolvedTextValue = textValue ?? (typeof children === "string" ? children : undefined);
-  return (
-    <ListBoxItem
-      {...props}
-      {...(resolvedTextValue !== undefined ? { textValue: resolvedTextValue } : {})}
-      data-slot="combobox-item"
-      className={cn(
-        "relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pl-2 text-sm outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 data-focused:bg-accent data-focused:text-accent-foreground",
-        typeof className === "string" ? className : undefined,
-      )}
-    >
-      {children}
-    </ListBoxItem>
+        </ComboboxList>
+      </ComboboxContent>
+    </ComboboxRoot>
   );
 }

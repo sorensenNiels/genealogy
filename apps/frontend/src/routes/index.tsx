@@ -83,8 +83,8 @@ function ImmichCard() {
         <Button
           variant="outline"
           size="sm"
-          isDisabled={status.isPending || recheck.isPending}
-          onPress={() => recheck.mutate()}
+          disabled={status.isPending || recheck.isPending}
+          onClick={() => recheck.mutate()}
         >
           {t("immich.checkAgain")}
         </Button>

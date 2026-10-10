@@ -216,16 +216,16 @@ function AlbumPage() {
         <Button
           type="button"
           variant="outline"
-          isDisabled={!assets.data || assets.data.length === 0}
-          onPress={() => setBookOpen(true)}
+          disabled={!assets.data || assets.data.length === 0}
+          onClick={() => setBookOpen(true)}
         >
           {t("albumPage.openAsBook")}
         </Button>
         <Button
           type="button"
           variant="outline"
-          isDisabled={downloadAlbumMutation.isPending}
-          onPress={() => downloadAlbumMutation.mutate({ data: { albumId } })}
+          disabled={downloadAlbumMutation.isPending}
+          onClick={() => downloadAlbumMutation.mutate({ data: { albumId } })}
         >
           {downloadAlbumMutation.isPending ? t("tools.queuing") : t("albumPage.downloadAll")}
         </Button>
@@ -261,7 +261,7 @@ function AlbumPage() {
       )}
 
       <div className="flex flex-wrap items-center gap-4">
-        <Switch isSelected={checkCaptions} onChange={setCheckCaptions}>
+        <Switch checked={checkCaptions} onCheckedChange={setCheckCaptions}>
           {t("albumPage.checkCaptions")}
         </Switch>
         {checkCaptions && detailsQuery.isPending && (
@@ -269,7 +269,7 @@ function AlbumPage() {
         )}
         {checkCaptions && missingCaptionIds && (
           <>
-            <Switch isSelected={missingCaptionOnly} onChange={setMissingCaptionOnly}>
+            <Switch checked={missingCaptionOnly} onCheckedChange={setMissingCaptionOnly}>
               {t("albumPage.missingCaptionOnly", { count: missingCaptionAssets.length })}
             </Switch>
             {missingCaptionAssets.length > 0 && (
@@ -277,7 +277,7 @@ function AlbumPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onPress={() => {
+                onClick={() => {
                   setReviewMode(true);
                   setOpenIndex(0);
                 }}
@@ -300,7 +300,7 @@ function AlbumPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onPress={() => void setSelectedAsCover()}
+                onClick={() => void setSelectedAsCover()}
               >
                 {t("albumPage.setAsCover")}
               </Button>
@@ -333,7 +333,7 @@ function AlbumPage() {
                 onConfirm={() => void deleteSelected()}
               />
             )}
-            <Button type="button" variant="ghost" size="sm" onPress={clearSelection}>
+            <Button type="button" variant="ghost" size="sm" onClick={clearSelection}>
               {t("common.clear")}
             </Button>
           </div>
@@ -420,7 +420,7 @@ function AlbumPage() {
 
       {album.data && (
         <PhotoBook
-          isOpen={bookOpen}
+          open={bookOpen}
           onOpenChange={setBookOpen}
           title={album.data.albumName}
           coverNode={<AlbumCover album={album.data} variant="spine" />}

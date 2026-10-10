@@ -226,20 +226,22 @@ prompted it.
   dependencies would be undefined. Then wire it into `apps/frontend` per "The proxy
   architecture" above — a procedure with no matching server function is unusable
   from any page.
-- A new shadcn component: `pnpm dlx shadcn@latest add <name>` from `packages/ui`,
-  which is configured as the component target in `components.json` — but it
-  scaffolds against Radix + `cmdk` regardless, since this project is on React
-  Aria Components. Treat its output as a starting point only: swap every
-  primitive import to `react-aria-components` and remove whatever it added to
-  `package.json`. See "shadcn/ui on React Aria Components" in
-  [TECH_STACK.md](TECH_STACK.md) for the API differences to expect. Add a demo
-  section for it to `apps/frontend/src/routes/dev.components.tsx` — every
+- A new shadcn component: `pnpm dlx shadcn@latest add <name>` from
+  `packages/ui` puts the Base UI primitive in `components/ui/` — vendor code,
+  never edited by hand, skipped by lint and format. Then build or extend the
+  component the app actually imports in `components/<name>.tsx`, composing
+  the primitive into an app-level API (`apps/frontend` may not import
+  `components/ui/*` — lint enforces it). See "shadcn/ui on Base UI" in
+  [TECH_STACK.md](TECH_STACK.md); the move from React Aria is in progress, and
+  React Aria stays for the grid/drop zone/tag group/calendar. Add a demo
+  section for it to `apps/frontend/src/routes/dev.components.tsx` (the
+  component showcase, linked from Tools → Development tools on localhost) — every
   component in the package gets one there, so both themes can be checked at a
   glance without hunting for a real page that happens to use it. If it has any
   real interaction (opens, selects, toggles), add a `<name>.test.tsx` next to
-  it using `@react-aria/test-utils` — see "Component tests" in
-  [TECH_STACK.md](TECH_STACK.md). A visual demo doesn't catch a dropdown that
-  silently stopped opening; a test that drives it like a user does, does.
+  it that drives it with Testing Library and `user-event`. A visual demo
+  doesn't catch a dropdown that silently stopped opening; a test that drives
+  it like a user does, does.
 - A new hook shared across the frontend: `packages/ui/src/hooks/`, following
   `use-theme.ts`. Exported via the `@genealogy/ui/hooks/*` alias already
   configured in `components.json`. Since it now also renders under `apps/frontend`'s
@@ -268,7 +270,8 @@ prompted it.
   (`apps/frontend/src/server/functions/settings.functions.ts`) and look up display
   labels with `labelFor`/`optionsFor` from `apps/frontend/src/lib/
   person-display.tsx`, rather than a hardcoded `Record<Type, string>` label
-  map. The only exception is a field that's genuinely structural — code
+  map — `selectOptionsFor(options, topic)` there hands a topic straight to a
+  `Select`'s `options`. The only exception is a field that's genuinely structural — code
   branches on the exact value in a way a runtime-editable list can't safely
   support (`citationFactType`, `gender`) — and even then, prefer tying it to the
   database if there's any real doubt; ask rather than assume it's structural.
@@ -293,7 +296,7 @@ prompted it.
   comment for why a `useState` snapshot is used there rather than a `useRef`
   (reading `ref.current` during render is an oxlint error). Extra disable
   conditions (a required field, an incomplete sub-form) go through
-  `SaveButton`'s own `isDisabled` prop, which is OR'd with `isPending`, not a
+  `SaveButton`'s own `disabled` prop, which is OR'd with `isPending`, not a
   separate check bypassing the component. The only forms exempt from this are
   ones with no clean/dirty baseline to compare against — sign in/sign up
   (`login.tsx`) — which stay plain `Button`s.

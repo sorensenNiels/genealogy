@@ -477,7 +477,12 @@
     },
     "recordAgeMismatches": "Aldre i kildeposter, der ikke passer med fødselsdatoen",
     "recordAgeMismatchText": "er {{age}} år i en post fra {{year}} ({{record}}), men født {{birth}} — {{years}} år forskel.",
-    "recordAgeMismatchOpen": "Åbn posten"
+    "recordAgeMismatchOpen": "Åbn posten",
+    "devNav": "Udviklerværktøjer",
+    "devTool": {
+      "components": "Komponentoversigt"
+    },
+    "devOnlyLocalhost": "Udviklerværktøjer er kun tilgængelige, når appen kører på localhost."
   },
   "settings": {
     "title": "Indstillinger",

@@ -1,5 +1,5 @@
 import { XIcon } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
   Button as RACButton,
   Tag as RACTag,
@@ -30,11 +30,6 @@ export interface TagInputProps {
  */
 export function TagInput({ value, onChange, suggestions, placeholder }: TagInputProps) {
   const [draft, setDraft] = useState("");
-  // Selecting an item from the popover commits it via `onSelectionChange`
-  // below, then the combobox syncs `inputValue` to that item's text via its
-  // own `onChange` right after — clobbering the `setDraft("")` `addTag`
-  // already did unless this flag tells `onChange` to ignore that one sync.
-  const justSelected = useRef(false);
 
   const addTag = (raw: string) => {
     const tag = raw.trim();
@@ -79,13 +74,7 @@ export function TagInput({ value, onChange, suggestions, placeholder }: TagInput
       {!isReadOnly && (
         <Autocomplete
           value={draft}
-          onChange={(next) => {
-            if (justSelected.current) {
-              justSelected.current = false;
-              return;
-            }
-            setDraft(next);
-          }}
+          onValueChange={setDraft}
           options={remainingSuggestions}
           placeholder={placeholder ?? "Add a tag"}
           onKeyDown={(event) => {
@@ -94,12 +83,7 @@ export function TagInput({ value, onChange, suggestions, placeholder }: TagInput
               addTag(draft);
             }
           }}
-          onSelectionChange={(key) => {
-            if (key != null) {
-              justSelected.current = true;
-              addTag(String(key));
-            }
-          }}
+          onOptionSelect={addTag}
         />
       )}
     </div>

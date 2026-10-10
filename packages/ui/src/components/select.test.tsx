@@ -1,78 +1,75 @@
-import { User } from "@react-aria/test-utils";
-import { render } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./select";
+import { ReadOnlyProvider } from "../lib/read-only";
+import { Select } from "./select";
 
-const testUtilUser = new User({ interactionType: "mouse" });
+const SEXES = [
+  { value: "M", label: "Male" },
+  { value: "F", label: "Female" },
+  { value: "U", label: "Unknown" },
+] as const;
 
-function SexSelect({
-  initial = "F" as "M" | "F" | "U",
-  onChange,
-}: {
-  initial?: "M" | "F" | "U";
-  onChange?: (value: string) => void;
-}) {
-  const [value, setValue] = useState(initial);
+function SexSelect({ onValueChange }: { onValueChange?: (value: "M" | "F" | "U") => void }) {
+  const [value, setValue] = useState<"M" | "F" | "U">("F");
   return (
     <Select
       aria-label="Sex"
-      data-testid="sex-select"
       value={value}
-      onChange={(next) => {
-        if (next) {
-          setValue(next as "M" | "F" | "U");
-          onChange?.(String(next));
-        }
+      onValueChange={(next) => {
+        setValue(next);
+        onValueChange?.(next);
       }}
-    >
-      <SelectTrigger>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem id="M">M</SelectItem>
-        <SelectItem id="F">F</SelectItem>
-        <SelectItem id="U">U</SelectItem>
-      </SelectContent>
-    </Select>
+      options={SEXES}
+    />
   );
 }
 
 describe("Select", () => {
-  it("shows the controlled value immediately, before ever being opened", () => {
-    // Regression test: SelectContent/ComboboxContent used to return null
-    // until first opened, which emptied React Aria's item collection and
-    // broke value-to-label resolution on first render (trigger showed
-    // "Select an item" instead of the real value).
-    const { getByTestId } = render(<SexSelect initial="F" />);
-    const tester = testUtilUser.createTester("Select", { root: getByTestId("sex-select") });
-    expect(tester.getTrigger()).toHaveTextContent("F");
+  it("shows the controlled value's label immediately, before ever being opened", () => {
+    render(<SexSelect />);
+    expect(screen.getByRole("combobox", { name: "Sex" })).toHaveTextContent("Female");
   });
 
-  it("opens, lists every option, and calls onChange when a different one is picked", async () => {
-    let lastChange: string | undefined;
-    const { getByTestId } = render(
-      <SexSelect initial="F" onChange={(value) => (lastChange = value)} />,
+  it("opens, lists every option, and reports the one picked", async () => {
+    const onValueChange = vi.fn<(value: "M" | "F" | "U") => void>();
+    render(<SexSelect onValueChange={onValueChange} />);
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Sex" }));
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual([
+      "Male",
+      "Female",
+      "Unknown",
+    ]);
+    await userEvent.click(screen.getByRole("option", { name: "Male" }));
+
+    expect(onValueChange).toHaveBeenCalledWith("M");
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Sex" })).toHaveTextContent("Male"),
     );
-    const tester = testUtilUser.createTester("Select", { root: getByTestId("sex-select") });
-
-    await tester.open();
-    expect(tester.getOptions().map((option) => option.textContent)).toEqual(["M", "F", "U"]);
-
-    await tester.toggleOptionSelection({ option: "M" });
-    expect(lastChange).toBe("M");
-    expect(tester.getTrigger()).toHaveTextContent("M");
   });
 
-  it("can be opened, closed, and reopened without losing its options", async () => {
-    const { getByTestId } = render(<SexSelect initial="U" />);
-    const tester = testUtilUser.createTester("Select", { root: getByTestId("sex-select") });
+  it("shows the placeholder when there's no value", () => {
+    render(
+      <Select
+        aria-label="Source"
+        value={null}
+        onValueChange={() => {}}
+        options={[]}
+        placeholder="Choose a source"
+      />,
+    );
+    expect(screen.getByRole("combobox", { name: "Source" })).toHaveTextContent("Choose a source");
+  });
 
-    await tester.open();
-    expect(tester.getOptions()).toHaveLength(3);
-    await tester.close();
-    await tester.open();
-    expect(tester.getOptions()).toHaveLength(3);
+  it("is disabled inside a ReadOnlyProvider", () => {
+    render(
+      <ReadOnlyProvider>
+        <SexSelect />
+      </ReadOnlyProvider>,
+    );
+    expect(screen.getByRole("combobox", { name: "Sex" })).toBeDisabled();
   });
 });

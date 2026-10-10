@@ -1,46 +1,18 @@
-import { cva, type VariantProps } from "class-variance-authority";
-import { Button as RACButton, type ButtonProps as RACButtonProps } from "react-aria-components";
+import type { ComponentProps } from "react";
 
-import { cn } from "../lib/utils";
+import { Button as ButtonPrimitive, buttonVariants } from "./ui/button";
 
-const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-all outline-none data-disabled:pointer-events-none data-disabled:opacity-50 data-focus-visible:border-ring data-focus-visible:ring-[3px] data-focus-visible:ring-ring/50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4",
-  {
-    variants: {
-      variant: {
-        default: "bg-primary text-primary-foreground shadow-xs data-hovered:bg-primary/90",
-        destructive:
-          "bg-destructive text-destructive-foreground shadow-xs data-hovered:bg-destructive/90",
-        outline:
-          "border bg-background shadow-xs data-hovered:bg-accent data-hovered:text-accent-foreground",
-        secondary: "bg-secondary text-secondary-foreground shadow-xs data-hovered:bg-secondary/80",
-        ghost: "data-hovered:bg-accent data-hovered:text-accent-foreground",
-        link: "text-primary underline-offset-4 data-hovered:underline",
-      },
-      size: {
-        default: "h-9 px-4 py-2 has-[>svg]:px-3",
-        sm: "h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5",
-        lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
-        icon: "size-9",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  },
-);
+export type ButtonProps = ComponentProps<typeof ButtonPrimitive>;
 
-export type ButtonProps = RACButtonProps & VariantProps<typeof buttonVariants>;
-
-export function Button({ className, variant, size, ...props }: ButtonProps) {
-  return (
-    <RACButton
-      data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
-    />
-  );
+/**
+ * The app's button: the nova primitive, with `type="button"` as the default
+ * rather than the native `"submit"` — a button inside a `<form>` should only
+ * submit it when it says so (`SaveButton` does), the same default React
+ * Aria's button had. Forwards every prop and its `ref`, so it can be a
+ * `render` target for a dialog, menu, popover or tooltip trigger.
+ */
+export function Button({ type = "button", ...props }: ButtonProps) {
+  return <ButtonPrimitive type={type} {...props} />;
 }
 
 export { buttonVariants };

@@ -10,6 +10,7 @@
     "./lib/read-only": "./src/lib/read-only.tsx",
     "./lib/*": "./src/lib/*.ts",
     "./hooks/*": "./src/hooks/*.ts",
+    "./components/ui/*": "./src/components/ui/*.tsx",
     "./components/*": "./src/components/*.tsx"
   },
   "scripts": {
@@ -18,17 +19,19 @@
     "clean": "rm -rf .turbo *.tsbuildinfo"
   },
   "dependencies": {
+    "@base-ui/react": "catalog:",
     "@internationalized/date": "catalog:",
     "@mdxeditor/editor": "catalog:",
     "@tanstack/react-form": "catalog:",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
+    "cn": "catalog:",
     "lucide-react": "catalog:",
-    "motion": "catalog:",
     "react-aria-components": "catalog:",
     "react-easy-crop": "catalog:",
     "react-markdown": "catalog:",
-    "tailwind-merge": "catalog:"
+    "tailwind-merge": "catalog:",
+    "tw-animate-css": "catalog:"
   },
   "devDependencies": {
     "@react-aria/test-utils": "catalog:",

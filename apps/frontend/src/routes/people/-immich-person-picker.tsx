@@ -72,8 +72,8 @@ export function ImmichPersonPicker({
               type="button"
               variant="ghost"
               className="h-auto flex-col gap-1 py-2"
-              {...(isDisabled !== undefined ? { isDisabled } : {})}
-              onPress={() => onPick(person.id)}
+              {...(isDisabled !== undefined ? { disabled: isDisabled } : {})}
+              onClick={() => onPick(person.id)}
             >
               <Avatar className="size-14">
                 <AvatarImage src={`/api/immich/people/${person.id}/thumbnail`} alt="" />

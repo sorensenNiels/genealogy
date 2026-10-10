@@ -1,28 +1,14 @@
-import { formatLifespan, formatPersonName } from "@genealogy/core";
+import { formatPersonName } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-} from "@genealogy/ui/components/combobox";
-import {
-  ControlledDialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@genealogy/ui/components/dialog";
+import { Dialog, DialogFooter } from "@genealogy/ui/components/dialog";
 import { Input } from "@genealogy/ui/components/input";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { PersonPicker } from "../-person-picker";
 import { linkImmichPerson, tagImmichFace } from "../../server/functions/immich.functions";
-import { listPersons } from "../../server/functions/person.functions";
 import { ImmichPersonPicker } from "../people/-immich-person-picker";
-
-type PersonSearchResult = Awaited<ReturnType<typeof listPersons>>["items"][number];
 
 export interface TagFaceTarget {
   id: string;
@@ -32,9 +18,9 @@ export interface TagFaceTarget {
 /**
  * Assigns a detected face (from `AssetViewer`) to a genealogy person.
  * Controlled, no trigger — opened by clicking a face box that lives on the
- * photo itself, not from a button next to this dialog — so it's built on
- * `ControlledDialogContent` rather than the trigger-based `Dialog`/
- * `FormDialog` this package also has (see that component's own comment).
+ * photo itself, not from a button next to this dialog — so it's a
+ * controlled `Dialog` (`open`/`onOpenChange`, no `trigger`) rather than a
+ * `FormDialog`.
  *
  * Two paths, matching Immich's own model (most detected faces already
  * belong to *some* Immich person — a brand-new, `person: null` face is the
@@ -60,10 +46,7 @@ export function TagFaceDialog({
 }) {
   const { t } = useTranslation();
   return (
-    <ControlledDialogContent isOpen={isOpen} onOpenChange={onOpenChange}>
-      <DialogHeader>
-        <DialogTitle>{t("tagFace.identifyThisFace")}</DialogTitle>
-      </DialogHeader>
+    <Dialog open={isOpen} onOpenChange={onOpenChange} title={t("tagFace.identifyThisFace")}>
       <TagFaceForm
         face={face}
         onDone={async () => {
@@ -71,24 +54,17 @@ export function TagFaceDialog({
           await onTagged();
         }}
       />
-    </ControlledDialogContent>
+    </Dialog>
   );
 }
 
 function TagFaceForm({ face, onDone }: { face: TagFaceTarget; onDone: () => Promise<void> }) {
   const { t } = useTranslation();
-  const [query, setQuery] = useState("");
   const [personId, setPersonId] = useState<string | null>(null);
   const [personName, setPersonName] = useState("");
   const [mode, setMode] = useState<"existing" | "new">("existing");
   const [newName, setNewName] = useState("");
   const [error, setError] = useState<string | null>(null);
-
-  const search = useQuery({
-    queryKey: ["person", "list", { search: query.trim() || null }],
-    queryFn: () => listPersons({ data: { limit: 10, offset: 0, search: query.trim() || null } }),
-    enabled: personId === null,
-  });
 
   const linkMutation = useMutation({ mutationFn: linkImmichPerson });
   const tagFaceMutation = useMutation({ mutationFn: tagImmichFace });
@@ -143,31 +119,13 @@ function TagFaceForm({ face, onDone }: { face: TagFaceTarget; onDone: () => Prom
 
   if (personId === null) {
     return (
-      <Combobox<PersonSearchResult>
-        aria-label={t("person.family.searchPeople")}
-        items={search.data?.items ?? []}
-        inputValue={query}
-        onInputChange={setQuery}
-        onChange={(value) => {
-          const target = search.data?.items.find((candidate) => candidate.id === value);
-          if (target) {
-            setPersonId(target.id);
-            setPersonName(formatPersonName(target));
-          }
+      <PersonPicker
+        placeholder={t("tagFace.whoseFaceIsThis")}
+        onSelect={(person) => {
+          setPersonId(person.id);
+          setPersonName(formatPersonName(person));
         }}
-      >
-        <ComboboxInput placeholder={t("tagFace.whoseFaceIsThis")} />
-        <ComboboxContent<PersonSearchResult>
-          renderEmptyState={() => <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>}
-        >
-          {(item) => (
-            <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-              {formatPersonName(item)}
-              {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
-            </ComboboxItem>
-          )}
-        </ComboboxContent>
-      </Combobox>
+      />
     );
   }
 
@@ -180,10 +138,10 @@ function TagFaceForm({ face, onDone }: { face: TagFaceTarget; onDone: () => Prom
 
       {face.immichPerson ? (
         <DialogFooter>
-          <Button variant="outline" isDisabled={isPending} onPress={() => setPersonId(null)}>
+          <Button variant="outline" disabled={isPending} onClick={() => setPersonId(null)}>
             {t("tagFace.back")}
           </Button>
-          <Button isDisabled={isPending} onPress={() => void confirmKnownFace()}>
+          <Button disabled={isPending} onClick={() => void confirmKnownFace()}>
             {t("tagFace.confirm")}
           </Button>
         </DialogFooter>
@@ -194,7 +152,7 @@ function TagFaceForm({ face, onDone }: { face: TagFaceTarget; onDone: () => Prom
               variant={mode === "existing" ? "secondary" : "ghost"}
               size="sm"
               className="flex-1"
-              onPress={() => setMode("existing")}
+              onClick={() => setMode("existing")}
             >
               {t("tagFace.existingPerson")}
             </Button>
@@ -202,7 +160,7 @@ function TagFaceForm({ face, onDone }: { face: TagFaceTarget; onDone: () => Prom
               variant={mode === "new" ? "secondary" : "ghost"}
               size="sm"
               className="flex-1"
-              onPress={() => setMode("new")}
+              onClick={() => setMode("new")}
             >
               {t("tagFace.newPerson")}
             </Button>
@@ -220,12 +178,12 @@ function TagFaceForm({ face, onDone }: { face: TagFaceTarget; onDone: () => Prom
                 onChange={(event) => setNewName(event.target.value)}
               />
               <DialogFooter>
-                <Button variant="outline" isDisabled={isPending} onPress={() => setPersonId(null)}>
+                <Button variant="outline" disabled={isPending} onClick={() => setPersonId(null)}>
                   {t("tagFace.back")}
                 </Button>
                 <Button
-                  isDisabled={isPending || newName.trim() === ""}
-                  onPress={() => void confirmNewImmichPerson()}
+                  disabled={isPending || newName.trim() === ""}
+                  onClick={() => void confirmNewImmichPerson()}
                 >
                   {t("tagFace.confirm")}
                 </Button>

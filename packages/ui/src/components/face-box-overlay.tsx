@@ -1,5 +1,4 @@
 import { XIcon } from "lucide-react";
-import { Button } from "react-aria-components";
 
 import { cn } from "../lib/utils";
 
@@ -27,15 +26,15 @@ export interface FaceBoxOverlayProps {
 }
 
 const STATE_STYLES: Record<FaceBox["state"], string> = {
-  linked: "border-primary data-hovered:bg-primary/15 data-focus-visible:ring-primary",
-  untagged: "border-amber-500 data-hovered:bg-amber-500/15 data-focus-visible:ring-amber-500",
+  linked: "border-primary hover:bg-primary/15 focus-visible:ring-primary",
+  untagged: "border-amber-500 hover:bg-amber-500/15 focus-visible:ring-amber-500",
   unknown:
-    "border-muted-foreground data-hovered:bg-muted-foreground/15 data-focus-visible:ring-muted-foreground",
+    "border-muted-foreground hover:bg-muted-foreground/15 focus-visible:ring-muted-foreground",
 };
 
 /**
  * An image with clickable, percentage-positioned boxes over detected faces —
- * no canvas needed, each box is a plain absolutely-positioned `Button` sized
+ * no canvas needed, each box is a plain absolutely-positioned `<button>` sized
  * as a fraction of the image. The wrapper is sized to the *rendered* image
  * (`inline-block w-fit h-fit` around the `<img>`) rather than stretching to
  * fill its parent — boxes positioned against a letterboxed container would
@@ -55,9 +54,9 @@ export function FaceBoxOverlay({
       <img src={src} alt={alt} className="block max-h-[70vh] max-w-full" />
       {showBoxes &&
         boxes.map((box) => (
-          // A positioned wrapper, not the box `Button` itself, carries the
+          // A positioned wrapper, not the box button itself, carries the
           // fractional placement — the label's leading unlink button needs
-          // to be a sibling of the face-box `Button`, not nested inside it
+          // to be a sibling of the face-box button, not nested inside it
           // (an interactive control can't nest inside another one).
           <div
             key={box.id}
@@ -69,24 +68,26 @@ export function FaceBoxOverlay({
               height: `${box.height * 100}%`,
             }}
           >
-            <Button
+            <button
+              type="button"
               aria-label={box.label ?? "Detected face"}
-              onPress={() => onBoxPress?.(box.id)}
+              onClick={() => onBoxPress?.(box.id)}
               className={cn(
-                "absolute inset-0 rounded-sm border-2 transition-colors outline-none data-focus-visible:ring-2 data-focus-visible:ring-offset-2",
+                "absolute inset-0 rounded-sm border-2 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
                 STATE_STYLES[box.state],
               )}
             />
             {box.label && (
               <span className="absolute -bottom-5 left-0 flex items-center gap-0.5 truncate rounded bg-popover px-1 text-xs text-nowrap text-popover-foreground shadow-sm">
                 {box.state === "linked" && onUnlinkPress && (
-                  <Button
+                  <button
+                    type="button"
                     aria-label={`Unlink ${box.label}`}
-                    onPress={() => onUnlinkPress(box.id)}
-                    className="-ml-0.5 rounded-sm outline-none data-focus-visible:ring-1 data-focus-visible:ring-destructive data-hovered:text-destructive"
+                    onClick={() => onUnlinkPress(box.id)}
+                    className="-ml-0.5 rounded-sm outline-none hover:text-destructive focus-visible:ring-1 focus-visible:ring-destructive"
                   >
                     <XIcon className="size-3" />
-                  </Button>
+                  </button>
                 )}
                 {box.label}
               </span>

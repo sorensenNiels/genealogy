@@ -5,7 +5,6 @@ import { Badge } from "@genealogy/ui/components/badge";
 import { Button } from "@genealogy/ui/components/button";
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -18,9 +17,10 @@ import {
   Link,
   Outlet,
   Scripts,
+  ClientOnly,
   createRootRouteWithContext,
   redirect,
-  useLocation,
+  useRouterState,
   useNavigate,
 } from "@tanstack/react-router";
 import {
@@ -36,7 +36,7 @@ import {
   WrenchIcon,
   XIcon,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
 
 import { createI18nInstance, type SupportedLanguage } from "../i18n/create-i18n-instance";
@@ -120,6 +120,11 @@ function RootComponent() {
   );
 }
 
+// TanStack Devtools in development only: the import sits behind
+// `import.meta.env.DEV`, which Vite replaces with `false` in a production
+// build, so the devtools never reach the production bundle.
+const Devtools = import.meta.env.DEV ? lazy(() => import("./-devtools")) : null;
+
 function RootDocument({
   children,
   language,
@@ -155,6 +160,13 @@ function RootDocument({
       </head>
       <body>
         {children}
+        {Devtools && (
+          <ClientOnly>
+            <Suspense>
+              <Devtools />
+            </Suspense>
+          </ClientOnly>
+        )}
         <Scripts />
       </body>
     </html>
@@ -217,9 +229,18 @@ const NAV_LINK_ACTIVE_PROPS = {
 
 function RootLayout() {
   const { t } = useTranslation();
-  const location = useLocation();
-  const isFullWidth = isFullWidthPath(location.pathname);
-  const isNoScroll = isNoScrollPath(location.pathname);
+  // The page that's actually on screen, not the one being navigated to:
+  // `useLocation()` switches the moment a navigation starts, while `<Outlet />`
+  // keeps showing the old page until the new route has loaded — so a width
+  // taken from it re-laid the *old* page at the *new* page's width for a few
+  // frames (Overview's cards stretched full-width, People's table squeezed
+  // into max-w-5xl), which read as a flicker on every switch between them.
+  // `resolvedLocation` changes in the same render as the content.
+  const pathname = useRouterState({
+    select: (state) => (state.resolvedLocation ?? state.location).pathname,
+  });
+  const isFullWidth = isFullWidthPath(pathname);
+  const isNoScroll = isNoScrollPath(pathname);
 
   return (
     <div
@@ -318,89 +339,93 @@ function NotificationsBell() {
   const unreadCount = items.filter((item) => !item.isRead).length;
 
   return (
-    <DropdownMenu>
-      <Button variant="ghost" size="icon" className="relative" aria-label={t("nav.notifications")}>
-        <BellIcon className="size-5" aria-hidden="true" />
-        {unreadCount > 0 && (
-          <Badge
-            variant="destructive"
-            className="absolute -top-1 -right-1 h-4 min-w-4 justify-center rounded-full px-1 text-[10px]"
-          >
-            {unreadCount}
-          </Badge>
-        )}
-      </Button>
-      <DropdownMenuContent
-        className="w-80"
-        header={
-          <DropdownMenuLabel className="mb-1 flex items-center justify-between border-b font-normal text-muted-foreground">
-            {t("nav.notifications")}
-            <span className="flex items-center gap-2">
-              {unreadCount > 0 && (
-                <button
-                  type="button"
-                  className="text-xs text-primary hover:underline"
-                  onClick={() => markAllReadMutation.mutate()}
-                >
-                  {t("notifications.markAllRead")}
-                </button>
-              )}
-              {items.length > 0 && (
-                <button
-                  type="button"
-                  className="text-xs text-primary hover:underline"
-                  onClick={() => deleteAllMutation.mutate()}
-                >
-                  {t("notifications.deleteAll")}
-                </button>
-              )}
-            </span>
-          </DropdownMenuLabel>
-        }
-      >
-        {items.length === 0 ? (
-          <DropdownMenuItem isDisabled>{t("notifications.nothingYet")}</DropdownMenuItem>
-        ) : (
-          items.map((item) => (
-            <DropdownMenuItem
-              key={item.id}
-              className="items-start gap-0.5"
-              onAction={() => {
-                if (!item.isRead) {
-                  markReadMutation.mutate({ data: { id: item.id } });
-                }
-                // A file download (Content-Disposition: attachment), not a
-                // page — a plain navigation is enough to trigger the
-                // browser's save dialog, same as tools.tsx's download link.
-                if (item.actionUrl) {
-                  window.location.href = item.actionUrl;
-                }
-              }}
+    <DropdownMenu
+      trigger={
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          aria-label={t("nav.notifications")}
+        >
+          <BellIcon className="size-5" aria-hidden="true" />
+          {unreadCount > 0 && (
+            <Badge
+              variant="destructive"
+              className="absolute -top-1 -right-1 h-4 min-w-4 justify-center rounded-full px-1 text-[10px]"
             >
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className={cn("text-sm", !item.isRead && "font-medium")}>{item.title}</span>
-                {item.body && <span className="text-xs text-muted-foreground">{item.body}</span>}
-              </span>
+              {unreadCount}
+            </Badge>
+          )}
+        </Button>
+      }
+      className="w-80"
+      header={
+        <DropdownMenuLabel className="mb-1 flex items-center justify-between border-b font-normal text-muted-foreground">
+          {t("nav.notifications")}
+          <span className="flex items-center gap-2">
+            {unreadCount > 0 && (
               <button
                 type="button"
-                aria-label={t("notifications.delete")}
-                className="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
-                // Stops the press from reaching the MenuItem underneath —
-                // RAC's usePress attaches its pointer handlers to the item
-                // itself, so without this a delete click would also fire
-                // onAction (mark-as-read/navigate) before deleting.
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  deleteMutation.mutate({ data: { id: item.id } });
-                }}
+                className="text-xs text-primary hover:underline"
+                onClick={() => markAllReadMutation.mutate()}
               >
-                <XIcon className="size-3.5" aria-hidden="true" />
+                {t("notifications.markAllRead")}
               </button>
-            </DropdownMenuItem>
-          ))
-        )}
-      </DropdownMenuContent>
+            )}
+            {items.length > 0 && (
+              <button
+                type="button"
+                className="text-xs text-primary hover:underline"
+                onClick={() => deleteAllMutation.mutate()}
+              >
+                {t("notifications.deleteAll")}
+              </button>
+            )}
+          </span>
+        </DropdownMenuLabel>
+      }
+    >
+      {items.length === 0 ? (
+        <DropdownMenuItem disabled>{t("notifications.nothingYet")}</DropdownMenuItem>
+      ) : (
+        items.map((item) => (
+          <DropdownMenuItem
+            key={item.id}
+            className="items-start gap-0.5"
+            onClick={() => {
+              if (!item.isRead) {
+                markReadMutation.mutate({ data: { id: item.id } });
+              }
+              // A file download (Content-Disposition: attachment), not a
+              // page — a plain navigation is enough to trigger the
+              // browser's save dialog, same as tools.tsx's download link.
+              if (item.actionUrl) {
+                window.location.href = item.actionUrl;
+              }
+            }}
+          >
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className={cn("text-sm", !item.isRead && "font-medium")}>{item.title}</span>
+              {item.body && <span className="text-xs text-muted-foreground">{item.body}</span>}
+            </span>
+            <button
+              type="button"
+              aria-label={t("notifications.delete")}
+              className="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+              // Stops the click from reaching the menu item underneath, so a
+              // delete doesn't also run the item's own onClick
+              // (mark-as-read/navigate) first.
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                deleteMutation.mutate({ data: { id: item.id } });
+              }}
+            >
+              <XIcon className="size-3.5" aria-hidden="true" />
+            </button>
+          </DropdownMenuItem>
+        ))
+      )}
     </DropdownMenu>
   );
 }
@@ -511,35 +536,35 @@ function LanguageMenu() {
   const current: SupportedLanguage = i18n.language === "da" ? "da" : "en";
 
   return (
-    <DropdownMenu>
-      <Button
-        variant="ghost"
-        className="gap-1.5 px-2"
-        aria-label={t("nav.language", { language: LANGUAGE_NAMES[current] })}
-      >
-        <LanguagesIcon className="size-4 text-muted-foreground" aria-hidden="true" />
-        <span className="text-sm font-medium uppercase">{current}</span>
-      </Button>
-      <DropdownMenuContent>
-        {(Object.keys(LANGUAGE_NAMES) as SupportedLanguage[]).map((language) => (
-          <DropdownMenuItem
-            key={language}
-            id={language}
-            textValue={LANGUAGE_NAMES[language]}
-            onAction={() => {
-              if (language === current) return;
-              void i18n.changeLanguage(language);
-              updateProfileMutation.mutate({ data: { language } });
-            }}
-          >
-            <CheckIcon
-              className={cn("size-4", language !== current && "invisible")}
-              aria-hidden="true"
-            />
-            <span lang={language}>{LANGUAGE_NAMES[language]}</span>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
+    <DropdownMenu
+      trigger={
+        <Button
+          variant="ghost"
+          className="gap-1.5 px-2"
+          aria-label={t("nav.language", { language: LANGUAGE_NAMES[current] })}
+        >
+          <LanguagesIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+          <span className="text-sm font-medium uppercase">{current}</span>
+        </Button>
+      }
+    >
+      {(Object.keys(LANGUAGE_NAMES) as SupportedLanguage[]).map((language) => (
+        <DropdownMenuItem
+          key={language}
+
+          onClick={() => {
+            if (language === current) return;
+            void i18n.changeLanguage(language);
+            updateProfileMutation.mutate({ data: { language } });
+          }}
+        >
+          <CheckIcon
+            className={cn("size-4", language !== current && "invisible")}
+            aria-hidden="true"
+          />
+          <span lang={language}>{LANGUAGE_NAMES[language]}</span>
+        </DropdownMenuItem>
+      ))}
     </DropdownMenu>
   );
 }
@@ -558,48 +583,48 @@ function UserMenu() {
   const initial = session.user.name.trim().charAt(0).toUpperCase() || "?";
 
   return (
-    <DropdownMenu>
-      <Button variant="ghost" className="gap-2 px-2">
-        <Avatar className="size-6">
-          <AvatarFallback className="text-xs">{initial}</AvatarFallback>
-        </Avatar>
-        <span className="text-sm font-medium">{session.user.name}</span>
-        <ChevronDownIcon className="size-4 text-muted-foreground" aria-hidden="true" />
-      </Button>
-      <DropdownMenuContent
-        header={
-          <DropdownMenuLabel className="mb-1 border-b font-normal text-muted-foreground">
-            {session.user.email}
-          </DropdownMenuLabel>
-        }
+    <DropdownMenu
+      trigger={
+        <Button variant="ghost" className="gap-2 px-2">
+          <Avatar className="size-6">
+            <AvatarFallback className="text-xs">{initial}</AvatarFallback>
+          </Avatar>
+          <span className="text-sm font-medium">{session.user.name}</span>
+          <ChevronDownIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+        </Button>
+      }
+      header={
+        <DropdownMenuLabel className="mb-1 border-b font-normal text-muted-foreground">
+          {session.user.email}
+        </DropdownMenuLabel>
+      }
+    >
+      <DropdownMenuItem onClick={() => navigate({ to: "/profile" })}>
+        <UserIcon className="size-4" aria-hidden="true" />
+        {t("userMenu.profileSettings")}
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={() => navigate({ to: "/notes" })}>
+        <NotebookTextIcon className="size-4" aria-hidden="true" />
+        {t("userMenu.myNotes")}
+      </DropdownMenuItem>
+      {isAdmin && (
+        <DropdownMenuItem onClick={() => navigate({ to: "/members" })}>
+          <UsersIcon className="size-4" aria-hidden="true" />
+          {t("userMenu.members")}
+        </DropdownMenuItem>
+      )}
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        onClick={async () => {
+          await authClient.signOut();
+          // beforeLoad only re-checks the session on navigation, so without
+          // this the page would just sit there failing every query with 401.
+          await navigate({ to: "/login" });
+        }}
       >
-        <DropdownMenuItem onAction={() => navigate({ to: "/profile" })}>
-          <UserIcon className="size-4" aria-hidden="true" />
-          {t("userMenu.profileSettings")}
-        </DropdownMenuItem>
-        <DropdownMenuItem onAction={() => navigate({ to: "/notes" })}>
-          <NotebookTextIcon className="size-4" aria-hidden="true" />
-          {t("userMenu.myNotes")}
-        </DropdownMenuItem>
-        {isAdmin && (
-          <DropdownMenuItem onAction={() => navigate({ to: "/members" })}>
-            <UsersIcon className="size-4" aria-hidden="true" />
-            {t("userMenu.members")}
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onAction={async () => {
-            await authClient.signOut();
-            // beforeLoad only re-checks the session on navigation, so without
-            // this the page would just sit there failing every query with 401.
-            await navigate({ to: "/login" });
-          }}
-        >
-          <LogOutIcon className="size-4" aria-hidden="true" />
-          {t("userMenu.signOut")}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
+        <LogOutIcon className="size-4" aria-hidden="true" />
+        {t("userMenu.signOut")}
+      </DropdownMenuItem>
     </DropdownMenu>
   );
 }

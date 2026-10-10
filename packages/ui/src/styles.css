@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Enter/exit animations for the Base UI overlays (data-open:animate-in, …). */
+@import "tw-animate-css";
 
 /* pnpm symlinks workspace packages into node_modules, which Tailwind skips by
    default, so this package's own components must be declared explicitly. */

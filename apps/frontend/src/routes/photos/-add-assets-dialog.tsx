@@ -111,7 +111,7 @@ function AddAssetsForm({ albumId, onDone }: { albumId: string; onDone: () => Pro
                     <Button
                       key={asset.id}
                       variant="ghost"
-                      onPress={() => toggle(asset.id)}
+                      onClick={() => toggle(asset.id)}
                       aria-pressed={isSelected}
                       aria-label={asset.originalFileName}
                       className="relative aspect-square h-auto w-full overflow-hidden rounded-md bg-muted p-0"
@@ -143,8 +143,8 @@ function AddAssetsForm({ albumId, onDone }: { albumId: string; onDone: () => Pro
         <Button
           variant="outline"
           size="sm"
-          isDisabled={assetsQuery.isFetchingNextPage}
-          onPress={() => void assetsQuery.fetchNextPage()}
+          disabled={assetsQuery.isFetchingNextPage}
+          onClick={() => void assetsQuery.fetchNextPage()}
         >
           {assetsQuery.isFetchingNextPage ? t("addAssets.loading") : t("addAssets.loadMore")}
         </Button>
@@ -156,8 +156,8 @@ function AddAssetsForm({ albumId, onDone }: { albumId: string; onDone: () => Pro
 
       <DialogFooter>
         <Button
-          isDisabled={selected.size === 0 || addAssetsMutation.isPending}
-          onPress={() => void submit()}
+          disabled={selected.size === 0 || addAssetsMutation.isPending}
+          onClick={() => void submit()}
         >
           {addAssetsMutation.isPending
             ? t("addAssets.adding")

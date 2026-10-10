@@ -1,13 +1,8 @@
-import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
-import { motion } from "motion/react";
+import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Button, Dialog as RACDialog, Heading, Modal, ModalOverlay } from "react-aria-components";
 
-import { useOverlayTransition } from "../hooks/use-overlay-transition";
 import { cn } from "../lib/utils";
-
-const MotionModalOverlay = motion.create(ModalOverlay);
-const MotionModal = motion.create(Modal);
+import { Lightbox, LightboxButton } from "./lightbox";
 
 export type PhotoBookPaperStyle = "black" | "grey" | "cream" | "modern";
 
@@ -26,8 +21,8 @@ export interface PhotoBookPage {
 }
 
 export interface PhotoBookProps {
-  isOpen: boolean;
-  onOpenChange: (isOpen: boolean) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   title: string;
   /**
    * Pre-rendered cover art — a physical album's foil/label/tooled style, or a
@@ -48,9 +43,6 @@ const PAPER_CLASSES: Record<PhotoBookPaperStyle, string> = {
   cream: "bg-amber-100 text-amber-950",
   modern: "bg-card text-card-foreground",
 };
-
-const CONTROL_BUTTON_CLASS =
-  "rounded-full bg-black/50 p-2 text-white outline-none transition-colors data-hovered:bg-black/70 data-focus-visible:ring-2 data-focus-visible:ring-white data-disabled:pointer-events-none data-disabled:opacity-40";
 
 function PagePaper({
   page,
@@ -105,11 +97,9 @@ function PagePaper({
  * A full-viewport "book" overlay for a physical album's scanned pages, or a
  * virtual album's referenced photos rendered in a plainer "modern" paper
  * style — the reading-mode counterpart to the grid/list views, opened from
- * either. Follows `ImageViewer`'s architectural choices (direct RAC
- * `ModalOverlay`/`Modal`/`Dialog`, not `DialogContent` — sized and padded for
- * a form, not a near-full-viewport reader; fully controlled `isOpen`/
- * `onOpenChange`; `motion` for the overlay's own open/close), but its layout
- * is its own: a CSS3D page-flip, one absolutely positioned "leaf" per pair of
+ * either. Sits in a `Lightbox` like `ImageViewer` (fully controlled
+ * `open`/`onOpenChange`; the overlay's own open/close animation comes with
+ * it), but its layout is its own: a CSS3D page-flip, one absolutely positioned "leaf" per pair of
  * pages (the first leaf's two faces are the cover and its inside), each face
  * `backface-visibility: hidden` so only one side shows at a time, and a
  * single `turnedLeaves` counter (0 = closed, `totalLeaves` = fully read)
@@ -124,7 +114,7 @@ function PagePaper({
  * keyboard and screen-reader users an equally discoverable way to turn pages.
  */
 export function PhotoBook({
-  isOpen,
+  open,
   onOpenChange,
   title,
   coverNode,
@@ -132,10 +122,6 @@ export function PhotoBook({
   pages,
   paperStyle,
 }: PhotoBookProps) {
-  const {
-    contextValue: { animation, onAnimationComplete },
-    handleOpenChange,
-  } = useOverlayTransition(isOpen, onOpenChange);
   const [turnedLeaves, setTurnedLeaves] = useState(0);
   // The leaf currently mid-flip stays on top of the whole stack for the
   // duration of its own rotation, then settles into its resting z-index only
@@ -182,21 +168,21 @@ export function PhotoBook({
   }, [animatingLeaf]);
 
   // Arrow-key page-turning, scoped for as long as the book is open. A window
-  // listener rather than an `onKeyDown` on a wrapping `<div>` — neither
-  // `Modal`/`ModalOverlay`/`Dialog` forward that prop, and a static element
+  // listener rather than an `onKeyDown` on a wrapping `<div>` — a static element
   // with its own key handler needs an interactive role it wouldn't otherwise
   // have; this also keeps working regardless of which control inside
-  // currently has focus.
+  // currently has focus. Capture phase, because the Base UI dialog the book
+  // sits in stops arrow-key events before they'd bubble up to `window`.
   useEffect(() => {
-    if (animation === "unmounted") return;
+    if (!open) return;
     function handleKeyDown(event: globalThis.KeyboardEvent) {
       if (event.key === "ArrowRight") next();
       else if (event.key === "ArrowLeft") prev();
     }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- next/prev only use functional setState, no stale closure risk
-  }, [animation]);
+  }, [open]);
 
   // Every leaf (both faces) is already mounted from the moment the book
   // opens, so the network fetch for every photo starts immediately — but a
@@ -210,7 +196,7 @@ export function PhotoBook({
   // every photo's decode up front here, as soon as the book opens, means
   // forward navigation never hits an undecoded image either.
   useEffect(() => {
-    if (animation === "unmounted") return;
+    if (!open) return;
     for (const page of pages) {
       for (const photo of page.photos) {
         const preload = new Image();
@@ -218,123 +204,79 @@ export function PhotoBook({
         void preload.decode?.().catch(() => {});
       }
     }
-  }, [animation, pages]);
-
-  if (animation === "unmounted") return null;
+  }, [open, pages]);
 
   return (
-    <MotionModalOverlay
-      isOpen
-      onOpenChange={(open) => {
-        handleOpenChange(open);
-        if (!open) setTurnedLeaves(0);
+    <Lightbox
+      open={open}
+      onOpenChange={(isOpen) => {
+        onOpenChange(isOpen);
+        if (!isOpen) setTurnedLeaves(0);
       }}
-      isExiting={animation === "hidden"}
-      initial="hidden"
-      animate={animation}
-      variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
-      transition={{ duration: 0.2 }}
-      onAnimationComplete={onAnimationComplete}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/90 p-4"
+      title={title}
+      className="w-[calc(100%-2rem)] max-w-4xl sm:w-full"
     >
-      <MotionModal
-        variants={{ hidden: { opacity: 0, scale: 0.96 }, visible: { opacity: 1, scale: 1 } }}
-        transition={{ type: "spring", stiffness: 400, damping: 34 }}
-        className="flex w-full max-w-4xl flex-col items-center gap-4 outline-none"
-      >
-        <RACDialog className="flex w-full flex-col items-center gap-4 outline-none">
-          <div className="flex w-full flex-col items-center gap-4">
-            <div className="flex w-full items-center justify-between gap-3 text-white">
-              <Heading slot="title" className="truncate text-sm font-medium">
-                {title}
-              </Heading>
-              <Button slot="close" aria-label="Close" className={CONTROL_BUTTON_CLASS}>
-                <XIcon className="size-5" />
-              </Button>
+      <div className="relative aspect-5/3 w-full perspective-[2400px]">
+        <div
+          className={cn(
+            "absolute inset-y-0 right-0 w-1/2 rounded-r-sm shadow-xl",
+            PAPER_CLASSES[paperStyle],
+          )}
+        />
+        {!atStart && (
+          <div
+            className={cn(
+              "absolute inset-y-0 left-0 w-1/2 rounded-l-sm shadow-xl",
+              PAPER_CLASSES[paperStyle],
+            )}
+          />
+        )}
+
+        {Array.from({ length: totalLeaves }, (_, leafIndex) => {
+          const isCover = leafIndex === 0;
+          const pageIndex = (leafIndex - 1) * 2;
+          const frontPage = isCover ? undefined : pages[pageIndex];
+          const backPage = isCover ? undefined : pages[pageIndex + 1];
+          const flipped = leafIndex < turnedLeaves;
+
+          const isAnimating = leafIndex === animatingLeaf;
+          const zIndex = isAnimating
+            ? totalLeaves + 1
+            : flipped
+              ? leafIndex
+              : totalLeaves - leafIndex;
+
+          return (
+            <div
+              key={isCover ? "cover" : (frontPage?.id ?? `blank-${leafIndex}`)}
+              className="absolute inset-y-0 left-1/2 w-1/2 origin-left transition-transform duration-700 ease-in-out transform-3d motion-reduce:transition-none"
+              style={{ transform: flipped ? "rotateY(-180deg)" : "rotateY(0deg)", zIndex }}
+              onTransitionEnd={() => {
+                if (isAnimating) setAnimatingLeaf(null);
+              }}
+            >
+              <div className="absolute inset-0 backface-hidden">
+                {isCover ? coverNode : <PagePaper page={frontPage} paperStyle={paperStyle} />}
+              </div>
+              <div className="absolute inset-0 rotate-y-180 backface-hidden">
+                {isCover ? insideCoverNode : <PagePaper page={backPage} paperStyle={paperStyle} />}
+              </div>
             </div>
+          );
+        })}
+      </div>
 
-            <div className="relative aspect-5/3 w-full perspective-[2400px]">
-              <div
-                className={cn(
-                  "absolute inset-y-0 right-0 w-1/2 rounded-r-sm shadow-xl",
-                  PAPER_CLASSES[paperStyle],
-                )}
-              />
-              {!atStart && (
-                <div
-                  className={cn(
-                    "absolute inset-y-0 left-0 w-1/2 rounded-l-sm shadow-xl",
-                    PAPER_CLASSES[paperStyle],
-                  )}
-                />
-              )}
-
-              {Array.from({ length: totalLeaves }, (_, leafIndex) => {
-                const isCover = leafIndex === 0;
-                const pageIndex = (leafIndex - 1) * 2;
-                const frontPage = isCover ? undefined : pages[pageIndex];
-                const backPage = isCover ? undefined : pages[pageIndex + 1];
-                const flipped = leafIndex < turnedLeaves;
-
-                const isAnimating = leafIndex === animatingLeaf;
-                const zIndex = isAnimating
-                  ? totalLeaves + 1
-                  : flipped
-                    ? leafIndex
-                    : totalLeaves - leafIndex;
-
-                return (
-                  <div
-                    key={isCover ? "cover" : (frontPage?.id ?? `blank-${leafIndex}`)}
-                    className="absolute inset-y-0 left-1/2 w-1/2 origin-left transition-transform duration-700 ease-in-out transform-3d motion-reduce:transition-none"
-                    style={{ transform: flipped ? "rotateY(-180deg)" : "rotateY(0deg)", zIndex }}
-                    onTransitionEnd={() => {
-                      if (isAnimating) setAnimatingLeaf(null);
-                    }}
-                  >
-                    <div className="absolute inset-0 backface-hidden">
-                      {isCover ? coverNode : <PagePaper page={frontPage} paperStyle={paperStyle} />}
-                    </div>
-                    <div className="absolute inset-0 rotate-y-180 backface-hidden">
-                      {isCover ? (
-                        insideCoverNode
-                      ) : (
-                        <PagePaper page={backPage} paperStyle={paperStyle} />
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="flex items-center gap-4 text-white">
-              <Button
-                onPress={prev}
-                isDisabled={atStart}
-                aria-label="Previous page"
-                className={CONTROL_BUTTON_CLASS}
-              >
-                <ChevronLeftIcon className="size-5" />
-              </Button>
-              <span className="min-w-32 text-center font-mono text-xs text-white/70">
-                {atStart
-                  ? "Closed"
-                  : atEnd
-                    ? "End of album"
-                    : `Turned ${turnedLeaves} of ${totalLeaves}`}
-              </span>
-              <Button
-                onPress={next}
-                isDisabled={atEnd}
-                aria-label="Next page"
-                className={CONTROL_BUTTON_CLASS}
-              >
-                <ChevronRightIcon className="size-5" />
-              </Button>
-            </div>
-          </div>
-        </RACDialog>
-      </MotionModal>
-    </MotionModalOverlay>
+      <div className="flex items-center gap-4 text-white">
+        <LightboxButton onClick={prev} disabled={atStart} aria-label="Previous page">
+          <ChevronLeftIcon className="size-5" />
+        </LightboxButton>
+        <span className="min-w-32 text-center font-mono text-xs text-white/70">
+          {atStart ? "Closed" : atEnd ? "End of album" : `Turned ${turnedLeaves} of ${totalLeaves}`}
+        </span>
+        <LightboxButton onClick={next} disabled={atEnd} aria-label="Next page">
+          <ChevronRightIcon className="size-5" />
+        </LightboxButton>
+      </div>
+    </Lightbox>
   );
 }

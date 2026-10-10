@@ -1,113 +1,71 @@
-import { motion } from "motion/react";
-import type * as React from "react";
-import {
-  Menu as RACMenu,
-  MenuItem as RACMenuItem,
-  MenuTrigger as RACMenuTrigger,
-  Popover,
-  type MenuItemProps,
-  type MenuTriggerProps,
-} from "react-aria-components";
+import type { ComponentProps, ReactElement, ReactNode } from "react";
 
-import {
-  OverlayTransitionProvider,
-  useOverlayTransition,
-  useOverlayTransitionState,
-} from "../hooks/use-overlay-transition";
 import { cn } from "../lib/utils";
-import { Separator } from "./separator";
+import {
+  DropdownMenu as DropdownMenuRoot,
+  DropdownMenuContent,
+  DropdownMenuItem as DropdownMenuItemPrimitive,
+  DropdownMenuSeparator as DropdownMenuSeparatorPrimitive,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 
-const MotionDiv = motion.create("div");
+export interface DropdownMenuProps {
+  /** The element that opens it — a `Button`, `IconButton`, or a `Tooltip` around one. */
+  trigger: ReactElement;
+  /** A non-interactive row above the items — e.g. the signed-in user's name, a "Notifications" heading. */
+  header?: ReactNode | undefined;
+  open?: boolean | undefined;
+  onOpenChange?: ((open: boolean) => void) | undefined;
+  align?: "start" | "center" | "end" | undefined;
+  className?: string | undefined;
+  /** `DropdownMenuItem`s, `DropdownMenuSeparator`s, `DropdownMenuLabel`s. */
+  children: ReactNode;
+}
 
-/** The trigger goes directly inside as the first child, the menu itself as the second — same convention as `Dialog`/`Popover`/`Select`. */
+/** A menu of actions opened from a trigger: `<DropdownMenu trigger={<Button…/>}>{items}</DropdownMenu>`. */
 export function DropdownMenu({
-  isOpen,
-  onOpenChange,
-  children,
-  ...props
-}: Omit<MenuTriggerProps, "children" | "onOpenChange"> & {
-  children: React.ReactNode;
-  isOpen?: boolean;
-  onOpenChange?: (isOpen: boolean) => void;
-}) {
-  const { contextValue, handleOpenChange } = useOverlayTransition(isOpen, onOpenChange);
-  return (
-    <RACMenuTrigger
-      {...props}
-      {...(isOpen !== undefined ? { isOpen } : {})}
-      onOpenChange={handleOpenChange}
-    >
-      <OverlayTransitionProvider value={contextValue}>{children}</OverlayTransitionProvider>
-    </RACMenuTrigger>
-  );
-}
-
-export function DropdownMenuContent<T extends object>({
-  className,
-  /**
-   * Rendered above the menu, outside its `role="menu"` element — React
-   * Aria's `Menu` only accepts `MenuItem`/`Separator` collection children,
-   * so a plain label row (e.g. `DropdownMenuLabel`) has to live here rather
-   * than as a menu child, or the whole collection silently renders empty.
-   */
+  trigger,
   header,
-  children,
-}: {
-  className?: string;
-  header?: React.ReactNode;
-  children: React.ReactNode | ((item: T) => React.ReactNode);
-}) {
-  const { animation, onAnimationComplete } = useOverlayTransitionState();
-  if (animation === "unmounted") return null;
-
-  // Same reason as SelectContent: Motion animates a plain nested div rather
-  // than the Popover itself, since Popover re-renders to recompute its own
-  // position and would stomp Motion's inline opacity/transform otherwise.
-  return (
-    <Popover className="min-w-48" isExiting={animation === "hidden"}>
-      <MotionDiv
-        initial="hidden"
-        animate={animation === "visible" ? "visible" : "hidden"}
-        variants={{ hidden: { opacity: 0, scale: 0.95 }, visible: { opacity: 1, scale: 1 } }}
-        transition={{ type: "spring", stiffness: 600, damping: 35 }}
-        onAnimationComplete={onAnimationComplete}
-        className="rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-      >
-        {header}
-        <RACMenu className={cn("flex flex-col gap-0.5 outline-hidden", className)}>
-          {children}
-        </RACMenu>
-      </MotionDiv>
-    </Popover>
-  );
-}
-
-export function DropdownMenuItem({ className, ...props }: MenuItemProps) {
-  return (
-    <RACMenuItem
-      {...props}
-      className={cn(
-        "flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 data-focused:bg-accent data-focused:text-accent-foreground",
-        typeof className === "string" ? className : undefined,
-      )}
-    />
-  );
-}
-
-/** A small non-interactive header row — e.g. the signed-in user's name/email atop the menu. */
-export function DropdownMenuLabel({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="dropdown-menu-label"
-      className={cn("px-2 py-1.5 text-sm font-medium", className)}
-      {...props}
-    />
-  );
-}
-
-export function DropdownMenuSeparator({
+  open,
+  onOpenChange,
+  align,
   className,
-  ...props
-}: React.ComponentProps<typeof Separator>) {
-  return <Separator className={cn("-mx-1 my-1 w-auto", className)} {...props} />;
+  children,
+}: DropdownMenuProps) {
+  return (
+    <DropdownMenuRoot
+      {...(open === undefined ? {} : { open })}
+      onOpenChange={(next) => onOpenChange?.(next)}
+    >
+      <DropdownMenuTrigger render={trigger} />
+      <DropdownMenuContent align={align} className={cn("min-w-48", className)}>
+        {header}
+        {children}
+      </DropdownMenuContent>
+    </DropdownMenuRoot>
+  );
+}
+
+export interface DropdownMenuItemProps {
+  onClick?: ComponentProps<typeof DropdownMenuItemPrimitive>["onClick"] | undefined;
+  disabled?: boolean | undefined;
+  /** Red, for an item that removes or signs out. */
+  variant?: "default" | "destructive" | undefined;
+  className?: string | undefined;
+  children: ReactNode;
+}
+
+/** One action in a `DropdownMenu`; choosing it runs `onClick` and closes the menu. */
+export function DropdownMenuItem({ variant = "default", ...props }: DropdownMenuItemProps) {
+  return <DropdownMenuItemPrimitive variant={variant} {...props} />;
+}
+
+/** A small non-interactive row — e.g. as a `DropdownMenu`'s `header`. */
+export function DropdownMenuLabel({ className, ...props }: ComponentProps<"div">) {
+  return <div className={cn("px-2 py-1.5 text-sm font-medium", className)} {...props} />;
+}
+
+/** A rule between groups of items. */
+export function DropdownMenuSeparator({ className }: { className?: string }) {
+  return <DropdownMenuSeparatorPrimitive className={className} />;
 }

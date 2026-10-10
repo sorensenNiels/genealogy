@@ -69,11 +69,12 @@ An admin utility page (`/tools`).
 - ✅ Backup the database (background job, notified when ready) and restore from a backup file (locked against overlap, typed confirmation). Alongside it, "Download all albums" queues a zip of every photo in every album the same way — one notification per file if the library needs more than one archive.
 - ✅ Re-scan for faces (Immich), GEDCOM export and import.
 - ✅ Data integrity checks (dangling citations, possible duplicate people, dangling Immich links) and a two-store consistency check (Postgres vs. the Apache AGE graph).
+- ✅ Development tools, shown only when the app runs on localhost: the component showcase (every shared UI component in both themes).
 
 ## Platform
 
 - ✅ Dark mode.
-- ✅ A shared, animated React Aria–based component library.
+- ✅ A shared component library: shadcn/ui on Base UI, composed into app-level components (React Aria only for the photo grid, file drop zone, tag chips and calendar).
 
 ## Internationalization
 

@@ -1,14 +1,6 @@
-import type { AppRouter } from "@genealogy/backend";
 import { formatLifespan, formatPersonName } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-} from "@genealogy/ui/components/combobox";
 import { Input } from "@genealogy/ui/components/input";
 import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { SaveButton } from "@genealogy/ui/components/save-button";
@@ -19,14 +11,14 @@ import { cn } from "@genealogy/ui/lib/utils";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import type { inferRouterOutputs } from "@trpc/server";
 import type { TFunction } from "i18next";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { authClient, useSession } from "../lib/auth-client";
-import { getPersonById, listPersons } from "../server/functions/person.functions";
+import { getPersonById } from "../server/functions/person.functions";
 import { getMyProfile, updateProfile } from "../server/functions/profile.functions";
+import { PersonPicker } from "./-person-picker";
 
 // Language isn't here: it's switched from the header (`LanguageMenu` in
 // `__root.tsx`), so it's one click away on every page.
@@ -51,9 +43,6 @@ export const Route = createFileRoute("/profile")({
   },
   component: ProfileRoute,
 });
-
-type RouterOutputs = inferRouterOutputs<AppRouter>;
-type PersonRow = RouterOutputs["person"]["list"]["items"][number];
 
 const MY_PROFILE_KEY = ["profile", "myProfile"];
 
@@ -162,7 +151,7 @@ function ProfileForm({
             footerClassName="justify-end"
             footer={
               <div className="flex items-center justify-end gap-2">
-                <Button type="button" variant="outline" onPress={() => form.reset()}>
+                <Button type="button" variant="outline" onClick={() => form.reset()}>
                   {t("common.cancel")}
                 </Button>
                 <SaveButton isDirty={isDirty} isPending={isSubmitting}>
@@ -204,7 +193,7 @@ function ProfileForm({
             footerClassName="justify-end"
             footer={
               <div className="flex items-center justify-end gap-2">
-                <Button type="button" variant="outline" onPress={() => form.reset()}>
+                <Button type="button" variant="outline" onClick={() => form.reset()}>
                   {t("common.cancel")}
                 </Button>
                 <SaveButton isDirty={isDirty} isPending={isSubmitting}>
@@ -235,7 +224,10 @@ function ProfileForm({
                 />
               ) : (
                 <PersonPicker
-                  onPick={(id) => updateProfileMutation.mutate({ data: { personId: id } })}
+                  aria-label={t("profile.searchPeople")}
+                  onSelect={(person) =>
+                    updateProfileMutation.mutate({ data: { personId: person.id } })
+                  }
                 />
               )}
               {updateProfileMutation.isError && (
@@ -299,8 +291,8 @@ function ChangePassword() {
       )}
       <Button
         type="button"
-        isDisabled={changingPassword || currentPassword === "" || newPassword === ""}
-        onPress={() => void changePassword()}
+        disabled={changingPassword || currentPassword === "" || newPassword === ""}
+        onClick={() => void changePassword()}
       >
         {changingPassword ? t("profile.saving") : t("profile.changePassword")}
       </Button>
@@ -316,7 +308,7 @@ function ThemePicker() {
     <ButtonRadioGroup
       aria-label={t("profile.theme")}
       value={preference ?? "system"}
-      onChange={(value) => setPreference(value === "system" ? null : value)}
+      onValueChange={(value) => setPreference(value === "system" ? null : value)}
       options={[
         { value: "light", label: t("profile.themeLight") },
         { value: "dark", label: t("profile.themeDark") },
@@ -358,46 +350,9 @@ function LinkedPerson({
         {formatPersonName(person.data)}
         {formatLifespan(person.data) ? ` (${formatLifespan(person.data)})` : ""}
       </p>
-      <Button variant="outline" size="sm" isDisabled={isPending} onPress={onUnlink}>
+      <Button variant="outline" size="sm" disabled={isPending} onClick={onUnlink}>
         {t("profile.change")}
       </Button>
     </div>
-  );
-}
-
-function PersonPicker({ onPick }: { onPick: (id: string) => void }) {
-  const { t } = useTranslation();
-  const [query, setQuery] = useState("");
-  const trimmedQuery = query.trim();
-  const searchInput = { limit: 10, offset: 0, search: trimmedQuery === "" ? null : trimmedQuery };
-  const search = useQuery({
-    queryKey: ["person", "list", searchInput],
-    queryFn: () => listPersons({ data: searchInput }),
-  });
-  const options = search.data?.items ?? [];
-
-  return (
-    <Combobox<PersonRow>
-      aria-label={t("profile.searchPeople")}
-      items={options}
-      inputValue={query}
-      onInputChange={setQuery}
-      onChange={(value) => {
-        const target = options.find((candidate) => candidate.id === value);
-        if (target) onPick(target.id);
-      }}
-    >
-      <ComboboxInput placeholder={t("person.family.searchPeople")} />
-      <ComboboxContent<PersonRow>
-        renderEmptyState={() => <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>}
-      >
-        {(item) => (
-          <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-            {formatPersonName(item)}
-            {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
-          </ComboboxItem>
-        )}
-      </ComboboxContent>
-    </Combobox>
   );
 }

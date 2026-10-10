@@ -1,5 +1,5 @@
+import { AddButton } from "@genealogy/ui/components/add-button";
 import { Badge } from "@genealogy/ui/components/badge";
-import { Button } from "@genealogy/ui/components/button";
 import { DialogFooter } from "@genealogy/ui/components/dialog";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import { MarkdownContent } from "@genealogy/ui/components/markdown-content";
@@ -7,17 +7,9 @@ import { MarkdownEditor } from "@genealogy/ui/components/markdown-editor";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SaveButton } from "@genealogy/ui/components/save-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
+import { Select } from "@genealogy/ui/components/select";
 import { Switch } from "@genealogy/ui/components/switch";
-import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
 import { useMutation } from "@tanstack/react-query";
-import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -62,14 +54,7 @@ export function ResearchNotesSection({
       contentClassName="space-y-4"
       action={
         <FormDialog
-          trigger={
-            <Tooltip>
-              <Button variant="outline" size="icon" aria-label={t("person.researchNotes.addNote")}>
-                <PlusIcon className="size-4" />
-              </Button>
-              <TooltipContent>{t("person.researchNotes.addNote")}</TooltipContent>
-            </Tooltip>
-          }
+          trigger={<AddButton label={t("person.researchNotes.addNote")} />}
           title={t("person.researchNotes.addNote")}
         >
           {(close) => (
@@ -95,7 +80,7 @@ export function ResearchNotesSection({
               {labelFor(options, "research_note_type", note.noteType)}
             </Badge>
             <div className="flex items-center gap-2">
-              <Switch isSelected={note.resolved} onChange={() => void toggleResolved(note)}>
+              <Switch checked={note.resolved} onCheckedChange={() => void toggleResolved(note)}>
                 {t("person.researchNotes.resolved")}
               </Switch>
               <RemoveButton
@@ -144,21 +129,11 @@ function ResearchNoteForm({
       <Select
         aria-label={t("person.researchNotes.noteType")}
         value={noteType}
-        onChange={(value) => {
+        onValueChange={(value) => {
           if (value) setNoteType(String(value));
         }}
-      >
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {noteTypeOptions.map((option) => (
-            <SelectItem key={option.key} id={option.key}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        options={noteTypeOptions.map((option) => ({ value: option.key, label: option.label }))}
+      />
       <MarkdownEditor
         value={body}
         onChange={setBody}
@@ -168,7 +143,7 @@ function ResearchNoteForm({
         <SaveButton
           isDirty={body.trim() !== ""}
           isPending={addNoteMutation.isPending}
-          isDisabled={!canSubmit}
+          disabled={!canSubmit}
         >
           {t("common.add")}
         </SaveButton>

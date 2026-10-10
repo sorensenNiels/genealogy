@@ -241,6 +241,101 @@ actually fire. The DB enforces the shape with a `CHECK` constraint added
 directly in the migration SQL (`persons_public_id_format`) rather than through
 Drizzle's schema builder, since the column is never user-editable.
 
+### shadcn/ui on Base UI, composed into this package's own components
+
+**In progress (October 2026), replacing "shadcn/ui on React Aria Components"
+below** one wave of components at a time; until a component has moved, that
+section still describes it. Moved: separator, progress bar, checkbox, switch,
+tabs (wave A); button, tooltip, every dialog, popover, dropdown menu and the
+photo lightboxes (wave B); select, combobox, autocomplete, button-radio-group,
+color-swatch-picker (wave C). What remains on React Aria is by choice — see
+below. Motion and the `useOverlayTransition` hook went with wave C: Base UI
+animates its own enter/exit (`data-starting-style`, `tw-animate-css`). A user-directed reversal of the earlier move away
+from Base UI: shadcn's Base UI styles are now first-class in its CLI
+(`shadcn add` works unmodified instead of every file being hand-ported), and
+`@base-ui/react` is actively developed (mui/base-ui pushed daily; pinned at
+1.8.0 to stay outside `minimumReleaseAge`). Registry style: `base-nova`,
+picked over `base-vega` from a side-by-side on `/dev/components`.
+
+Two layers in `packages/ui/src/components/`:
+
+- **`ui/` — vendor primitives.** Written only by
+  `pnpm dlx shadcn@latest add <name>` (run from `packages/ui`), never edited
+  by hand, so `shadcn diff`/`add --overwrite` can update them. That's why
+  oxlint and oxfmt skip the folder; `tsc` still checks it. They import shadcn's
+  own `cn` package (github.com/shadcn-ui/cn) rather than our `lib/utils`
+  — leave it, it's what the registry emits.
+- **`<name>.tsx` — this package's components, the only thing the app
+  imports** (oxlint's `no-restricted-imports` fails `apps/frontend` on any
+  `components/ui/*` import). Each one composes primitives into what a page
+  actually needs, with an app-level API: `Checkbox`/`Switch` wrap the
+  primitive and its label in one `<label>`, honour `ReadOnlyProvider`, and
+  hand back a plain boolean from `onCheckedChange`; `Switch` takes a
+  `description` wired up with `aria-describedby`; `Tabs` is data-driven
+  (`tabs={[{ value, label, content }]}`) so a tab can't lose its panel;
+  `ProgressBar` lays out label, value and track. A customisation goes here,
+  never into `ui/`.
+
+  The overlay layer follows one shape: **a `trigger` element prop, or
+  controlled `open`/`onOpenChange`, and a body that may be a function of
+  `close`** — `Dialog` (title/description in the header; replaces the old
+  `ControlledDialogContent` + hand-built header), `FormDialog` (a `Dialog`
+  hidden for read-only members), `ConfirmDialog` (the alert dialog;
+  `RemoveButton` is one), `Popover`, `DropdownMenu` (`header` row, items with
+  `onClick`). A trigger is rendered through Base UI's `render`, so it must
+  forward props and `ref` — `Button` does, and so do the composites built on
+  it: `Tooltip` (`content` plus one trigger child, passing any other props
+  through to it), `IconButton` (icon + `label` as accessible name and
+  tooltip) and `AddButton` (the outline "+" in a card header). That's what
+  lets `<FormDialog trigger={<AddButton label="Add a citation" />}>` work
+  with tooltip, dialog and button props all landing on one `<button>`.
+  `Lightbox` is the dark full-viewport shell `ImageViewer` and `PhotoBook`
+  share. `Button` defaults to `type="button"`, as React Aria's did.
+
+  Choosing from a list is data-driven too: `Select` takes
+  `options={[{ value, label }]}` and types `onValueChange` from them (no
+  narrowing or `safeParse` at the call site); `Combobox` takes `items` plus
+  `itemKey`/`itemLabel`/`renderItem` and an `onSelect(item)`, for a remote
+  search (its own filtering is off); `Autocomplete` is free text with local
+  suggestions (Base UI's `Autocomplete`), with `onOptionSelect` for a field
+  that acts on a choice (`TagInput` adds a chip) instead of filling it in.
+  `ButtonRadioGroup` and `ColorSwatchPicker` keep their `options`/`colors`
+  APIs on Base UI's `RadioGroup` — radios that look like buttons or swatches,
+  not toggle buttons.
+
+  On the app side, a component that knows the domain sits on top:
+  `PersonPicker` (`apps/frontend/src/routes/-person-picker.tsx`) is the one
+  "search the tree for a person" box — it owns the query against
+  `listPersons`, leaves out `excludeIds`, and shows "Name (lifespan)". Every
+  add-a-relative, merge, tag-a-face and link-a-member flow uses it; before, each
+  of nine places ran its own copy of that search.
+
+React Aria stays, deliberately, for what Base UI has no equivalent of:
+`PhotoGrid` (GridList with drag-and-drop and multi-select), `FileDropZone`
+(DropZone/FileTrigger), `TagInput` (TagGroup) and `Calendar`. A React Aria
+component can't host a Base UI child where it expects one of its own —
+`GridList`'s `slot="selection"` needs a React Aria checkbox, a React Aria
+`Menu` silently drops every item after a non-React-Aria separator, and
+`Calendar`'s previous/next and `PhotoGrid`'s drag handle need a React Aria
+pressable — so those get small React Aria twins styled to match the nova
+look, in `components/aria/` (`AriaCheckbox`, `AriaSeparator`, `AriaButton`),
+internal to the package. The reverse direction works: a React Aria `Select`
+inside a Base UI `Dialog` keeps the dialog open and focus inside it
+(`interop.test.tsx` guards that until Select moves). One Base UI behaviour to
+know: a dialog stops arrow-key events before they bubble to `window`, so a
+window key listener for an open dialog (`PhotoBook`'s page turning) listens in
+the capture phase. The same
+coupling is why `Button`, `Tooltip` and the overlays have to move together:
+a React Aria `DialogTrigger`/`TooltipTrigger` only opens from a React Aria
+pressable.
+
+Conventions for migrated components, coming from React Aria:
+`checked`/`onCheckedChange`, `value`/`onValueChange`, `disabled`, `open`/
+`onOpenChange` (not `isSelected`/`onChange`/`isDisabled`/`isOpen`); states
+are Base UI's `data-checked`/`data-active`/`data-disabled`/`data-open`
+attributes; tests use Testing Library and `user-event` only, not
+`@react-aria/test-utils`.
+
 ### shadcn/ui on React Aria Components, not Radix or Base UI
 
 Components are built on Adobe's React Aria Components (`react-aria-components`)
@@ -354,6 +449,10 @@ changes. The colors themselves are the `:root`/`.dark` variables in
 
 ### Motion for animation, applied by hand to React Aria components
 
+**Superseded (October 2026):** Motion was removed with the move to Base UI
+(see "shadcn/ui on Base UI" above), whose components animate their own
+enter/exit. Kept for the history of why Animate UI wasn't used.
+
 `motion` (Framer Motion's current package name) drives spring-based
 entry/exit on the overlay components (`popover`, `dialog`, `select`,
 `combobox`, plus the photo viewer and photo book). It was chosen over **Animate
@@ -402,7 +501,24 @@ Stuck opacity, mispositioned overlays, a transition that never completes —
 verify those against the dev server in a real browser (this project's pattern:
 a throwaway Playwright script checking `getComputedStyle` on the real DOM).
 
+### TanStack Devtools, in development only
+
+One TanStack Devtools shell (`@tanstack/react-devtools`, the palm-tree button
+bottom right) with the Query, Router and Form panels as plugins
+(`apps/frontend/src/routes/-devtools.tsx`): the query cache, the matched
+routes and their loaders, and every live TanStack Form's values and
+validation. `__root.tsx` lazy-loads it behind `import.meta.env.DEV`, inside
+`ClientOnly` — Vite replaces the flag with `false` in a production build, so
+the import is dropped from the bundle, and the panel never server-renders.
+All four packages are devDependencies, actively released; the shell (0.10)
+and Form panel (0.2) are still pre-1.0, so expect API churn on upgrades. The
+Query devtools version is pinned to match `@tanstack/react-query`.
+
 ### Component tests: Vitest + React Testing Library + `@react-aria/test-utils`
+
+**Since the move to Base UI** components are tested with Testing Library and
+`user-event` alone; `@react-aria/test-utils` is left only for `PhotoGrid`'s
+test (still on React Aria's GridList). What follows still applies to that.
 
 - `packages/ui/vitest.config.ts` sets `environment: "jsdom"`, with a
   `vitest.setup.ts` that imports `@testing-library/jest-dom/vitest` (matchers

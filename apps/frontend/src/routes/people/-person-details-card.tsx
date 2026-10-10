@@ -308,7 +308,7 @@ function PersonDetailsForm({
                   <ButtonRadioGroup
                     aria-label={t("common.gender.label")}
                     value={field.state.value}
-                    onChange={(value) => field.handleChange(value)}
+                    onValueChange={(value) => field.handleChange(value)}
                     options={genderSchema.options.map((option) => ({
                       value: option,
                       label: genderLabel(option, t),
@@ -331,9 +331,9 @@ function PersonDetailsForm({
                     placeholder={t("person.namesGender.titlePrefixPlaceholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}
-                    onChange={field.handleChange}
+                    onValueChange={field.handleChange}
                     options={titlePrefixOptions}
-                    isClearable
+                    clearable
                   />
                 </LabeledField>
               )}
@@ -346,9 +346,9 @@ function PersonDetailsForm({
                     placeholder={t("person.namesGender.suffixPlaceholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}
-                    onChange={field.handleChange}
+                    onValueChange={field.handleChange}
                     options={suffixOptions}
-                    isClearable
+                    clearable
                   />
                 </LabeledField>
               )}
@@ -379,7 +379,7 @@ function PersonDetailsForm({
                   <ButtonRadioGroup
                     aria-label={t("person.livingStatusDeath.isLiving")}
                     value={field.state.value ? "living" : "deceased"}
-                    onChange={(value) => field.handleChange(value === "living")}
+                    onValueChange={(value) => field.handleChange(value === "living")}
                     options={[
                       { value: "living", label: t("person.livingStatusDeath.living") },
                       { value: "deceased", label: t("person.livingStatusDeath.deceased") },
@@ -438,7 +438,7 @@ function PersonDetailsForm({
             <Button
               type="button"
               variant="outline"
-              onPress={() => {
+              onClick={() => {
                 form.reset();
                 onDone?.();
               }}
@@ -566,12 +566,12 @@ function DetailsReadView({
         {onEdit && (
           <div className="flex flex-wrap items-center gap-2">
             {missing.map((label) => (
-              <Button key={label} variant="ghost" size="sm" onPress={onEdit}>
+              <Button key={label} variant="ghost" size="sm" onClick={onEdit}>
                 <PlusIcon className="size-3.5" aria-hidden="true" />
                 {label}
               </Button>
             ))}
-            <Button variant="outline" size="sm" className="ml-auto" onPress={onEdit}>
+            <Button variant="outline" size="sm" className="ml-auto" onClick={onEdit}>
               <PencilIcon className="size-4" aria-hidden="true" />
               {t("common.edit")}
             </Button>
@@ -713,8 +713,8 @@ function PresumedDeceasedHint({
         type="button"
         size="sm"
         variant="outline"
-        isDisabled={isPending}
-        onPress={onMarkDeceased}
+        disabled={isPending}
+        onClick={onMarkDeceased}
       >
         {t("person.presumedDeceased.mark")}
       </Button>

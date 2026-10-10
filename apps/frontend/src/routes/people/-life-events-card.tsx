@@ -4,18 +4,17 @@ import {
   type HistoricalDate,
   type Gender,
 } from "@genealogy/core";
+import { AddButton } from "@genealogy/ui/components/add-button";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button } from "@genealogy/ui/components/button";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import { MarkdownContent } from "@genealogy/ui/components/markdown-content";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
-import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
 import { cn } from "@genealogy/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
-import { PlusIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -222,14 +221,7 @@ export function LifeEventsCard({
       contentClassName="space-y-4"
       action={
         <FormDialog
-          trigger={
-            <Tooltip>
-              <Button variant="outline" size="icon" aria-label={t("person.events.addEvent")}>
-                <PlusIcon className="size-4" />
-              </Button>
-              <TooltipContent>{t("person.events.addEvent")}</TooltipContent>
-            </Tooltip>
-          }
+          trigger={<AddButton label={t("person.events.addEvent")} />}
           title={t("person.events.addEvent")}
         >
           {(close) => (

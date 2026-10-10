@@ -13,5 +13,10 @@
     "functions": ["cn", "cva"],
     "stylesheet": "apps/frontend/src/styles.css"
   },
-  "ignorePatterns": ["**/routeTree.gen.ts", "**/drizzle/**", "pnpm-lock.yaml"]
+  "ignorePatterns": [
+    "**/routeTree.gen.ts",
+    "**/drizzle/**",
+    "pnpm-lock.yaml",
+    "packages/ui/src/components/ui/**"
+  ]
 }

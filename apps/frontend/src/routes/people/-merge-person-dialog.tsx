@@ -1,12 +1,4 @@
-import { formatLifespan, formatPersonName } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-} from "@genealogy/ui/components/combobox";
 import { DialogFooter } from "@genealogy/ui/components/dialog";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -14,9 +6,9 @@ import { MergeIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { getMergePreview, listPersons, mergePerson } from "../../server/functions/person.functions";
+import { PersonPicker } from "../-person-picker";
+import { getMergePreview, mergePerson } from "../../server/functions/person.functions";
 
-type PersonListItem = Awaited<ReturnType<typeof listPersons>>["items"][number];
 type MergePreview = Awaited<ReturnType<typeof getMergePreview>>;
 
 /** The preview's counts, in the order they're listed — only non-zero ones are shown. */
@@ -91,40 +83,15 @@ function PickDuplicateStep({
   onPick: (id: string) => void;
 }) {
   const { t } = useTranslation();
-  const [query, setQuery] = useState("");
-  const trimmed = query.trim();
-  const searchInput = { limit: 10, offset: 0, search: trimmed === "" ? null : trimmed };
-  const search = useQuery({
-    queryKey: ["person", "list", searchInput],
-    queryFn: () => listPersons({ data: searchInput }),
-  });
-  const options = (search.data?.items ?? []).filter((candidate) => candidate.id !== personId);
 
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">{t("person.merge.pickIntro")}</p>
-      <Combobox<PersonListItem>
+      <PersonPicker
         aria-label={t("person.merge.searchLabel")}
-        items={options}
-        inputValue={query}
-        onInputChange={setQuery}
-        onChange={(value) => {
-          if (typeof value === "string") onPick(value);
-        }}
-      >
-        <ComboboxInput placeholder={t("person.family.searchPeople")} />
-        <ComboboxContent<PersonListItem>
-          renderEmptyState={() => <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>}
-        >
-          {(item) => (
-            <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-              {formatPersonName(item)}
-              {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
-              <span className="ml-2 font-mono text-xs text-muted-foreground">{item.publicId}</span>
-            </ComboboxItem>
-          )}
-        </ComboboxContent>
-      </Combobox>
+        onSelect={(person) => onPick(person.id)}
+        excludeIds={new Set([personId])}
+      />
     </div>
   );
 }
@@ -211,14 +178,14 @@ function MergeConfirmStep({
 
       {mergeMutation.isError && <p className="text-destructive">{mergeMutation.error.message}</p>}
       <DialogFooter>
-        <Button type="button" variant="outline" onPress={onBack}>
+        <Button type="button" variant="outline" onClick={onBack}>
           {t("person.merge.back")}
         </Button>
         <Button
           type="button"
           variant="destructive"
-          isDisabled={isBlocked || mergeMutation.isPending}
-          onPress={() => mergeMutation.mutate({ data: { keepId, removeId: duplicateId } })}
+          disabled={isBlocked || mergeMutation.isPending}
+          onClick={() => mergeMutation.mutate({ data: { keepId, removeId: duplicateId } })}
         >
           {mergeMutation.isPending ? t("person.merge.merging") : t("person.merge.confirm")}
         </Button>

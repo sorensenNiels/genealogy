@@ -8,13 +8,7 @@ import { Input } from "@genealogy/ui/components/input";
 import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { PhotoBook, type PhotoBookPage } from "@genealogy/ui/components/photo-book";
 import { SectionCard } from "@genealogy/ui/components/section-card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
+import { Select } from "@genealogy/ui/components/select";
 import { Switch } from "@genealogy/ui/components/switch";
 import {
   Table,
@@ -177,7 +171,7 @@ function AlbumsSection() {
         <ButtonRadioGroup
           aria-label={t("photosPage.viewModeLabel")}
           value={viewMode}
-          onChange={setViewMode}
+          onValueChange={setViewMode}
           options={[
             {
               value: "list",
@@ -235,7 +229,7 @@ function AlbumsSection() {
             titleClassName="text-base"
             contentClassName="space-y-4"
             action={
-              <Button type="button" variant="ghost" size="sm" onPress={resetFilters}>
+              <Button type="button" variant="ghost" size="sm" onClick={resetFilters}>
                 {t("photosPage.reset")}
               </Button>
             }
@@ -252,7 +246,7 @@ function AlbumsSection() {
               <ButtonRadioGroup
                 aria-label={t("photosPage.kindFilterLabel")}
                 value={kindFilter}
-                onChange={setKindFilter}
+                onValueChange={setKindFilter}
                 options={[
                   { value: "all", label: t("photosPage.kindFilterAll") },
                   { value: "physical", label: t("album.kindPhysical") },
@@ -287,27 +281,23 @@ function AlbumsSection() {
               />
             </LabeledField>
 
-            <Switch isSelected={missingInfo} onChange={setMissingInfo}>
+            <Switch checked={missingInfo} onCheckedChange={setMissingInfo}>
               {t("photosPage.missingInfo")}
             </Switch>
 
             <LabeledField label={t("photosPage.sortBy")} asDiv>
               <Select
                 aria-label={t("photosPage.sortAlbumsBy")}
-                selectedKey={sort}
-                onSelectionChange={(key) => {
+                value={sort}
+                onValueChange={(key) => {
                   if (key) setSort(key as AlbumSort);
                 }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem id="name">{t("photosPage.sortName")}</SelectItem>
-                  <SelectItem id="date">{t("photosPage.sortDate")}</SelectItem>
-                  <SelectItem id="assetCount">{t("photosPage.sortPhotoCount")}</SelectItem>
-                </SelectContent>
-              </Select>
+                options={[
+                  { value: "name", label: t("photosPage.sortName") },
+                  { value: "date", label: t("photosPage.sortDate") },
+                  { value: "assetCount", label: t("photosPage.sortPhotoCount") },
+                ]}
+              />
             </LabeledField>
           </SectionCard>
         </div>
@@ -610,7 +600,7 @@ function AlbumBookLauncher({
 
   return (
     <PhotoBook
-      isOpen={isOpen}
+      open={isOpen}
       onOpenChange={onOpenChange}
       title={album.albumName}
       coverNode={<AlbumCover album={album} variant="spine" />}

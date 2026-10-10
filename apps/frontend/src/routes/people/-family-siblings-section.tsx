@@ -1,36 +1,23 @@
 import { formatLifespan, formatPersonName, parentageSchema, type Parentage } from "@genealogy/core";
+import { AddButton } from "@genealogy/ui/components/add-button";
 import { Button } from "@genealogy/ui/components/button";
 import { Checkbox } from "@genealogy/ui/components/checkbox";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-} from "@genealogy/ui/components/combobox";
 import { DialogFooter } from "@genealogy/ui/components/dialog";
 import { FormDialog } from "@genealogy/ui/components/form-dialog";
 import { Input } from "@genealogy/ui/components/input";
 import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { SaveButton } from "@genealogy/ui/components/save-button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@genealogy/ui/components/select";
-import { Tooltip, TooltipContent } from "@genealogy/ui/components/tooltip";
+import { Select } from "@genealogy/ui/components/select";
 import { useFormDirtyPending } from "@genealogy/ui/hooks/use-form-dirty-pending";
 import { useForm } from "@tanstack/react-form";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { PersonPicker } from "../-person-picker";
 import { optionsFor } from "../../lib/person-display";
-import { createPerson, linkParent, listPersons } from "../../server/functions/person.functions";
+import { createPerson, linkParent } from "../../server/functions/person.functions";
 import type { ConfigurableOptionRow, ParentRow, PersonRow } from "./-types";
 
 /**
@@ -114,23 +101,10 @@ function AddSibling({
   onChanged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"search" | "create">("search");
-  const [query, setQuery] = useState("");
   const [parentage, setParentage] = useState<Parentage>("unknown");
   const [selectedParentIds, setSelectedParentIds] = useState<Set<string>>(
     () => new Set(parents.map((parent) => parent.id)),
-  );
-
-  const trimmedQuery = query.trim();
-  const searchInput = { limit: 10, offset: 0, search: trimmedQuery === "" ? null : trimmedQuery };
-  const search = useQuery({
-    queryKey: ["person", "list", searchInput],
-    queryFn: () => listPersons({ data: searchInput }),
-    enabled: open && mode === "search",
-  });
-  const searchOptions = (search.data?.items ?? []).filter(
-    (candidate) => !excludeIds.has(candidate.id),
   );
 
   const createPersonMutation = useMutation({ mutationFn: createPerson });
@@ -162,8 +136,8 @@ function AddSibling({
       {parents.map((parent) => (
         <Checkbox
           key={parent.id}
-          isSelected={selectedParentIds.has(parent.id)}
-          onChange={(checked) => {
+          checked={selectedParentIds.has(parent.id)}
+          onCheckedChange={(checked) => {
             setSelectedParentIds((previous) => {
               const next = new Set(previous);
               if (checked) {
@@ -186,20 +160,11 @@ function AddSibling({
 
   return (
     <FormDialog
-      trigger={
-        <Tooltip>
-          <Button variant="outline" size="icon" aria-label={t("person.family.addSibling")}>
-            <PlusIcon className="size-4" />
-          </Button>
-          <TooltipContent>{t("person.family.addSibling")}</TooltipContent>
-        </Tooltip>
-      }
+      trigger={<AddButton label={t("person.family.addSibling")} />}
       title={t("person.family.addSibling")}
       onOpenChange={(next) => {
-        setOpen(next);
         if (!next) {
           setMode("search");
-          setQuery("");
         }
       }}
     >
@@ -208,60 +173,35 @@ function AddSibling({
           <Select
             aria-label={t("person.family.parentage")}
             value={parentage}
-            onChange={(value) => {
+            onValueChange={(value) => {
               if (value) setParentage(parentageSchema.parse(value));
             }}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {optionsFor(options, "parentage").map((option) => (
-                <SelectItem key={option.key} id={option.key}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={optionsFor(options, "parentage").map((option) => ({
+              value: option.key,
+              label: option.label,
+            }))}
+          />
           {parentPicker}
           {mode === "search" ? (
             <>
-              <Combobox<PersonRow>
-                aria-label={t("person.family.searchPeople")}
-                items={searchOptions}
-                inputValue={query}
-                onInputChange={setQuery}
-                onChange={(value) => {
-                  const target = searchOptions.find((candidate) => candidate.id === value);
-                  if (target && canSubmit) void link(target, close);
+              <PersonPicker
+                onSelect={(person) => {
+                  if (canSubmit) void link(person, close);
                 }}
-              >
-                <ComboboxInput placeholder={t("person.family.searchPeople")} />
-                <ComboboxContent<PersonRow>
-                  renderEmptyState={() => (
-                    <ComboboxEmpty>{t("person.family.noMatches")}</ComboboxEmpty>
-                  )}
-                >
-                  {(item) => (
-                    <ComboboxItem id={item.id} textValue={formatPersonName(item)}>
-                      {formatPersonName(item)}
-                      {formatLifespan(item) ? ` (${formatLifespan(item)})` : ""}
-                    </ComboboxItem>
-                  )}
-                </ComboboxContent>
-              </Combobox>
+                excludeIds={excludeIds}
+              />
               <Button
                 variant="ghost"
                 size="sm"
                 className="w-full"
-                onPress={() => setMode("create")}
+                onClick={() => setMode("create")}
               >
                 {t("person.family.createNewPerson")}
               </Button>
             </>
           ) : (
             <>
-              <Button variant="ghost" size="sm" onPress={() => setMode("search")}>
+              <Button variant="ghost" size="sm" onClick={() => setMode("search")}>
                 {t("person.family.searchInstead")}
               </Button>
               <AddSiblingCreateForm
@@ -321,7 +261,7 @@ function AddSiblingCreateForm({
         )}
       </form.Field>
       <DialogFooter>
-        <SaveButton isDirty={isDirty} isPending={isSubmitting} isDisabled={!canSubmit}>
+        <SaveButton isDirty={isDirty} isPending={isSubmitting} disabled={!canSubmit}>
           {isSubmitting ? t("person.family.creating") : t("person.family.createAndLink")}
         </SaveButton>
       </DialogFooter>
