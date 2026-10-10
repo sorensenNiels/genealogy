@@ -2,6 +2,7 @@ import { formatFullPersonName } from "@genealogy/core";
 import { ReadOnlyProvider } from "@genealogy/ui/lib/read-only";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
 import { usePermissions } from "../../lib/permissions";
@@ -14,11 +15,13 @@ import {
   namesQuery,
   personByIdQuery,
   prefetchPersonPage,
+  recentPeopleQuery,
   relativesQuery,
   researchNotesQuery,
   sourcesQuery,
   unionsQuery,
 } from "../../lib/queries";
+import { recordPersonView } from "../../server/functions/profile.functions";
 import { AssociationsCard } from "./-associations-card";
 import { CitationsSection } from "./-citations-section";
 import { ExternalIdsCard } from "./-external-ids-card";
@@ -57,6 +60,14 @@ function PersonDetailRoute() {
   const { canEdit, isAdmin } = usePermissions();
   const personSettings = usePersonSettings();
   const navigate = useNavigate();
+
+  // Remembered for the Overview's "Continue where you left off" — fire and
+  // forget: a failed save mustn't get in the way of the page.
+  useEffect(() => {
+    recordPersonView({ data: { personId } })
+      .then(() => queryClient.invalidateQueries({ queryKey: recentPeopleQuery().queryKey }))
+      .catch(() => {});
+  }, [personId, queryClient]);
 
   const person = useQuery(personByIdQuery(personId));
   const relatives = useQuery(relativesQuery(personId));

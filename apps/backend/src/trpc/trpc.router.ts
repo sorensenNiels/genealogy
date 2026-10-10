@@ -14,6 +14,7 @@ import { IntegrityRouter } from "../integrity/integrity.router.js";
 import { MailRouter } from "../mail/mail.router.js";
 import { MembersRouter } from "../members/members.router.js";
 import { NotificationRouter } from "../notification/notification.router.js";
+import { OverviewRouter } from "../overview/overview.router.js";
 import { PersonRouter } from "../person/person.router.js";
 import { ProfileRouter } from "../profile/profile.router.js";
 import { RecordRouter } from "../records/record.router.js";
@@ -43,6 +44,7 @@ export class TrpcRouter {
     private readonly userNote: UserNoteRouter,
     private readonly mail: MailRouter,
     private readonly notification: NotificationRouter,
+    private readonly overview: OverviewRouter,
     private readonly backup: BackupRouter,
     private readonly gedcom: GedcomRouter,
     private readonly integrity: IntegrityRouter,
@@ -73,6 +75,7 @@ export class TrpcRouter {
       userNote: this.userNote.build(),
       mail: this.mail.build(),
       notification: this.notification.build(),
+      overview: this.overview.build(),
       backup: this.backup.build(),
       gedcom: this.gedcom.build(),
       integrity: this.integrity.build(),

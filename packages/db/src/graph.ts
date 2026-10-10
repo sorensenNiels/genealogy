@@ -179,6 +179,46 @@ export async function personsWithRelations(
 }
 
 /**
+ * Everyone's ancestors at their closest generation (1 = parents), walked one
+ * generation at a time with a seen-set rather than a variable-length match:
+ * `ancestorsOf`'s `[:PARENT_OF*1..N]` enumerates every *path*, and with
+ * pedigree collapse (cousins marrying, common in rural parishes) the paths
+ * multiply with each generation; this visits each ancestor once. A cycle in
+ * bad data just stops at the seen-set. One query per generation reached.
+ */
+export async function ancestorsByGeneration(
+  pool: Pool,
+  personId: string,
+  maxGenerations = 25,
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<PedigreeNode[]> {
+  const depth = clampDepth(maxGenerations);
+  const seen = new Set([personId]);
+  const result: PedigreeNode[] = [];
+  let frontier = [personId];
+  for (let generation = 1; generation <= depth && frontier.length > 0; generation += 1) {
+    // One generation depends on the last, so these can't run in parallel.
+    // eslint-disable-next-line no-await-in-loop
+    const rows = await cypher<{ parentId: string }>(
+      pool,
+      `UNWIND $ids AS cid
+       MATCH (parent:Person)-[:PARENT_OF]->(:Person {id: cid})
+       RETURN DISTINCT parent.id AS parentId`,
+      ["parentId"],
+      { ...options, params: { ids: frontier } },
+    );
+    frontier = [];
+    for (const { parentId } of rows) {
+      if (seen.has(parentId)) continue;
+      seen.add(parentId);
+      result.push({ personId: parentId, generation });
+      frontier.push(parentId);
+    }
+  }
+  return result;
+}
+
+/**
  * The parents and spouses of each of `personIds`, in two round trips — the
  * People list's detailed rows ("Son of … · ⚭ …") for one page of people,
  * rather than `parentsOf`/`spousesOf` per row. `UNWIND` + `MATCH` on the

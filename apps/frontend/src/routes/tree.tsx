@@ -39,6 +39,7 @@ import { toSupportedLanguage } from "../i18n/create-i18n-instance";
 import { publicBackendUrl } from "../lib/env";
 import { formatDisplayDate } from "../lib/format-date";
 import { usePermissions } from "../lib/permissions";
+import { lastTreeQuery } from "../lib/queries";
 import {
   addOptions,
   type AddOption,
@@ -501,10 +502,14 @@ function FamilyTree({
   // here (see the route's `beforeLoad`). Fire-and-forget — failing to
   // remember must never get in the way of using the tree.
   const rememberLastView = treeSettings.rememberLastView;
+  const lastViewClient = useQueryClient();
   useEffect(() => {
     if (!rememberLastView) return;
-    saveLastTreeView({ data: { personId: rootId, view, orientation } }).catch(() => {});
-  }, [rememberLastView, rootId, view, orientation]);
+    saveLastTreeView({ data: { personId: rootId, view, orientation } })
+      // The Overview's "Continue where you left off" shows this.
+      .then(() => lastViewClient.invalidateQueries({ queryKey: lastTreeQuery().queryKey }))
+      .catch(() => {});
+  }, [rememberLastView, rootId, view, orientation, lastViewClient]);
 
   const exportChart = async (format: TreeExportFormat) => {
     const api = chartApi.current;

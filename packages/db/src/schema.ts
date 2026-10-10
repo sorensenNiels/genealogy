@@ -940,6 +940,10 @@ export const userProfiles = pgTable(
     // read through `parsePeopleListPreferences`, so another choice needs no
     // migration and a stale one is just dropped.
     peopleListPreferences: jsonb("people_list_preferences"),
+    // The people this member opened most recently, newest first, capped —
+    // the Overview's "Continue where you left off". Ids only; a person
+    // deleted since is just skipped when read.
+    recentlyViewed: jsonb("recently_viewed").$type<string[]>(),
     // The member's own theme, overriding the site's (`app_settings` "theme").
     // A built-in slug ("heritage") or a `themes.id`; plain text, no foreign
     // key, since built-ins aren't rows — a theme deleted since just falls

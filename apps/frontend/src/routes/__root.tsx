@@ -209,12 +209,15 @@ function RootDocument({
  * every pixel it can get), and Photos (an album grid plus a filters sidebar,
  * the same "sidebar + wide content" shape as the People list) all have real
  * content that benefits from the browser's actual width on a
- * normal-or-wider monitor, so these opt out and stretch edge to edge. The
+ * normal-or-wider monitor, so these opt out and stretch edge to edge — as
+ * does the Overview, a grid of cards that takes more columns as there's
+ * room. The
  * print route under `/people/$personId/print` is deliberately excluded —
  * it's laid out for paper, not a wide monitor.
  */
 function isFullWidthPath(pathname: string): boolean {
   return (
+    pathname === "/" ||
     pathname === "/people" ||
     pathname === "/settings" ||
     pathname === "/profile" ||

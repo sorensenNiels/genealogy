@@ -11,6 +11,7 @@ import { IntegrityModule } from "../integrity/integrity.module.js";
 import { MailModule } from "../mail/mail.module.js";
 import { MembersModule } from "../members/members.module.js";
 import { NotificationModule } from "../notification/notification.module.js";
+import { OverviewModule } from "../overview/overview.module.js";
 import { PersonModule } from "../person/person.module.js";
 import { ProfileModule } from "../profile/profile.module.js";
 import { RecordModule } from "../records/record.module.js";
@@ -36,6 +37,8 @@ import { TrpcRouter } from "./trpc.router.js";
     UserNoteModule,
     MailModule,
     NotificationModule,
+    OverviewModule,
+
     BackupModule,
     GedcomModule,
     IntegrityModule,

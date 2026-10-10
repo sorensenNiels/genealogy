@@ -802,6 +802,25 @@ seeded with head, wife, husband, son, daughter, child, stepchild, foster
 child, grandchild, parent, sibling, in-law, servant, lodger and other.
 Church-book roles are fixed per template, because they drive what's created.
 
+### Overview: about you first
+
+The landing page opens with two cards about the signed-in member
+(`apps/backend/src/overview/`, `overview.myLine`/`lastTree`/`recentPeople`):
+
+- **Your place in the tree** counts the member's ancestors per generation
+  with `ancestorsByGeneration` (`packages/db/src/graph.ts`), which walks up
+  one generation per query with a seen-set — not `ancestorsOf`'s
+  variable-length `[:PARENT_OF*1..N]`, which enumerates every _path_, and
+  paths multiply with pedigree collapse (cousin marriages) the further back
+  it goes. Known is capped at the 2^n places a generation has. It needs the
+  member's "This is you" link (`user_profiles.person_id`); without it the
+  card asks for one.
+- **Continue where you left off** reuses the tree's saved last view and a
+  new `user_profiles.recently_viewed` (ids, newest first, eight kept): the
+  person page records each visit, fire-and-forget, and a deleted person is
+  just skipped on read. Both lists go through `PersonRedactor`, so a Viewer
+  sees a living relative they opened by name only.
+
 ### People list: the URL holds the state
 
 Search, filters, sort and page on `/people` are the route's search params

@@ -217,6 +217,77 @@ _Suggested order_ (from the October 2026 review): the "getting around a big
 tree" and "doing things from the tree" ideas have shipped — see FEATURES.md.
 Research badges next.
 
+## Overview (the landing page)
+
+Ideas from the October 2026 review of the Overview (`apps/frontend/src/routes/index.tsx`).
+Today it's a system-status page — backend health, a people count, Immich's
+status — which said little to a family member arriving at their tree. Built so far:
+"Your place in the tree" and "Continue where you left off" (see FEATURES.md). The
+ideas below make it the place to start: about _you_, about what to research
+next, and about the family. Cards should follow the member's role (a Viewer
+gets the family cards, an editor the research ones, an admin the upkeep
+ones), and, like the People list, which cards show is a candidate for
+Settings (a site default) with each member able to hide their own.
+
+_The family_
+
+- 💡 🆕 **On this day.** Births, baptisms, marriages and deaths on today's
+  date in past years — "150 years ago today Maren Hansdatter married Jens
+  Pedersen in Brande". Deceased people only for Viewers (living birthdays
+  are exactly what redaction hides); members' own living relatives'
+  birthdays could be an opt-in for editors. _Builds on:_ exact `earliest`
+  = `latest` dates on events and unions.
+- 💡 🆕 **Featured ancestor.** One person a day (deceased, with a photo or
+  enough facts), shown with their photo and the generated life summary —
+  a reason to come back, and a nudge to look at someone new. _Builds on:_
+  `lib/life-summary.ts` ("life at a glance") and kinship ("your 3rd
+  great-grandmother") when the member has linked themselves.
+- 💡 🆕 **The family at a glance.** A row of figures: people, generations
+  (earliest to latest birth), surnames, parishes, sources, photos, and the
+  earliest known ancestor — each linking to where it comes from (the People
+  list grouped by surname or parish, now that grouping exists). A light
+  version of "Family statistics" (Tree & visualization).
+- 💡 🆕 **Where the family came from.** A small map of birthplaces, or until
+  maps exist, the top parishes with counts linking to the People list
+  grouped by parish. _Builds on:_ place coordinates (PostGIS, no map UI yet)
+  — see Places & maps.
+
+_Research (editors)_
+
+- 💡 🆕 **Research to-do.** Open research notes (newest first, with their
+  person), and the research checklist across the tree as links straight
+  into the People list's "Missing" filter — "142 without a source for their
+  birth", "57 without both parents". Possible now that the list's filters
+  are in its URL. _Builds on:_ `researchChecklist`, `PersonService.list`'s
+  `missing` filter and counts.
+- 💡 🆕 **Census gaps.** "38 people alive in the 1845 census not yet
+  searched" — the coverage grid's third state, summed over the tree, as the
+  next records to look up. _Builds on:_ census coverage on the person page
+  and `recordSearches`.
+- 💡 🆕 **Recently added and changed.** The newest people and the last edits,
+  to pick up where someone else left off. People have `createdAt`/
+  `updatedAt` already; a real "who changed what" feed needs an audit log,
+  which nothing records yet.
+
+_Upkeep (admins)_
+
+- 💡 🆕 **Things to look at.** Counts with links: likely duplicates (Tools →
+  Possible duplicates), data-integrity findings, people presumed deceased,
+  Immich faces not linked to anyone, pending invitations. _Builds on:_ the
+  existing Tools reports, run on a schedule or cached so the landing page
+  stays fast.
+- 💡 🆕 **System status for admins only.** Backend health and Immich status
+  move to a small admin card (or Tools); a Viewer has nothing to do with
+  them.
+
+_Settings_
+
+- 💡 🆕 **Overview settings.** Settings → Overview chooses which cards show
+  and in what order (site default); each member can hide cards for
+  themselves, saved like their People list choices. "On this day" could
+  also choose its events (births, marriages, deaths) and whether living
+  people's birthdays show at all.
+
 ## People list
 
 Ideas from the October 2026 review of the People list

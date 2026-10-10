@@ -14,6 +14,7 @@ import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import { eq } from "drizzle-orm";
 
 import { DRIZZLE } from "../database/database.module.js";
+import { MAX_RECENT } from "../overview/overview.service.js";
 
 /**
  * Postgres SQLSTATE 23505 — a `UNIQUE`/primary-key constraint was violated.
@@ -158,5 +159,26 @@ export class ProfileService {
         set: { peopleListPreferences: preferences },
       });
     return preferences;
+  }
+
+  /**
+   * Puts a person first in the member's recently opened list — once, newest
+   * first, capped at `MAX_RECENT`. Called every time a person page opens, so
+   * it's one small upsert.
+   */
+  async recordPersonView(userId: string, personId: string): Promise<void> {
+    const [row] = await this.db
+      .select({ recentlyViewed: userProfiles.recentlyViewed })
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, userId))
+      .limit(1);
+    const recentlyViewed = [
+      personId,
+      ...(row?.recentlyViewed ?? []).filter((id) => id !== personId),
+    ].slice(0, MAX_RECENT);
+    await this.db
+      .insert(userProfiles)
+      .values({ userId, recentlyViewed })
+      .onConflictDoUpdate({ target: userProfiles.userId, set: { recentlyViewed } });
   }
 }

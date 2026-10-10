@@ -1,10 +1,12 @@
 import {
   lastTreeViewSchema,
   peopleListPreferencesChangeSchema,
+  personIdSchema,
   updateProfileSchema,
 } from "@genealogy/core";
 import { createServerFn } from "@tanstack/react-start";
 import { setCookie } from "@tanstack/react-start/server";
+import { z } from "zod";
 
 import { trpcProxy } from "../trpc-proxy-client";
 
@@ -47,6 +49,10 @@ export const getPeopleListPreferences = createServerFn({ method: "GET" }).handle
 export const savePeopleListPreferences = createServerFn({ method: "POST" })
   .validator(peopleListPreferencesChangeSchema)
   .handler(({ data }) => trpcProxy.profile.savePeopleListPreferences.mutate(data));
+
+export const recordPersonView = createServerFn({ method: "POST" })
+  .validator(z.object({ personId: personIdSchema }))
+  .handler(({ data }) => trpcProxy.profile.recordPersonView.mutate(data));
 
 export const updateProfile = createServerFn({ method: "POST" })
   .validator(updateProfileSchema)

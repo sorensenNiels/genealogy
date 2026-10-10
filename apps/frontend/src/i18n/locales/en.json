@@ -643,7 +643,36 @@
     "peopleTitle": "People",
     "peopleDescription": "Individuals recorded in this tree.",
     "immichTitle": "Photo library",
-    "immichDescription": "Immich, on its own server. Photos and albums depend on it."
+    "immichDescription": "Immich, on its own server. Photos and albums depend on it.",
+    "line": {
+      "title": "Your place in the tree",
+      "description": "You, and how far back your line is known.",
+      "notLinked": "Choose who you are in the tree, and this shows your ancestors — how many are known in each generation, and how far back your line goes. \"My ancestors\" on the People list uses it too.",
+      "chooseYourself": "Choose who you are",
+      "summary": "{{known}} of {{possible}} ancestors known in {{generations}} generations.",
+      "furthest_one": "Known back {{count}} generation ({{total}} ancestors in all).",
+      "furthest_other": "Known back {{count}} generations ({{total}} ancestors in all).",
+      "noParents": "No parents recorded yet.",
+      "stripLabel": "Known ancestors per generation",
+      "knownOf": "{{known}}/{{possible}}",
+      "generation": {
+        "1": "Parents",
+        "2": "Grandparents",
+        "3": "Great-grandparents",
+        "4": "2nd great-grandparents",
+        "5": "3rd great-grandparents"
+      },
+      "openTree": "Open the tree here",
+      "myAncestors": "My ancestors"
+    },
+    "continue": {
+      "title": "Continue where you left off",
+      "description": "The tree as you left it, and the people you opened last.",
+      "empty": "The people you open and the tree you look at will show up here.",
+      "backToTree": "Back to the tree",
+      "treeAt": "{{chart}}, centred on {{name}}",
+      "recentPeople": "Recently opened"
+    }
   },
   "notes": {
     "title": "My Notes",

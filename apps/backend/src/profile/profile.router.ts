@@ -1,9 +1,11 @@
 import {
   lastTreeViewSchema,
   peopleListPreferencesChangeSchema,
+  personIdSchema,
   updateProfileSchema,
 } from "@genealogy/core";
 import { Injectable } from "@nestjs/common";
+import { z } from "zod";
 
 import { protectedProcedure, router } from "../trpc/trpc.base.js";
 import { ProfileService } from "./profile.service.js";
@@ -39,6 +41,15 @@ export class ProfileRouter {
         .input(lastTreeViewSchema)
         .mutation(async ({ input, ctx }) => {
           await this.profile.saveLastTreeView(ctx.session.user.id, input);
+          return { ok: true } as const;
+        }),
+
+      // Every person page a member opens, for the Overview's "Continue where
+      // you left off" — their own list, so any member (Viewers too) may.
+      recordPersonView: protectedProcedure
+        .input(z.object({ personId: personIdSchema }))
+        .mutation(async ({ input, ctx }) => {
+          await this.profile.recordPersonView(ctx.session.user.id, input.personId);
           return { ok: true } as const;
         }),
 

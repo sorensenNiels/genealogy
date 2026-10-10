@@ -643,7 +643,36 @@
     "peopleTitle": "Personer",
     "peopleDescription": "Personer registreret i dette slægtstræ.",
     "immichTitle": "Fotobibliotek",
-    "immichDescription": "Immich, på sin egen server. Fotos og albummer afhænger af den."
+    "immichDescription": "Immich, på sin egen server. Fotos og albummer afhænger af den.",
+    "line": {
+      "title": "Din plads i træet",
+      "description": "Dig selv, og hvor langt tilbage din linje kendes.",
+      "notLinked": "Vælg hvem du er i træet, så viser dette dine aner — hvor mange der kendes i hver generation, og hvor langt tilbage din linje går. \"Mine aner\" på personlisten bruger det også.",
+      "chooseYourself": "Vælg hvem du er",
+      "summary": "{{known}} af {{possible}} aner kendt i {{generations}} generationer.",
+      "furthest_one": "Kendt {{count}} generation tilbage ({{total}} aner i alt).",
+      "furthest_other": "Kendt {{count}} generationer tilbage ({{total}} aner i alt).",
+      "noParents": "Ingen forældre registreret endnu.",
+      "stripLabel": "Kendte aner pr. generation",
+      "knownOf": "{{known}}/{{possible}}",
+      "generation": {
+        "1": "Forældre",
+        "2": "Bedsteforældre",
+        "3": "Oldeforældre",
+        "4": "Tipoldeforældre",
+        "5": "Tiptipoldeforældre"
+      },
+      "openTree": "Åbn træet her",
+      "myAncestors": "Mine aner"
+    },
+    "continue": {
+      "title": "Fortsæt hvor du slap",
+      "description": "Træet som du forlod det, og de personer du sidst åbnede.",
+      "empty": "De personer du åbner, og det træ du kigger på, vises her.",
+      "backToTree": "Tilbage til træet",
+      "treeAt": "{{chart}}, centreret på {{name}}",
+      "recentPeople": "Senest åbnet"
+    }
   },
   "notes": {
     "title": "Mine noter",

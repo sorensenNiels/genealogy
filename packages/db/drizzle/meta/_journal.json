@@ -351,6 +351,13 @@
       "when": 1791646379277,
       "tag": "0049_people_list_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791654953979,
+      "tag": "0050_recently_viewed",
+      "breakpoints": true
     }
   ]
 }

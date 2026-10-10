@@ -2,6 +2,7 @@ import { queryOptions, type QueryClient } from "@tanstack/react-query";
 
 import { listAssociations } from "../server/functions/association.functions";
 import { getHealth } from "../server/functions/health.functions";
+import { getLastTree, getMyLine, getRecentPeople } from "../server/functions/overview.functions";
 import {
   getPersonById,
   getRelatives,
@@ -136,3 +137,15 @@ export const peopleListPreferencesQuery = () =>
     queryKey: ["profile", "peopleListPreferences"],
     queryFn: () => getPeopleListPreferences(),
   });
+
+/** The Overview's "Your place in the tree" — null until the member says who they are. */
+export const myLineQuery = () =>
+  queryOptions({ queryKey: ["overview", "myLine"], queryFn: () => getMyLine() });
+
+/** The Overview's "Continue where you left off": the tree's last centre, chart and direction. */
+export const lastTreeQuery = () =>
+  queryOptions({ queryKey: ["overview", "lastTree"], queryFn: () => getLastTree() });
+
+/** The people this member opened most recently, newest first. */
+export const recentPeopleQuery = () =>
+  queryOptions({ queryKey: ["overview", "recentPeople"], queryFn: () => getRecentPeople() });
