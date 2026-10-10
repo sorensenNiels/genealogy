@@ -28,3 +28,9 @@ pnpm-debug.log*
 # Uploaded files (see UPLOADS_DIR in apps/backend) — belongs in a mounted
 # volume in production, never in the repo.
 apps/backend/data/
+
+# Core dumps from a crashed process (one, ~175 MB, was once committed and had
+# to be cut out of history — GitHub rejects files over 100 MB). Anchored to
+# the root: a bare `core` would also ignore packages/core.
+/core
+core.[0-9]*
