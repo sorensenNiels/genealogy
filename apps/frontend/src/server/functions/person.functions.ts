@@ -8,7 +8,10 @@ import {
   parentageSchema,
   personEventIdSchema,
   personIdSchema,
+  peopleListGroupingSchema,
+  personListSortSchema,
   researchCheckKeySchema,
+  sortDirectionSchema,
   unionIdSchema,
   updateNameVariantSchema,
   updatePersonEventSchema,
@@ -38,7 +41,11 @@ const listInput = z.object({
   missing: researchCheckKeySchema.nullable().default(null),
   hasOpenResearchNote: z.boolean().default(false),
   directAncestorsOnly: z.boolean().default(false),
-  sort: z.enum(["surname_asc", "given_asc", "birth_asc", "birth_desc"]).default("surname_asc"),
+  sortBy: personListSortSchema.default("surname"),
+  sortDir: sortDirectionSchema.default("asc"),
+  grouping: peopleListGroupingSchema.default("none"),
+  similarSpellings: z.boolean().default(false),
+  withFamily: z.boolean().default(false),
 });
 
 export const listPersons = createServerFn({ method: "GET" })

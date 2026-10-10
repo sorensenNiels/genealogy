@@ -10,9 +10,10 @@ import {
   listPersons,
   listUnions,
 } from "../server/functions/person.functions";
+import { getPeopleListPreferences } from "../server/functions/profile.functions";
 import { listNotes } from "../server/functions/research-note.functions";
 import { searchFullText } from "../server/functions/search.functions";
-import { listOptions } from "../server/functions/settings.functions";
+import { getPeopleListSettings, listOptions } from "../server/functions/settings.functions";
 import { listCitations, listSources } from "../server/functions/source.functions";
 import { getActiveTheme, getThemeState } from "../server/functions/theme.functions";
 
@@ -33,18 +34,6 @@ export const personListQuery = (input: PersonListInput) =>
     queryKey: ["person", "list", input],
     queryFn: () => listPersons({ data: input }),
   });
-
-/** The People page's first page with no filters — what its loader prefetches. */
-export const DEFAULT_PERSON_LIST_INPUT = {
-  limit: 50,
-  offset: 0,
-  search: null,
-  gender: null,
-  place: null,
-  bornAfter: null,
-  bornBefore: null,
-  sort: "surname_asc",
-} as const satisfies PersonListInput;
 
 /** Just the total — the Overview's person count. */
 export const PERSON_COUNT_INPUT = { limit: 1, offset: 0, search: null } as const;
@@ -132,4 +121,18 @@ export const fullTextSearchQuery = (query: string) =>
     queryKey: ["search", "fullText", query],
     queryFn: () => searchFullText({ data: { query } }),
     enabled: query.trim().length >= 2,
+  });
+
+/** The People list's site-wide defaults (Settings → People list). */
+export const peopleListSettingsQuery = () =>
+  queryOptions({
+    queryKey: ["settings", "peopleListSettings"],
+    queryFn: () => getPeopleListSettings(),
+  });
+
+/** This member's own People list choices (table/cards, compact/detailed); empty until they pick. */
+export const peopleListPreferencesQuery = () =>
+  queryOptions({
+    queryKey: ["profile", "peopleListPreferences"],
+    queryFn: () => getPeopleListPreferences(),
   });

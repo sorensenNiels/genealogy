@@ -178,6 +178,43 @@ export async function personsWithRelations(
   return new Set(rows.map((row) => row.id));
 }
 
+/**
+ * The parents and spouses of each of `personIds`, in two round trips — the
+ * People list's detailed rows ("Son of … · ⚭ …") for one page of people,
+ * rather than `parentsOf`/`spousesOf` per row. `UNWIND` + `MATCH` on the
+ * `id` property, like `personsWithRelations`: a page is at most a couple of
+ * hundred people, well within what a label scan per id handles.
+ */
+export async function familyOf(
+  pool: Pool,
+  personIds: readonly string[],
+  options: Pick<CypherOptions, "client" | "graph"> = {},
+): Promise<{
+  parents: { childId: string; parentId: string; parentage: Parentage }[];
+  spouses: { personId: string; spouseId: string }[];
+}> {
+  if (personIds.length === 0) return { parents: [], spouses: [] };
+  const [parents, spouses] = await Promise.all([
+    cypher<{ childId: string; parentId: string; parentage: Parentage }>(
+      pool,
+      `UNWIND $ids AS pid
+       MATCH (parent:Person)-[r:PARENT_OF]->(child:Person {id: pid})
+       RETURN child.id AS childId, parent.id AS parentId, r.parentage AS parentage`,
+      ["childId", "parentId", "parentage"],
+      { ...options, params: { ids: personIds } },
+    ),
+    cypher<{ personId: string; spouseId: string }>(
+      pool,
+      `UNWIND $ids AS pid
+       MATCH (person:Person {id: pid})-[:SPOUSE_OF]-(spouse:Person)
+       RETURN DISTINCT person.id AS personId, spouse.id AS spouseId`,
+      ["personId", "spouseId"],
+      { ...options, params: { ids: personIds } },
+    ),
+  ]);
+  return { parents, spouses };
+}
+
 /** Removes a `PARENT_OF` edge. A no-op if the two were never linked. */
 export async function removeParentOf(
   pool: Pool,

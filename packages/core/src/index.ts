@@ -17,6 +17,7 @@ export * from "./name-variant.js";
 export * from "./notification.js";
 export * from "./person-event.js";
 export * from "./person-external-id.js";
+export * from "./person-list.js";
 export * from "./person.js";
 export * from "./profile.js";
 export * from "./records.js";

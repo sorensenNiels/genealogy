@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  defaultPeopleListSettings,
+  applyPeopleListPreferencesChange,
+  parsePeopleListPreferences,
+  parsePeopleListSettings,
   defaultPersonSettings,
   defaultRecordSettings,
   defaultTreeSettings,
@@ -107,5 +111,59 @@ describe("parseRecordSettings", () => {
     expect(
       parseRecordSettings({ customCensuses: [custom], relationshipLinks: "sometimes" }),
     ).toEqual({ ...defaultRecordSettings, customCensuses: [custom] });
+  });
+});
+
+describe("parsePeopleListSettings", () => {
+  it("defaults to last name A–Z, the table, full dates and two-line rows", () => {
+    expect(parsePeopleListSettings(undefined)).toEqual(defaultPeopleListSettings);
+    expect(defaultPeopleListSettings).toEqual({
+      defaultSort: "surname",
+      defaultSortDirection: "asc",
+      defaultView: "table",
+      dateDetail: "full",
+      defaultRowDetail: "detailed",
+      detailParents: true,
+      detailSpouses: true,
+      detailPlaces: true,
+      defaultGrouping: "none",
+      defaultColumns: [
+        "gender",
+        "status",
+        "age",
+        "lifespan",
+        "born",
+        "died",
+        "place",
+        "sources",
+        "publicId",
+      ],
+    });
+  });
+
+  it("keeps valid saved fields and drops a stale one", () => {
+    expect(
+      parsePeopleListSettings({ defaultSort: "birth", defaultView: "grid", dateDetail: "years" }),
+    ).toEqual({ ...defaultPeopleListSettings, defaultSort: "birth", dateDetail: "years" });
+  });
+});
+
+describe("parsePeopleListPreferences", () => {
+  it("keeps only what the member has chosen, dropping anything no longer valid", () => {
+    expect(parsePeopleListPreferences(null)).toEqual({});
+    expect(parsePeopleListPreferences({ view: "card", rowDetail: "huge", extra: 1 })).toEqual({
+      view: "card",
+    });
+  });
+});
+
+describe("applyPeopleListPreferencesChange", () => {
+  it("sets what's given, forgets what's null, keeps the rest", () => {
+    expect(
+      applyPeopleListPreferencesChange(
+        { view: "card", columns: ["age"] },
+        { rowDetail: "compact", columns: null },
+      ),
+    ).toEqual({ view: "card", rowDetail: "compact" });
   });
 });

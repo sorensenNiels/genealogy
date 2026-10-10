@@ -1,6 +1,12 @@
 import { z } from "zod";
 
 import { BUILT_IN_CENSUS_COUNTRIES, censusDefinitionSchema } from "./census.js";
+import {
+  peopleListColumnSchema,
+  peopleListGroupingSchema,
+  personListSortSchema,
+  sortDirectionSchema,
+} from "./person-list.js";
 import { personIdSchema } from "./person.js";
 import { recordTypeSchema } from "./records.js";
 
@@ -128,7 +134,6 @@ export function parsePersonSettings(value: unknown): PersonSettings {
   return parseSettingsSection(personSettingsSchema, defaultPersonSettings, value);
 }
 
-/** The `app_settings.key` of each section. */
 /**
  * Records (census, baptism, marriage, burial — see `RECORD_TEMPLATES`): the
  * Settings page's "Records" section.
@@ -163,9 +168,107 @@ export function parseRecordSettings(value: unknown): RecordSettings {
   return parseSettingsSection(recordSettingsSchema, defaultRecordSettings, value);
 }
 
+/** The People list's two layouts. */
+export const peopleListViewSchema = z.enum(["table", "card"]);
+export type PeopleListView = z.infer<typeof peopleListViewSchema>;
+
+/** One line per person, or a second line of family context (parents, spouses) and places under the dates. */
+export const peopleListRowDetailSchema = z.enum(["compact", "detailed"]);
+export type PeopleListRowDetail = z.infer<typeof peopleListRowDetailSchema>;
+
+/**
+ * The People list's defaults — the Settings page's "People list" section.
+ * Defaults only: a member's own sort and filters live in the page's URL,
+ * and their table/card and compact/detailed choices are remembered on their
+ * profile (`peopleListPreferencesSchema`), taking precedence over
+ * `defaultView`/`defaultRowDetail`. What the detailed line holds is the
+ * site's call, not each member's.
+ */
+export const peopleListSettingsSchema = z.object({
+  /** What the list is sorted by when the URL doesn't say — in a patronymic tree, birth date can read better than last name. */
+  defaultSort: personListSortSchema.default("surname"),
+  defaultSortDirection: sortDirectionSchema.default("asc"),
+  /** Table or cards, for a member who hasn't picked one yet. */
+  defaultView: peopleListViewSchema.default("table"),
+  /** The Born and Died columns: full dates, or just the years (like the tree's `dateDetail`). */
+  dateDetail: treeDateDetailSchema.default("full"),
+  /** One line per person or two, for a member who hasn't chosen. */
+  defaultRowDetail: peopleListRowDetailSchema.default("detailed"),
+  /** In detailed rows: "Son of Jens Pedersen & Ane Nielsdatter" under the name — what tells ten Jens Jensens apart. */
+  detailParents: z.boolean().default(true),
+  /** In detailed rows: "⚭ 1874 Maren Hansdatter" under the name. */
+  detailSpouses: z.boolean().default(true),
+  /** In detailed rows: the place under the Born and Died dates, instead of a Place column. */
+  detailPlaces: z.boolean().default(true),
+  /** What the list is grouped by when the URL doesn't say. */
+  defaultGrouping: peopleListGroupingSchema.default("none"),
+  /** The table columns shown to a member who hasn't chosen their own. */
+  defaultColumns: z.array(peopleListColumnSchema).default([...peopleListColumnSchema.options]),
+});
+export type PeopleListSettings = z.infer<typeof peopleListSettingsSchema>;
+
+export const defaultPeopleListSettings: PeopleListSettings = peopleListSettingsSchema.parse({});
+
+export function parsePeopleListSettings(value: unknown): PeopleListSettings {
+  return parseSettingsSection(peopleListSettingsSchema, defaultPeopleListSettings, value);
+}
+
+/**
+ * A member's own People list choices, saved on their profile
+ * (`user_profiles.people_list_preferences`, one JSON value so a new choice
+ * needs no migration). Every key is optional: unset means the site's
+ * default from `PeopleListSettings`.
+ */
+export const peopleListPreferencesSchema = z.object({
+  view: peopleListViewSchema.optional(),
+  rowDetail: peopleListRowDetailSchema.optional(),
+  /** The table columns this member shows, over `defaultColumns`. */
+  columns: z.array(peopleListColumnSchema).optional(),
+});
+export type PeopleListPreferences = z.infer<typeof peopleListPreferencesSchema>;
+
+/**
+ * A change to a member's choices: a value sets it, null forgets it (back to
+ * the site's default) — `undefined` can't do that, since it doesn't survive
+ * the trip as JSON.
+ */
+export const peopleListPreferencesChangeSchema = z.object({
+  view: peopleListViewSchema.nullable().optional(),
+  rowDetail: peopleListRowDetailSchema.nullable().optional(),
+  columns: z.array(peopleListColumnSchema).nullable().optional(),
+});
+export type PeopleListPreferencesChange = z.infer<typeof peopleListPreferencesChangeSchema>;
+
+/** `preferences` with `change` applied — the backend's save and the page's optimistic update both use it. */
+export function applyPeopleListPreferencesChange(
+  preferences: PeopleListPreferences,
+  change: PeopleListPreferencesChange,
+): PeopleListPreferences {
+  const result: Record<string, unknown> = { ...preferences };
+  for (const [key, value] of Object.entries(change)) {
+    if (value === null) delete result[key];
+    else if (value !== undefined) result[key] = value;
+  }
+  return result as PeopleListPreferences;
+}
+
+/** Field by field, like the settings sections: a value no longer valid is just dropped. */
+export function parsePeopleListPreferences(value: unknown): PeopleListPreferences {
+  const stored =
+    typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  const result: Record<string, unknown> = {};
+  for (const [key, fieldSchema] of Object.entries(peopleListPreferencesSchema.shape)) {
+    const field = fieldSchema.safeParse(stored[key]);
+    if (field.success && field.data !== undefined) result[key] = field.data;
+  }
+  return result as PeopleListPreferences;
+}
+
+/** The `app_settings.key` of each section. */
 export const appSettingsKeys = {
   tree: "tree",
   person: "person",
   records: "records",
+  peopleList: "peopleList",
   theme: "theme",
 } as const;

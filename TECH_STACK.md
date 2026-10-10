@@ -802,6 +802,88 @@ seeded with head, wife, husband, son, daughter, child, stepchild, foster
 child, grandchild, parent, sibling, in-law, servant, lodger and other.
 Church-book roles are fixed per template, because they drive what's created.
 
+### People list: the URL holds the state
+
+Search, filters, sort and page on `/people` are the route's search params
+(`validateSearch`, read field by field so one stale value is dropped rather
+than the whole URL), not `useState` — so Back from a person, a reload and a
+shared link all land on the same list. Defaults are left out, so the
+unfiltered list is plain `/people`. Filter changes replace the history
+entry and paging pushes one, so Back leaves the list instead of undoing
+filters one by one. Typed fields go through `useUrlDraft`
+(`packages/ui/src/hooks/`, also used by `/search`): the field updates at
+once, the URL after a 300ms pause, and the value it just committed coming
+back doesn't overwrite what was typed since. The loader and the page build
+the request with the same `listInputFor`, so the prefetch is the page's
+query (at the table's page size; the card view's differs and just loads).
+
+- **Defaults vs. choices.** The site's defaults are an `app_settings`
+  section (`peopleListSettingsSchema`: default sort and direction, default
+  view, date detail), and a key equal to the default is left out of the URL
+  — so a list URL without `sort` follows whatever the admin sets. The
+  table/card choice isn't URL state but a preference, saved per member in
+  `user_profiles.people_list_view` (over the site's `defaultView`) rather
+  than in `localStorage`, so it follows them between devices and the server
+  render already has it. The loader fetches both before the list, since
+  they decide its sort and page size. Member choices are one JSON value
+  (`user_profiles.people_list_preferences`, read field by field through
+  `parsePeopleListPreferences`), so the next one — columns, page size —
+  needs no migration.
+- **Grouping** (last name, birth century, birth parish — `group` in the URL,
+  with a site default) works with server-side paging rather than around
+  it: the backend orders by the group first and the chosen sort within it,
+  so each group is one run of rows, and returns each shown group's size in
+  the whole filtered list (`groupCounts`), so a header says "· 7 people · 3
+  on this page" when a group runs on. The group key exists twice and must
+  agree: `personGroupKey` in core (the page's headers) and
+  `groupExpression` in `PersonService` (the SQL order and counts) — lower
+  case, trimmed, the birthplace's first part, the century as a number.
+- **Columns** are chosen per member (`columns` in their preferences, over
+  Settings' `defaultColumns`); the name and the row actions always show. A
+  preference change of `null` forgets the member's choice, so "Use the
+  site's columns" follows the site's default again
+  (`applyPeopleListPreferencesChange`) — `undefined` can't, since it
+  doesn't survive JSON.
+- **Two-line rows** ("detailed", the default): parents and spouses under the
+  name, places under the dates (and no Place column). The list asks for
+  them with `withFamily` only when a detailed row will show them; one page
+  costs one `familyOf` graph call (parents and spouses of every row) plus
+  the relatives' names and the unions, ~30ms. The row names the same
+  parents the tree draws (birth, then "unknown" parentage, at most two).
+  Relatives' names stay visible to a Viewer — a redacted person keeps their
+  place in the tree — but a marriage year doesn't when either partner is
+  living. What the second line holds is a site setting; each member only
+  chooses one line or two. What's deliberately _not_ a setting:
+  the current search/filters/sort (URL state), "Open research notes" being
+  editors-only (a privacy rule), and how name search matches (correctness).
+- **Sorting** is one vocabulary (`personListSortSchema` + `sortDirectionSchema`
+  in core) instead of three copies of a combined enum. Unknowns sort last in
+  either direction, and every order ends in name and then id, so rows that
+  tie don't swap between pages. Age is computed in SQL the way
+  `calculateAge` does it.
+- **Name search** splits into words; each must match a first or last name,
+  primary or alternate (an `exists` over `person_names`), as a
+  case-insensitive substring with `%`/`_` escaped. When the primary name
+  doesn't explain a hit, the row carries the alternate name that does
+  (`alsoKnownAs`) — blanked for a Viewer looking at someone living, whose
+  alternate names are hidden.
+- **"Similar spellings"** (a checkbox by the search box, `similar` in the
+  URL — deliberately not a setting: strict or loose depends on the search)
+  matches by duplicate detection's sound keys, which Postgres can't
+  compute: the backend reads every primary and alternate name, matches in
+  memory (`namesMatchSearch` in core; the keys are cached) and filters the
+  list on the resulting id set, like "My ancestors" — a few ms here. A
+  typed word matches a name word as a substring, or its sound key as a
+  prefix of the name's (so half-typed words work), or — between two
+  patronymics only — the same father's name (Sørensen ~ Sørensdatter; a
+  man called Niels is not a "Nielsen"). It's a superset of the plain
+  search, so turning it on never loses a result. Making "Sorensen" find
+  Sørensen is why `soundKey` folds ø/ö (and oe) to o.
+- **"Open research notes" is ignored for Viewers** server-side: research
+  notes on the living are hidden from them, and a filter on them would say
+  what they can't see. ("My ancestors" needs the member's "This is you"
+  link on their profile.)
+
 ### Full-text search: Postgres text search, `simple`, prefix matches
 
 `/search` searches the free text in the tree — person notes, name, event,

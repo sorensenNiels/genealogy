@@ -935,6 +935,11 @@ export const userProfiles = pgTable(
     }),
     lastTreeView: text("last_tree_view"),
     lastTreeOrientation: text("last_tree_orientation"),
+    // This member's own People list choices (table/cards, compact/detailed),
+    // over the site's defaults (`app_settings` "peopleList"). One JSON value,
+    // read through `parsePeopleListPreferences`, so another choice needs no
+    // migration and a stale one is just dropped.
+    peopleListPreferences: jsonb("people_list_preferences"),
     // The member's own theme, overriding the site's (`app_settings` "theme").
     // A built-in slug ("heritage") or a `themes.id`; plain text, no foreign
     // key, since built-ins aren't rows — a theme deleted since just falls

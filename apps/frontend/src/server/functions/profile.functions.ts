@@ -1,4 +1,8 @@
-import { lastTreeViewSchema, updateProfileSchema } from "@genealogy/core";
+import {
+  lastTreeViewSchema,
+  peopleListPreferencesChangeSchema,
+  updateProfileSchema,
+} from "@genealogy/core";
 import { createServerFn } from "@tanstack/react-start";
 import { setCookie } from "@tanstack/react-start/server";
 
@@ -35,6 +39,14 @@ export const getLastTreeView = createServerFn({ method: "GET" }).handler(() =>
 export const saveLastTreeView = createServerFn({ method: "POST" })
   .validator(lastTreeViewSchema)
   .handler(({ data }) => trpcProxy.profile.saveLastTreeView.mutate(data));
+
+export const getPeopleListPreferences = createServerFn({ method: "GET" }).handler(() =>
+  trpcProxy.profile.peopleListPreferences.query(),
+);
+
+export const savePeopleListPreferences = createServerFn({ method: "POST" })
+  .validator(peopleListPreferencesChangeSchema)
+  .handler(({ data }) => trpcProxy.profile.savePeopleListPreferences.mutate(data));
 
 export const updateProfile = createServerFn({ method: "POST" })
   .validator(updateProfileSchema)

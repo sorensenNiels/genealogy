@@ -593,6 +593,45 @@
       "relationshipLinksHelp": "En post antyder relationer — forældrene ved en dåb, husstandens overhoved og børn i en folketælling. Foreslå viser dem på posten med ét klik hver; automatisk opretter dem, når posten gemmes (erstatter aldrig en eksisterende relation).",
       "relationshipLinksSuggest": "Foreslå",
       "relationshipLinksAutomatic": "Automatisk"
+    },
+    "peopleList": {
+      "title": "Personlisten",
+      "description": "Det, personlisten starter med. Hvert medlem kan stadig sortere, filtrere og skifte visning, som de vil; deres eget valg af tabel eller kort huskes på deres profil.",
+      "defaultSort": "Standardsortering",
+      "defaultSortDirection": "Retning",
+      "ascending": "Stigende",
+      "descending": "Faldende",
+      "defaultSortHelp": "Bruges, når et medlem ikke har valgt en sortering. I et træ, hvor mange deler et patronymisk efternavn, kan fødselsdato eller fornavne læses bedre.",
+      "defaultView": "Standardvisning",
+      "defaultViewHelp": "For medlemmer, der ikke selv har valgt tabel eller kort.",
+      "dateDetail": "Datoer i kolonnerne Født og Død",
+      "dateDetailHelp": "Fulde datoer eller kun årstal — kolonnen Levetid viser altid årstal.",
+      "defaultRowDetail": "Rækker",
+      "defaultRowDetailHelp": "Én linje pr. person eller en ekstra linje med familie — for medlemmer, der ikke selv har valgt.",
+      "rowCompact": "Én linje",
+      "rowDetailed": "To linjer",
+      "detailParents": "Forældre på den anden linje",
+      "detailParentsHelp": "\"Søn af Jens Pedersen & Ane Nielsdatter\" — det, der skelner personer med samme navn.",
+      "detailSpouses": "Ægtefæller på den anden linje",
+      "detailSpousesHelp": "\"⚭ 1874 Maren Hansdatter\", med vielsesåret når det kendes.",
+      "detailPlaces": "Steder under datoerne",
+      "detailPlacesHelp": "Fødested og dødssted under datoerne i kolonnerne Født og Død i stedet for en separat Sted-kolonne.",
+      "detailGroup": "Med to linjer",
+      "defaultGrouping": "Standardgruppering",
+      "defaultGroupingHelp": "Rækker under en overskrift pr. efternavn, fødselsårhundrede eller fødesogn — for alle, der ikke har valgt en gruppering i selve listen.",
+      "defaultColumns": "Standardkolonner",
+      "defaultColumnsHelp": "De kolonner, et medlem ser, indtil de vælger deres egne (menuen Kolonner på listen). Navnet vises altid; Sted erstattes af steder under datoerne i rækker med to linjer.",
+      "column": {
+        "gender": "Køn",
+        "status": "Status",
+        "age": "Alder",
+        "lifespan": "Levetid",
+        "born": "Født",
+        "died": "Død",
+        "place": "Sted",
+        "sources": "Kilder",
+        "publicId": "ID"
+      }
     }
   },
   "overview": {
@@ -632,12 +671,6 @@
     "viewModeLabel": "Visning",
     "viewModeTable": "Tabel",
     "viewModeCard": "Kort",
-    "sort": {
-      "surnameAsc": "Efternavn A-Å",
-      "givenAsc": "Fornavn A-Å",
-      "birthAsc": "Fødselsdato (ældste først)",
-      "birthDesc": "Fødselsdato (nyeste først)"
-    },
     "loadError": "Kunne ikke indlæse personer: {{message}}",
     "showingCount": "Viser {{shown}} af {{total}} personer",
     "noMatches": "Ingen matcher disse filtre.",
@@ -660,7 +693,54 @@
     "deleteDescription": "Dette fjerner personen og alt registreret om vedkommende permanent — alternative navne, livsbegivenheder, kilder og citationer. Dette kan ikke fortrydes.",
     "deleteAriaLabel": "Slet {{name}}",
     "filterMissing": "Mangler",
-    "missingAny": "Hvad som helst (intet filter)"
+    "missingAny": "Hvad som helst (intet filter)",
+    "sortBy": {
+      "surname": "Efternavn",
+      "given": "Fornavne",
+      "birth": "Fødselsdato",
+      "death": "Dødsdato",
+      "age": "Alder",
+      "place": "Sted"
+    },
+    "sortAscending": "Stigende — skift til faldende",
+    "sortDescending": "Faldende — skift til stigende",
+    "sortColumn": "Sortér efter {{column}}",
+    "filterAncestors": "Mine aner",
+    "filterAncestorsHelp": "Kun aner til den person, du har markeret som dig selv på din profil.",
+    "filterOpenNotes": "Åbne forskningsnoter",
+    "filterOpenNotesHelp": "Kun personer med en forskningsnote, der endnu ikke er løst.",
+    "alsoKnownAs": "også registreret som {{name}}",
+    "noAncestors": "Ingen aner fundet. Vælg hvem du er i træet på din profil (\"Det er dig\") for at bruge dette filter, eller tilføj dine forældre til træet.",
+    "childOf": {
+      "M": "Søn af {{parents}}",
+      "F": "Datter af {{parents}}",
+      "U": "Barn af {{parents}}"
+    },
+    "rowDetailLabel": "Rækkedetaljer",
+    "rowCompact": "Én linje pr. person",
+    "rowDetailed": "To linjer: familie og steder",
+    "similarSpellings": "Lignende stavemåder",
+    "similarSpellingsHelp": "Find også navne, der lyder ens: Kristensen finder Christensen, Sorensen finder Sørensen, Sørensen finder Sørensdatter.",
+    "groupLabel": "Gruppér efter",
+    "groupBy": {
+      "none": "Ingen gruppering",
+      "surname": "Gruppér efter efternavn",
+      "century": "Gruppér efter fødselsårhundrede",
+      "birthplace": "Gruppér efter fødesogn"
+    },
+    "groupNone": {
+      "surname": "Intet efternavn",
+      "century": "Udateret",
+      "birthplace": "Intet fødested"
+    },
+    "groupCentury": "{{year}}-tallet",
+    "groupCount_one": "· {{count}} person",
+    "groupCount_other": "· {{count}} personer",
+    "groupOnThisPage_one": "{{count}} på denne side",
+    "groupOnThisPage_other": "{{count}} på denne side",
+    "columns": "Kolonner",
+    "columnsTitle": "Vis kolonner",
+    "columnsReset": "Brug webstedets kolonner"
   },
   "person": {
     "firstNames": "Fornavne",

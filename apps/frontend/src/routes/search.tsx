@@ -8,11 +8,12 @@ import { Badge } from "@genealogy/ui/components/badge";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
 import { Card, CardContent } from "@genealogy/ui/components/card";
 import { Input } from "@genealogy/ui/components/input";
+import { useUrlDraft } from "@genealogy/ui/hooks/use-url-draft";
 import { cn } from "@genealogy/ui/lib/utils";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { SearchIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage } from "../i18n/create-i18n-instance";
@@ -65,28 +66,14 @@ function SearchPage() {
   const { t } = useTranslation();
   const navigate = useNavigate({ from: "/search" });
   const { q = "" } = Route.useSearch();
-  const [draft, setDraft] = useState(q);
   const [group, setGroup] = useState<Group>("all");
-
-  // A new `q` from outside (the header box, back/forward) replaces the
-  // draft — adjusted during render, React's pattern for state derived from
-  // a prop. Not when it's just the draft coming back trimmed from the URL,
-  // or a trailing space typed before the next word would vanish.
-  const [syncedQ, setSyncedQ] = useState(q);
-  if (q !== syncedQ) {
-    setSyncedQ(q);
-    if (q !== draft.trim()) setDraft(q);
-  }
-
   // Typing searches after a short pause, replacing the history entry so
   // each keystroke isn't one more step back.
-  useEffect(() => {
-    if (draft.trim() === q.trim()) return;
-    const timer = setTimeout(() => {
-      void navigate({ search: draft.trim() ? { q: draft.trim() } : {}, replace: true });
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [draft, q, navigate]);
+  const [draft, setDraft] = useUrlDraft(
+    q,
+    (next) => void navigate({ search: next ? { q: next } : {}, replace: true }),
+    (text) => text.trim(),
+  );
 
   const results = useQuery({ ...fullTextSearchQuery(q), placeholderData: keepPreviousData });
   const hits = q.trim().length >= 2 ? (results.data?.hits ?? []) : [];

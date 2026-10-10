@@ -1,5 +1,14 @@
-import type { LastTreeView, UpdateProfile } from "@genealogy/core";
-import { lastTreeViewSchema } from "@genealogy/core";
+import type {
+  LastTreeView,
+  PeopleListPreferences,
+  PeopleListPreferencesChange,
+  UpdateProfile,
+} from "@genealogy/core";
+import {
+  applyPeopleListPreferencesChange,
+  lastTreeViewSchema,
+  parsePeopleListPreferences,
+} from "@genealogy/core";
 import { userProfiles, type Database, type UserProfileRow } from "@genealogy/db";
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import { eq } from "drizzle-orm";
@@ -120,5 +129,34 @@ export class ProfileService {
       .insert(userProfiles)
       .values({ userId, ...values })
       .onConflictDoUpdate({ target: userProfiles.userId, set: values });
+  }
+
+  /** This member's own People list choices; an empty object means "the site's defaults for everything". */
+  async getPeopleListPreferences(userId: string): Promise<PeopleListPreferences> {
+    const [row] = await this.db
+      .select({ preferences: userProfiles.peopleListPreferences })
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, userId))
+      .limit(1);
+    return parsePeopleListPreferences(row?.preferences);
+  }
+
+  /** Applies `change` to what's saved — one choice changes at a time, the rest stay; null forgets one. */
+  async savePeopleListPreferences(
+    userId: string,
+    change: PeopleListPreferencesChange,
+  ): Promise<PeopleListPreferences> {
+    const preferences = applyPeopleListPreferencesChange(
+      await this.getPeopleListPreferences(userId),
+      change,
+    );
+    await this.db
+      .insert(userProfiles)
+      .values({ userId, peopleListPreferences: preferences })
+      .onConflictDoUpdate({
+        target: userProfiles.userId,
+        set: { peopleListPreferences: preferences },
+      });
+    return preferences;
   }
 }

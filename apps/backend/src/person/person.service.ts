@@ -2,18 +2,27 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 
-import { parseHistoricalDate, presumedDeceasedCutoff } from "@genealogy/core";
+import {
+  nameSearchWords,
+  namesMatchSearch,
+  personGroupKey,
+  parseHistoricalDate,
+  presumedDeceasedCutoff,
+} from "@genealogy/core";
 import type {
   CreateNameVariant,
   CreatePerson,
   CreatePersonEvent,
   CreateUnion,
   Gender,
+  PeopleListGrouping,
   HistoricalDate,
   Parentage,
   PedigreeNode,
+  PersonListSort,
   RelationshipToRoot,
   ResearchCheckKey,
+  SortDirection,
   UpdateNameVariant,
   UpdatePerson,
   UpdatePersonEvent,
@@ -23,6 +32,7 @@ import {
   addParentOf,
   addSpouseOf,
   allParentOfEdges,
+  familyOf,
   ancestorsOf,
   associations,
   birthEvents,
@@ -119,8 +129,6 @@ export interface UploadedPhoto {
   originalname: string;
 }
 
-export type ListPersonsSort = "surname_asc" | "given_asc" | "birth_asc" | "birth_desc";
-
 export interface ListPersonsInput {
   limit: number;
   offset: number;
@@ -145,8 +153,33 @@ export interface ListPersonsInput {
    * person yields an empty result rather than an error.
    */
   directAncestorsOnly: boolean;
-  sort: ListPersonsSort;
+  sortBy: PersonListSort;
+  sortDir: SortDirection;
+  /** Ordered by this first (its groups ascending, unknown last), then by `sortBy` within each. */
+  grouping: PeopleListGrouping;
+  /**
+   * Name search also matches spellings that sound alike (Kristensen finds
+   * Christensen) — `nameWordMatches` in core, run in memory over every name.
+   */
+  similarSpellings: boolean;
+  /** Also return each row's parents and spouses (`family`) — the People list's detailed rows. */
+  withFamily: boolean;
   viewerUserId: string;
+}
+
+/** A relative named on a detailed People list row. */
+export interface ListRelative {
+  id: string;
+  given: string;
+  surname: string;
+  gender: Gender;
+}
+
+export interface ListFamily {
+  /** At most two, birth parents first (father, then mother) — the ones the tree draws. */
+  parents: ListRelative[];
+  /** Earliest marriage first; `married` is that couple's earliest dated union. */
+  spouses: (ListRelative & { married: HistoricalDate | null })[];
 }
 
 export interface ListPersonsResult {
@@ -156,8 +189,24 @@ export interface ListPersonsResult {
     citationCount: number;
     /** The single highest-ranked confidence among this person's citations (by `configurableOptions.sortOrder`), null when uncited. */
     topConfidence: string | null;
+    /**
+     * With a name search the primary name doesn't fully match — found
+     * through an alternate name — that name, so the list can say why
+     * "Maren Hansen" turned up for "Sørensdatter".
+     */
+    alsoKnownAs: string | null;
+    /** Only with `withFamily`; otherwise null. */
+    family: ListFamily | null;
   })[];
   total: number;
+  /**
+   * With `grouping`: how many people (in the whole filtered list, not just
+   * this page) are in each group this page shows — keyed by
+   * `personGroupKey`, with null for "no last name"/"undated"/"no
+   * birthplace" — so a group header says its size even when the group runs
+   * on to the next page.
+   */
+  groupCounts: { key: string | null; count: number }[];
 }
 
 export interface RelativesResult {
@@ -195,6 +244,60 @@ function blank(column: SQLWrapper): SQL {
   return sql`coalesce(trim(${column}), '') = ''`;
 }
 
+/**
+ * Age in SQL, the way `calculateAge` in core works it out: to today for the
+ * living, to the death for the deceased (unknown without one), from each
+ * date's earliest bound, falling back to its latest.
+ */
+function ageExpression(): SQL {
+  const born = sql`(coalesce(${birthEvents.date}->>'earliest', ${birthEvents.date}->>'latest'))::date`;
+  const died = sql`(coalesce(${deathEvents.date}->>'earliest', ${deathEvents.date}->>'latest'))::date`;
+  return sql`case when ${persons.isLiving} then age(current_date, ${born}) else age(${died}, ${born}) end`;
+}
+
+/** A user's word as a literal inside an `ilike` pattern — `%` and `_` in it match only themselves. */
+function escapeLike(word: string): string {
+  return word.replaceAll(/[\\%_]/g, (character) => `\\${character}`);
+}
+
+function parentageRank(parentage: string): number {
+  return parentage === "birth" ? 0 : parentage === "unknown" ? 1 : 2;
+}
+
+/** Father before mother on a list row, then anyone of unknown gender. */
+const GENDER_ORDER: Record<Gender, number> = { M: 0, F: 1, U: 2 };
+
+/**
+ * Which of a child's parents a list row names: the best-ranked parentage
+ * group only — birth, then "unknown" (what most imported links carry), then
+ * anything else — at most two. The same preference as the tree's
+ * `chosenParents`, so a row and the chart agree on who someone's parents are.
+ */
+function listedParents(edges: { parentId: string; parentage: string }[]): string[] {
+  if (edges.length === 0) return [];
+  const best = Math.min(...edges.map((edge) => parentageRank(edge.parentage)));
+  return edges
+    .filter((edge) => parentageRank(edge.parentage) === best)
+    .map((edge) => edge.parentId)
+    .slice(0, 2);
+}
+
+/**
+ * A group's key in SQL — the twin of `personGroupKey` in core, which the
+ * page uses to put rows under headers; the two must agree exactly (lower
+ * case, trimmed, the birthplace's first part, the century as a number).
+ */
+function groupExpression(grouping: Exclude<PeopleListGrouping, "none">): SQL {
+  switch (grouping) {
+    case "surname":
+      return sql`nullif(lower(trim(${persons.surname})), '')`;
+    case "century":
+      return sql`floor(substr(coalesce(${birthEvents.date}->>'earliest', ${birthEvents.date}->>'latest'), 1, 4)::int / 100.0)::int`;
+    case "birthplace":
+      return sql`nullif(lower(trim(split_part(${birthEvents.place}, ',', 1))), '')`;
+  }
+}
+
 /** Orders dates by their earliest bound; undated last. */
 function dateSortKey(date: HistoricalDate): string {
   return date.earliest ?? date.latest ?? "9999";
@@ -218,18 +321,31 @@ export class PersonService {
       ? await this.ancestorIdsFor(input.viewerUserId)
       : null;
     if (ancestorIds !== null && ancestorIds.size === 0) {
-      return { items: [], total: 0 };
+      return { items: [], total: 0, groupCounts: [] };
     }
 
     // Parents live in the graph, which a SQL filter can't see: collect who
     // already has both, and filter on that set instead.
     const withBothParents =
       input.missing === "parents" ? await this.idsWithBothParents() : new Set<string>();
-    const where = this.listFilter(input, ancestorIds, withBothParents);
+    // Like parents: a sound-alike match needs keys Postgres can't compute,
+    // so it's worked out over every name in memory and filtered on as a set.
+    const words = nameSearchWords(input.search);
+    const similarIds =
+      input.similarSpellings && words.length > 0 ? await this.idsMatchingSimilar(words) : null;
+    if (similarIds !== null && similarIds.size === 0) {
+      return { items: [], total: 0, groupCounts: [] };
+    }
+    const where = this.listFilter(input, ancestorIds, withBothParents, similarIds);
 
     const items = await personsWithVitals(this.db)
       .where(where)
-      .orderBy(...this.sortColumns(input.sort))
+      .orderBy(
+        ...(input.grouping === "none"
+          ? []
+          : [sql`${groupExpression(input.grouping)} asc nulls last`]),
+        ...this.sortColumns(input.sortBy, input.sortDir),
+      )
       .limit(input.limit)
       .offset(input.offset);
 
@@ -247,16 +363,20 @@ export class PersonService {
       .where(where);
 
     const ids = items.map((item) => item.id);
-    const [relatedIds, unionRows, citationRollup] = await Promise.all([
-      personsWithRelations(this.pool, ids),
-      ids.length > 0
-        ? this.db
-            .select({ personAId: unions.personAId, personBId: unions.personBId })
-            .from(unions)
-            .where(or(inArray(unions.personAId, ids), inArray(unions.personBId, ids)))
-        : [],
-      this.citationRollup(ids),
-    ]);
+    const [relatedIds, unionRows, citationRollup, alsoKnownAs, families, groupCounts] =
+      await Promise.all([
+        personsWithRelations(this.pool, ids),
+        ids.length > 0
+          ? this.db
+              .select({ personAId: unions.personAId, personBId: unions.personBId })
+              .from(unions)
+              .where(or(inArray(unions.personAId, ids), inArray(unions.personBId, ids)))
+          : [],
+        this.citationRollup(ids),
+        this.alternateNameMatches(items, words, input.similarSpellings),
+        input.withFamily ? this.familiesOf(ids) : new Map<string, ListFamily>(),
+        this.groupCounts(items, input.grouping, where),
+      ]);
     const unionPersonIds = new Set(unionRows.flatMap((row) => [row.personAId, row.personBId]));
 
     return {
@@ -266,10 +386,162 @@ export class PersonService {
           hasRelations: relatedIds.has(item.id) || unionPersonIds.has(item.id),
           citationCount: rollup?.count ?? 0,
           topConfidence: rollup?.topConfidence ?? null,
+          alsoKnownAs: alsoKnownAs.get(item.id) ?? null,
+          family: input.withFamily ? (families.get(item.id) ?? { parents: [], spouses: [] }) : null,
         });
       }),
       total: totals?.value ?? 0,
+      groupCounts,
     };
+  }
+
+  /** The size of each group on this page, across the whole filtered list — see `groupCounts`. */
+  private async groupCounts(
+    items: PersonWithVitals[],
+    grouping: PeopleListGrouping,
+    where: SQL | undefined,
+  ): Promise<{ key: string | null; count: number }[]> {
+    if (grouping === "none" || items.length === 0) return [];
+    const keys = [...new Set(items.map((item) => personGroupKey(item, grouping)))];
+    const named = keys.filter((key): key is string => key !== null);
+    const expression = groupExpression(grouping);
+    const key = sql<string | null>`(${expression})::text`;
+    const inPage = or(
+      ...(named.length > 0 ? [inArray(key, named)] : []),
+      ...(keys.includes(null) ? [sql`${expression} is null`] : []),
+    );
+    return this.db
+      .select({ key, count: count() })
+      .from(persons)
+      .leftJoin(
+        birthEvents,
+        and(eq(birthEvents.personId, persons.id), eq(birthEvents.eventType, "birth")),
+      )
+      .leftJoin(
+        deathEvents,
+        and(eq(deathEvents.personId, persons.id), eq(deathEvents.eventType, "death")),
+      )
+      .where(and(where, inPage))
+      .groupBy(key);
+  }
+
+  /**
+   * For the rows a name search found that their primary name doesn't
+   * explain on its own: the alternate name that does (the one covering the
+   * most of the words the primary name misses). Matching here is the same
+   * `nameWordMatches` the search used, by sound too when it did.
+   */
+  private async alternateNameMatches(
+    people: { id: string; given: string; surname: string }[],
+    words: string[],
+    similar: boolean,
+  ): Promise<Map<string, string>> {
+    const result = new Map<string, string>();
+    if (words.length === 0) return result;
+    const nameContains = (name: { given: string; surname: string }, word: string) =>
+      namesMatchSearch([name], [word], similar);
+    const unexplained = people.filter(
+      (person) => !words.every((word) => nameContains(person, word)),
+    );
+    if (unexplained.length === 0) return result;
+    const names = await this.db
+      .select({
+        personId: personNames.personId,
+        given: personNames.given,
+        surname: personNames.surname,
+      })
+      .from(personNames)
+      .where(
+        inArray(
+          personNames.personId,
+          unexplained.map((person) => person.id),
+        ),
+      );
+    for (const person of unexplained) {
+      const missed = words.filter((word) => !nameContains(person, word));
+      let best: { text: string; covered: number } | null = null;
+      for (const name of names.filter((row) => row.personId === person.id)) {
+        const covered = missed.filter((word) => nameContains(name, word)).length;
+        if (covered > 0 && (!best || covered > best.covered)) {
+          best = { text: `${name.given} ${name.surname}`.trim(), covered };
+        }
+      }
+      if (best) result.set(person.id, best.text);
+    }
+    return result;
+  }
+
+  /**
+   * Parents and spouses of one page of people, with each couple's earliest
+   * marriage date: one graph lookup (`familyOf`), then the relatives' names
+   * and the unions in two queries.
+   */
+  private async familiesOf(ids: string[]): Promise<Map<string, ListFamily>> {
+    const result = new Map<string, ListFamily>();
+    if (ids.length === 0) return result;
+    const graph = await familyOf(this.pool, ids);
+    const relativeIds = [
+      ...new Set([
+        ...graph.parents.map((edge) => edge.parentId),
+        ...graph.spouses.map((edge) => edge.spouseId),
+      ]),
+    ];
+    const [relatives, unionRows] = await Promise.all([
+      relativeIds.length > 0
+        ? this.db
+            .select({
+              id: persons.id,
+              given: persons.given,
+              surname: persons.surname,
+              gender: persons.gender,
+            })
+            .from(persons)
+            .where(inArray(persons.id, relativeIds))
+        : [],
+      this.db
+        .select({ a: unions.personAId, b: unions.personBId, startDate: unions.startDate })
+        .from(unions)
+        .where(
+          and(
+            or(inArray(unions.personAId, ids), inArray(unions.personBId, ids)),
+            isNotNull(unions.startDate),
+          ),
+        ),
+    ]);
+    const relativeById = new Map(relatives.map((row) => [row.id, row]));
+    const marriedOn = new Map<string, HistoricalDate>();
+    for (const row of unionRows) {
+      if (!row.startDate) continue;
+      const key = [row.a, row.b].toSorted().join("|");
+      const seen = marriedOn.get(key);
+      if (!seen || dateSortKey(row.startDate) < dateSortKey(seen))
+        marriedOn.set(key, row.startDate);
+    }
+
+    for (const id of ids) {
+      const edges = graph.parents.filter((edge) => edge.childId === id);
+      const spouses = graph.spouses
+        .filter((edge) => edge.personId === id)
+        .flatMap((edge) => {
+          const spouse = relativeById.get(edge.spouseId);
+          if (!spouse) return [];
+          const married = marriedOn.get([id, spouse.id].toSorted().join("|")) ?? null;
+          return [{ ...spouse, married }];
+        })
+        .toSorted((x, y) =>
+          (x.married ? dateSortKey(x.married) : "9999").localeCompare(
+            y.married ? dateSortKey(y.married) : "9999",
+          ),
+        );
+      result.set(id, {
+        parents: listedParents(edges)
+          .map((parentId) => relativeById.get(parentId))
+          .filter((parent): parent is ListRelative => parent !== undefined)
+          .toSorted((x, y) => GENDER_ORDER[x.gender] - GENDER_ORDER[y.gender]),
+        spouses,
+      });
+    }
+    return result;
   }
 
   /** Ids of every ancestor of whoever `viewerUserId` has identified as themselves; empty if they haven't. */
@@ -316,19 +588,63 @@ export class PersonService {
     }
   }
 
+  /**
+   * Everyone with a name (primary or alternate) that matches every word,
+   * spelling variants included. Reads all names, which is milliseconds at
+   * family-tree scale; the sound keys are cached in core.
+   */
+  private async idsMatchingSimilar(words: string[]): Promise<Set<string>> {
+    const [primary, alternate] = await Promise.all([
+      this.db
+        .select({ personId: persons.id, given: persons.given, surname: persons.surname })
+        .from(persons),
+      this.db
+        .select({
+          personId: personNames.personId,
+          given: personNames.given,
+          surname: personNames.surname,
+        })
+        .from(personNames),
+    ]);
+    const namesOf = new Map<string, { given: string; surname: string }[]>();
+    for (const row of [...primary, ...alternate]) {
+      const names = namesOf.get(row.personId);
+      if (names) names.push(row);
+      else namesOf.set(row.personId, [row]);
+    }
+    const result = new Set<string>();
+    for (const [personId, names] of namesOf) {
+      if (namesMatchSearch(names, words, true)) result.add(personId);
+    }
+    return result;
+  }
+
   private listFilter(
     input: ListPersonsInput,
     ancestorIds: Set<string> | null,
     withBothParents: Set<string>,
+    similarIds: Set<string> | null,
   ): SQL | undefined {
     const clauses: SQL[] = [];
 
-    if (input.search && input.search.trim() !== "") {
-      // `ilike` is already case-insensitive (confirmed against this db's
-      // en_US.UTF-8 collation, including Danish letters like ø/å/æ) — no
-      // extra lowercasing needed here.
-      const pattern = `%${input.search.trim()}%`;
-      clauses.push(or(ilike(persons.surname, pattern), ilike(persons.given, pattern))!);
+    if (similarIds !== null) {
+      clauses.push(inArray(persons.id, [...similarIds]));
+    }
+
+    // Every word must match a first or last name — the primary one or any
+    // alternate (birth name, married name, a spelling found in a record) —
+    // so "Søren Jensen" finds him, and a woman can be found by the name she
+    // was born with. `ilike` is already case-insensitive (confirmed against
+    // this db's en_US.UTF-8 collation, including ø/å/æ).
+    for (const word of similarIds === null ? nameSearchWords(input.search) : []) {
+      const pattern = `%${escapeLike(word)}%`;
+      clauses.push(
+        or(
+          ilike(persons.given, pattern),
+          ilike(persons.surname, pattern),
+          sql`exists (select 1 from ${personNames} where ${personNames.personId} = ${persons.id} and (${personNames.given} ilike ${pattern} or ${personNames.surname} ilike ${pattern}))`,
+        )!,
+      );
     }
     if (input.gender) {
       clauses.push(eq(persons.gender, input.gender));
@@ -359,17 +675,32 @@ export class PersonService {
     return clauses.length > 0 ? and(...clauses) : undefined;
   }
 
-  private sortColumns(sort: ListPersonsSort) {
-    switch (sort) {
-      case "given_asc":
-        return [asc(persons.given), asc(persons.surname)];
-      case "birth_asc":
-        return [sql`(${birthEvents.date}->>'earliest') asc nulls last`];
-      case "birth_desc":
-        return [sql`(${birthEvents.date}->>'earliest') desc nulls last`];
-      case "surname_asc":
-      default:
-        return [asc(persons.surname), asc(persons.given)];
+  /**
+   * The list's order: the chosen column, undated or unknown last in either
+   * direction, then name, then id — the id so that rows equal on
+   * everything else keep one order across pages instead of swapping
+   * between them.
+   */
+  private sortColumns(sortBy: PersonListSort, dir: SortDirection) {
+    const direction = dir === "desc" ? sql`desc` : sql`asc`;
+    const by = (expression: SQL) => sql`${expression} ${direction} nulls last`;
+    const byName = [asc(persons.surname), asc(persons.given), asc(persons.id)];
+    switch (sortBy) {
+      case "given":
+        return [by(sql`${persons.given}`), asc(persons.surname), asc(persons.id)];
+      case "birth":
+        return [by(sql`${birthEvents.date}->>'earliest'`), ...byName];
+      case "death":
+        return [by(sql`${deathEvents.date}->>'earliest'`), ...byName];
+      case "age":
+        return [by(ageExpression()), ...byName];
+      case "place":
+        return [
+          by(sql`nullif(trim(coalesce(${birthEvents.place}, ${deathEvents.place})), '')`),
+          ...byName,
+        ];
+      case "surname":
+        return [by(sql`${persons.surname}`), asc(persons.given), asc(persons.id)];
     }
   }
 

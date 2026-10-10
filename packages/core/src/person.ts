@@ -182,7 +182,8 @@ export function formatLifespan(person: Pick<Person, "birth" | "death">): string 
   return `${born ?? "?"}–${died ?? "?"}`;
 }
 
-function yearOf(date: HistoricalDate | null): string | null {
+/** A date's year, from its earliest bound (else its latest) — null when it didn't parse. */
+export function yearOf(date: HistoricalDate | null): string | null {
   const iso = date?.earliest ?? date?.latest ?? null;
   return iso ? iso.slice(0, 4) : null;
 }

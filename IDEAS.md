@@ -73,10 +73,11 @@ Picked on 2026-09-28 as the next two to scope, one from each focus area
   go instead of five dialogs.
 - 💡 🆕 **Name-aware matching.** Treat patronymic and spelling variants as
   possible matches (Søren/Sören, Christensen/Kristensen, Sørensen/Sörensen,
-  æ/ø/å vs. ae/oe/aa) in search. Duplicate detection already does this
-  (`foldName`/`soundKey`/`surnameStem` in `packages/core/src/duplicate-match.ts`);
-  the People list's name search is still a plain `ILIKE`, and full-text
-  search uses Postgres' `simple` configuration, which folds neither. _Builds on:_ those keys.
+  æ/ø/å vs. ae/oe/aa) in search. Duplicate detection and the People list's
+  "Similar spellings" already do this (`soundKey`/`surnameStem` in
+  `packages/core/src/duplicate-match.ts`, `nameWordMatches` in
+  `person-list.ts`); what's left is full-text search (`/search`), which
+  uses Postgres' `simple` configuration and folds neither. _Builds on:_ those keys.
 - 💡 🆕 **FAN-club view.** Show who keeps appearing around a person (godparents,
   witnesses, neighbours in a census), which is the classic way through a brick
   wall. _Builds on:_ the associations table and its "name only" associates.
@@ -215,6 +216,66 @@ _Seeing patterns_
 _Suggested order_ (from the October 2026 review): the "getting around a big
 tree" and "doing things from the tree" ideas have shipped — see FEATURES.md.
 Research badges next.
+
+## People list
+
+Ideas from the October 2026 review of the People list
+(`apps/frontend/src/routes/people/index.tsx`, `-people-card-view.tsx`; the
+query is `PersonService.list` with `listFilter`/`sortColumns`). Already
+built: word-by-word name search over primary and alternate names (with
+"Similar spellings"), grouping, a column chooser, one- or two-line rows,
+header
+sorting, the place/born/gender/"Missing"/"My ancestors"/"Open research
+notes" filters, all of it in the URL, and table and card views — see
+FEATURES.md.
+
+_Research-oriented_
+
+- 💡 🆕 **Completeness column.** The research checklist's percentage as a
+  small bar per row, sortable, so the least-researched people come first.
+  The "Missing" filter answers "who lacks X"; this answers "who needs the
+  most work". Parents are in the graph, so sorting on it needs the same
+  graph-side set the "Missing: both parents" filter uses.
+- 💡 🆕 **Relationship column.** "Your 2nd great-grandfather", relative to
+  the signed-in member's own person ("this is me"), with a "within N
+  generations of me" filter. _Builds on:_ `kinshipsFrom`/`formatKinship`
+  (the tree's card labels), run server-side over the graph.
+- 💡 🆕 **More filters:** has a photo or not; born in an exact parish
+  (rather than a substring of the place); appears in a given census; died
+  young (necronyms — a later sibling given the same name); recently added or
+  edited (after an import); has a possible duplicate (links to Tools →
+  Possible duplicates); a surname with all its spelling variants.
+- 💡 🆕 **Surname index.** A panel or tab listing surnames with counts and
+  date ranges ("Sørensen · 47 · 1712–1998"); clicking one filters the list.
+  The classic entry point on genealogy sites, and suits patronymic-heavy
+  trees. Could group spelling variants with `surnameStem`.
+
+_Working with many people at once_
+
+- 💡 🆕 **Bulk selection and actions.** Checkboxes, then: add a citation to
+  all selected (everyone found in one census household), mark deceased, add
+  a research note, export the selection as GEDCOM, open them in the tree.
+  Needs thought on roles (editor vs. admin per action) and undo.
+- 💡 🆕 **CSV export** of the current filtered view — for a spreadsheet, or
+  to hand someone a research to-do list.
+- 💡 🆕 **Saved views.** Named filter combinations per member ("Stevns
+  branch, missing sources"), stored on their profile. The list's state is
+  already all in the URL, so a view is just a saved search string.
+
+_Presentation_
+
+- 💡 🆕 **More People list settings.** Candidates for Settings → People list
+  (a site default, each overridable per member where it's taste): page size;
+  what the card view shows under the name (lifespan, place, family line); a third item on the
+  detailed line (occupation, or "Missing: …" from the research checklist).
+- 💡 🆕 **Hover preview.** Photo, parents, spouse and the research checklist
+  in a popover without opening the page. The same idea as the tree's "Hover
+  preview" (Tree & visualization) — worth one shared component.
+- 💡 🆕 **Map view.** The filtered people plotted by birthplace. _Builds
+  on:_ place coordinates (PostGIS, imported from GEDCOM, no map UI yet) —
+  see Places & maps.
+- 💡 🆕 **Timeline view.** Lifespans as horizontal bars on a shared time
+  axis, filtered like the list — who overlapped with whom.
 
 ## Person page
 

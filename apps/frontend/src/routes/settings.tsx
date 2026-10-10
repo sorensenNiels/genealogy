@@ -7,6 +7,10 @@ import {
   configurableTopicSchema,
   type ConfigurableTopic,
   isAdmin,
+  peopleListColumnSchema,
+  peopleListGroupingSchema,
+  type PeopleListSettings,
+  personListSortSchema,
   treeChartKindSchema,
   treeOrientationSchema,
   type PersonSettings,
@@ -39,6 +43,7 @@ import { useTranslation } from "react-i18next";
 
 import { optionsFor } from "../lib/person-display";
 import { personSettingsQueryKey, usePersonSettingsQuery } from "../lib/person-settings";
+import { peopleListSettingsQuery } from "../lib/queries";
 import { recordSettingsQueryKey, useRecordSettingsQuery } from "../lib/record-settings";
 import { treeSettingsQueryKey, useTreeSettingsQuery } from "../lib/tree-settings";
 import {
@@ -47,6 +52,7 @@ import {
   moveOption,
   removeOption,
   updateOption,
+  updatePeopleListSettings,
   updatePersonSettings,
   updateRecordSettings,
   updateTreeSettings,
@@ -72,6 +78,7 @@ export const Route = createFileRoute("/settings")({
     if (
       search.section === "tree" ||
       search.section === "person" ||
+      search.section === "peopleList" ||
       search.section === "records" ||
       search.section === "appearance"
     ) {
@@ -88,7 +95,7 @@ type ConfigurableOptionRow = RouterOutputs["settings"]["listOptions"][number];
 
 const LIST_OPTIONS_KEY = ["settings", "listOptions"];
 
-type SettingsSection = "tree" | "person" | "records" | "appearance";
+type SettingsSection = "tree" | "person" | "peopleList" | "records" | "appearance";
 
 const NAV_LINK_CLASS =
   "rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
@@ -140,6 +147,13 @@ function SettingsRoute() {
               </Link>
               <Link
                 to="/settings"
+                search={{ section: "peopleList" }}
+                className={cn(NAV_LINK_CLASS, section === "peopleList" && NAV_LINK_ACTIVE_CLASS)}
+              >
+                {t("settings.peopleList.title")}
+              </Link>
+              <Link
+                to="/settings"
                 search={{ section: "records" }}
                 className={cn(NAV_LINK_CLASS, section === "records" && NAV_LINK_ACTIVE_CLASS)}
               >
@@ -176,6 +190,8 @@ function SettingsRoute() {
           <TreeSettingsPanel />
         ) : section === "person" ? (
           <PersonSettingsPanel />
+        ) : section === "peopleList" ? (
+          <PeopleListSettingsPanel />
         ) : section === "records" ? (
           <RecordSettingsPanel options={options.data ?? []} />
         ) : section === "appearance" ? (
@@ -268,6 +284,213 @@ function PersonSettingsForm({ initial }: { initial: PersonSettings }) {
               </LabeledField>
               <p className="text-sm text-muted-foreground">
                 {t("settings.person.presumeDeceasedAfterYearsHelp")}
+              </p>
+            </div>
+          )}
+        </form.Field>
+      </SettingsGroup>
+
+      {updateMutation.isError && (
+        <p className="text-sm text-destructive">{updateMutation.error.message}</p>
+      )}
+      <SaveButton isDirty={isDirty} isPending={isSubmitting}>
+        {t("common.save")}
+      </SaveButton>
+    </form>
+  );
+}
+
+function PeopleListSettingsPanel() {
+  const { t } = useTranslation();
+  const settings = useQuery(peopleListSettingsQuery());
+  return (
+    <SectionCard
+      title={t("settings.peopleList.title")}
+      description={t("settings.peopleList.description")}
+    >
+      {settings.isPending ? (
+        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+      ) : settings.isError ? (
+        <p className="text-sm text-destructive">{settings.error.message}</p>
+      ) : (
+        <PeopleListSettingsForm initial={settings.data} />
+      )}
+    </SectionCard>
+  );
+}
+
+/**
+ * The People list's defaults, saved together. Defaults only: a member's
+ * sort and filters while they work are in the list's URL, and their own
+ * table/card choice (saved on their profile) wins over `defaultView`.
+ */
+function PeopleListSettingsForm({ initial }: { initial: PeopleListSettings }) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const updateMutation = useMutation({ mutationFn: updatePeopleListSettings });
+
+  const form = useForm({
+    defaultValues: initial,
+    onSubmit: async ({ value }) => {
+      const saved = await updateMutation.mutateAsync({ data: value });
+      queryClient.setQueryData(peopleListSettingsQuery().queryKey, saved);
+      // The list's queries were made for the old defaults.
+      await queryClient.invalidateQueries({ queryKey: ["person", "list"] });
+      form.reset(saved);
+    },
+  });
+  const { isDirty, isSubmitting } = useFormDirtyPending(form);
+
+  return (
+    <form
+      className="space-y-6"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <SettingsGroup>
+        <div className="space-y-2">
+          <p className="text-sm font-medium">{t("settings.peopleList.defaultSort")}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <form.Field name="defaultSort">
+              {(field) => (
+                <Select
+                  aria-label={t("settings.peopleList.defaultSort")}
+                  value={field.state.value}
+                  onValueChange={field.handleChange}
+                  options={personListSortSchema.options.map((value) => ({
+                    value,
+                    label: t(`people.sortBy.${value}`),
+                  }))}
+                />
+              )}
+            </form.Field>
+            <form.Field name="defaultSortDirection">
+              {(field) => (
+                <ButtonRadioGroup
+                  aria-label={t("settings.peopleList.defaultSortDirection")}
+                  value={field.state.value}
+                  onValueChange={field.handleChange}
+                  options={[
+                    { value: "asc" as const, label: t("settings.peopleList.ascending") },
+                    { value: "desc" as const, label: t("settings.peopleList.descending") },
+                  ]}
+                />
+              )}
+            </form.Field>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {t("settings.peopleList.defaultSortHelp")}
+          </p>
+        </div>
+        <form.Field name="defaultView">
+          {(field) => (
+            <ChoiceSetting
+              label={t("settings.peopleList.defaultView")}
+              help={t("settings.peopleList.defaultViewHelp")}
+              value={field.state.value}
+              onChange={field.handleChange}
+              options={[
+                { value: "table", label: t("people.viewModeTable") },
+                { value: "card", label: t("people.viewModeCard") },
+              ]}
+            />
+          )}
+        </form.Field>
+        <form.Field name="dateDetail">
+          {(field) => (
+            <ChoiceSetting
+              label={t("settings.peopleList.dateDetail")}
+              help={t("settings.peopleList.dateDetailHelp")}
+              value={field.state.value}
+              onChange={field.handleChange}
+              options={[
+                { value: "full", label: t("settings.tree.dateDetailFull") },
+                { value: "years", label: t("settings.tree.dateDetailYears") },
+              ]}
+            />
+          )}
+        </form.Field>
+      </SettingsGroup>
+
+      <SettingsGroup>
+        <form.Field name="defaultRowDetail">
+          {(field) => (
+            <ChoiceSetting
+              label={t("settings.peopleList.defaultRowDetail")}
+              help={t("settings.peopleList.defaultRowDetailHelp")}
+              value={field.state.value}
+              onChange={field.handleChange}
+              options={[
+                { value: "compact", label: t("settings.peopleList.rowCompact") },
+                { value: "detailed", label: t("settings.peopleList.rowDetailed") },
+              ]}
+            />
+          )}
+        </form.Field>
+        {/* What a two-line row holds — the site's call; each member only
+            chooses one line or two. */}
+        <p className="text-sm font-medium">{t("settings.peopleList.detailGroup")}</p>
+        {(["detailParents", "detailSpouses", "detailPlaces"] as const).map((name) => (
+          <form.Field key={name} name={name}>
+            {(field) => (
+              <Switch
+                checked={field.state.value}
+                onCheckedChange={field.handleChange}
+                description={t(`settings.peopleList.${name}Help`)}
+              >
+                {t(`settings.peopleList.${name}`)}
+              </Switch>
+            )}
+          </form.Field>
+        ))}
+      </SettingsGroup>
+
+      <SettingsGroup>
+        <form.Field name="defaultGrouping">
+          {(field) => (
+            <div className="space-y-2">
+              <LabeledField label={t("settings.peopleList.defaultGrouping")}>
+                <Select
+                  value={field.state.value}
+                  onValueChange={field.handleChange}
+                  options={peopleListGroupingSchema.options.map((value) => ({
+                    value,
+                    label: t(`people.groupBy.${value}`),
+                  }))}
+                />
+              </LabeledField>
+              <p className="text-sm text-muted-foreground">
+                {t("settings.peopleList.defaultGroupingHelp")}
+              </p>
+            </div>
+          )}
+        </form.Field>
+        <form.Field name="defaultColumns">
+          {(field) => (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">{t("settings.peopleList.defaultColumns")}</p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {peopleListColumnSchema.options.map((column) => (
+                  <Checkbox
+                    key={column}
+                    checked={field.state.value.includes(column)}
+                    onCheckedChange={(checked) =>
+                      field.handleChange(
+                        // Kept in the table's own order, whatever order they're ticked in.
+                        peopleListColumnSchema.options.filter((option) =>
+                          option === column ? checked : field.state.value.includes(option),
+                        ),
+                      )
+                    }
+                  >
+                    {t(`settings.peopleList.column.${column}`)}
+                  </Checkbox>
+                ))}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {t("settings.peopleList.defaultColumnsHelp")}
               </p>
             </div>
           )}

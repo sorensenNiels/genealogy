@@ -593,6 +593,45 @@
       "relationshipLinksHelp": "A record implies links — a baptism's parents, a census household's head and children. Suggest shows them on the record for one click each; automatic makes them when the record is saved (never replacing an existing link).",
       "relationshipLinksSuggest": "Suggest",
       "relationshipLinksAutomatic": "Automatic"
+    },
+    "peopleList": {
+      "title": "People list",
+      "description": "What the People list starts with. Each member can still sort, filter and switch views as they like; their own choice of table or cards is remembered on their profile.",
+      "defaultSort": "Default sort",
+      "defaultSortDirection": "Direction",
+      "ascending": "Ascending",
+      "descending": "Descending",
+      "defaultSortHelp": "Used when a member hasn't chosen a sort. In a tree where many share a patronymic surname, birth date or first names can read better.",
+      "defaultView": "Default view",
+      "defaultViewHelp": "For members who haven't picked table or cards themselves.",
+      "dateDetail": "Dates in the Born and Died columns",
+      "dateDetailHelp": "Full dates, or just the years — the Lifespan column always shows years.",
+      "defaultRowDetail": "Rows",
+      "defaultRowDetailHelp": "One line per person, or a second line with family context — for members who haven't chosen themselves.",
+      "rowCompact": "One line",
+      "rowDetailed": "Two lines",
+      "detailParents": "Parents on the second line",
+      "detailParentsHelp": "\"Son of Jens Pedersen & Ane Nielsdatter\" — what tells people with the same name apart.",
+      "detailSpouses": "Spouses on the second line",
+      "detailSpousesHelp": "\"⚭ 1874 Maren Hansdatter\", with the marriage year when it's known.",
+      "detailPlaces": "Places under the dates",
+      "detailPlacesHelp": "The birth and death places under the Born and Died dates, instead of a separate Place column.",
+      "detailGroup": "With two lines",
+      "defaultGrouping": "Default grouping",
+      "defaultGroupingHelp": "Rows under a header per last name, birth century or birth parish — for anyone who hasn't chosen a grouping in the list itself.",
+      "defaultColumns": "Default columns",
+      "defaultColumnsHelp": "The table columns a member sees until they choose their own (the Columns menu on the list). The name always shows; Place is replaced by places under the dates in two-line rows.",
+      "column": {
+        "gender": "Gender",
+        "status": "Status",
+        "age": "Age",
+        "lifespan": "Lifespan",
+        "born": "Born",
+        "died": "Died",
+        "place": "Place",
+        "sources": "Sources",
+        "publicId": "ID"
+      }
     }
   },
   "overview": {
@@ -632,12 +671,6 @@
     "viewModeLabel": "View",
     "viewModeTable": "Table",
     "viewModeCard": "Cards",
-    "sort": {
-      "surnameAsc": "Surname A-Z",
-      "givenAsc": "Given name A-Z",
-      "birthAsc": "Birth date (oldest first)",
-      "birthDesc": "Birth date (newest first)"
-    },
     "loadError": "Could not load people: {{message}}",
     "showingCount": "Showing {{shown}} of {{total}} people",
     "noMatches": "No one matches these filters.",
@@ -660,7 +693,54 @@
     "deleteDescription": "This permanently removes them and everything recorded about them — alternate names, life events, sources and citations. This cannot be undone.",
     "deleteAriaLabel": "Delete {{name}}",
     "filterMissing": "Missing",
-    "missingAny": "Anything (no filter)"
+    "missingAny": "Anything (no filter)",
+    "sortBy": {
+      "surname": "Last name",
+      "given": "First names",
+      "birth": "Birth date",
+      "death": "Death date",
+      "age": "Age",
+      "place": "Place"
+    },
+    "sortAscending": "Ascending — switch to descending",
+    "sortDescending": "Descending — switch to ascending",
+    "sortColumn": "Sort by {{column}}",
+    "filterAncestors": "My ancestors",
+    "filterAncestorsHelp": "Only the ancestors of the person you've marked as yourself on your profile.",
+    "filterOpenNotes": "Open research notes",
+    "filterOpenNotesHelp": "Only people with a research note that isn't resolved yet.",
+    "alsoKnownAs": "also recorded as {{name}}",
+    "noAncestors": "No ancestors found. Choose who you are in the tree on your profile (\"This is you\") to use this filter, or add your parents to the tree.",
+    "childOf": {
+      "M": "Son of {{parents}}",
+      "F": "Daughter of {{parents}}",
+      "U": "Child of {{parents}}"
+    },
+    "rowDetailLabel": "Row detail",
+    "rowCompact": "One line per person",
+    "rowDetailed": "Two lines: family and places",
+    "similarSpellings": "Similar spellings",
+    "similarSpellingsHelp": "Also find names that sound the same: Kristensen finds Christensen, Sorensen finds Sørensen, Sørensen finds Sørensdatter.",
+    "groupLabel": "Group by",
+    "groupBy": {
+      "none": "No grouping",
+      "surname": "Group by last name",
+      "century": "Group by birth century",
+      "birthplace": "Group by birth parish"
+    },
+    "groupNone": {
+      "surname": "No last name",
+      "century": "Undated",
+      "birthplace": "No birthplace"
+    },
+    "groupCentury": "{{year}}s",
+    "groupCount_one": "· {{count}} person",
+    "groupCount_other": "· {{count}} people",
+    "groupOnThisPage_one": "{{count}} on this page",
+    "groupOnThisPage_other": "{{count}} on this page",
+    "columns": "Columns",
+    "columnsTitle": "Show columns",
+    "columnsReset": "Use the site's columns"
   },
   "person": {
     "firstNames": "First names",

@@ -1,4 +1,8 @@
-import { lastTreeViewSchema, updateProfileSchema } from "@genealogy/core";
+import {
+  lastTreeViewSchema,
+  peopleListPreferencesChangeSchema,
+  updateProfileSchema,
+} from "@genealogy/core";
 import { Injectable } from "@nestjs/common";
 
 import { protectedProcedure, router } from "../trpc/trpc.base.js";
@@ -37,6 +41,18 @@ export class ProfileRouter {
           await this.profile.saveLastTreeView(ctx.session.user.id, input);
           return { ok: true } as const;
         }),
+
+      // The People list's table/card and compact/detailed choices — each
+      // member's own, like the above.
+      peopleListPreferences: protectedProcedure.query(({ ctx }) =>
+        this.profile.getPeopleListPreferences(ctx.session.user.id),
+      ),
+
+      savePeopleListPreferences: protectedProcedure
+        .input(peopleListPreferencesChangeSchema)
+        .mutation(({ input, ctx }) =>
+          this.profile.savePeopleListPreferences(ctx.session.user.id, input),
+        ),
     });
   }
 }

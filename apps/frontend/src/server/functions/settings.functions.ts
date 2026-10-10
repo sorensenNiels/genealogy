@@ -2,6 +2,7 @@ import {
   addConfigurableOptionSchema,
   configurableOptionIdSchema,
   moveConfigurableOptionSchema,
+  peopleListSettingsSchema,
   personSettingsSchema,
   recordSettingsSchema,
   treeSettingsSchema,
@@ -55,3 +56,11 @@ export const moveOption = createServerFn({ method: "POST" })
 export const removeOption = createServerFn({ method: "POST" })
   .validator(z.object({ id: configurableOptionIdSchema }))
   .handler(({ data }) => trpcProxy.settings.removeOption.mutate(data));
+
+export const getPeopleListSettings = createServerFn({ method: "GET" }).handler(() =>
+  trpcProxy.settings.peopleListSettings.query(),
+);
+
+export const updatePeopleListSettings = createServerFn({ method: "POST" })
+  .validator(peopleListSettingsSchema)
+  .handler(({ data }) => trpcProxy.settings.updatePeopleListSettings.mutate(data));

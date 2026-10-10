@@ -1,4 +1,5 @@
 import {
+  canEdit,
   createNameVariantSchema,
   createPersonEventSchema,
   createPersonSchema,
@@ -8,7 +9,10 @@ import {
   parentageSchema,
   personEventIdSchema,
   personIdSchema,
+  peopleListGroupingSchema,
+  personListSortSchema,
   researchCheckKeySchema,
+  sortDirectionSchema,
   unionIdSchema,
   updateNameVariantSchema,
   updatePersonEventSchema,
@@ -35,7 +39,11 @@ const listInput = z.object({
   missing: researchCheckKeySchema.nullable().default(null),
   hasOpenResearchNote: z.boolean().default(false),
   directAncestorsOnly: z.boolean().default(false),
-  sort: z.enum(["surname_asc", "given_asc", "birth_asc", "birth_desc"]).default("surname_asc"),
+  sortBy: personListSortSchema.default("surname"),
+  sortDir: sortDirectionSchema.default("asc"),
+  grouping: peopleListGroupingSchema.default("none"),
+  similarSpellings: z.boolean().default(false),
+  withFamily: z.boolean().default(false),
 });
 
 const pedigreeInput = z.object({
@@ -78,14 +86,40 @@ export class PersonRouter {
         return { ok: true } as const;
       }),
       list: protectedProcedure.input(listInput).query(async ({ input, ctx }) => {
-        const result = await this.persons.list({ ...input, viewerUserId: ctx.session.user.id });
-        const items = await this.redactor.people(viewerOf(ctx), result.items);
-        // A redacted person's citations are hidden, so their summary is too.
+        const result = await this.persons.list({
+          ...input,
+          // Research notes are hidden from a Viewer on living people, so a
+          // filter on them would tell a Viewer what they can't see.
+          hasOpenResearchNote: canEdit(ctx.role) && input.hasOpenResearchNote,
+          viewerUserId: ctx.session.user.id,
+        });
+        const viewer = viewerOf(ctx);
+        const items = await this.redactor.people(viewer, result.items);
+        // A marriage date is as private as a birth date: none for a couple
+        // where either partner is shown to this viewer by name only. The
+        // names themselves stay — a redacted person keeps their place in
+        // the tree.
+        const hidden = await this.redactor.hiddenIds(viewer, [
+          ...items.map((item) => item.id),
+          ...items.flatMap((item) => item.family?.spouses.map((spouse) => spouse.id) ?? []),
+        ]);
+        // A redacted person's citations and alternate names are hidden, so
+        // their summary and the name a search found them by are too.
         return {
           ...result,
-          items: items.map((item) =>
-            item.redacted ? { ...item, citationCount: 0, topConfidence: null } : item,
-          ),
+          items: items.map((item) => {
+            const family = item.family && {
+              ...item.family,
+              spouses: item.family.spouses.map((spouse) =>
+                hidden.has(item.id) || hidden.has(spouse.id)
+                  ? { ...spouse, married: null }
+                  : spouse,
+              ),
+            };
+            return item.redacted
+              ? { ...item, family, citationCount: 0, topConfidence: null, alsoKnownAs: null }
+              : { ...item, family };
+          }),
         };
       }),
 

@@ -18,7 +18,14 @@ type PersonListItem = Awaited<ReturnType<typeof listPersons>>["items"][number];
  * Aimed at browsing rather than research — the table stays the dense,
  * filterable view for that.
  */
-export function PeopleCardView({ people }: { people: PersonListItem[] }) {
+export function PeopleCardView({
+  people,
+  familyLine,
+}: {
+  people: PersonListItem[];
+  /** The detailed rows' family line ("Son of …"), under the place; null in compact rows. */
+  familyLine: ((person: PersonListItem) => string | null) | null;
+}) {
   const { t } = useTranslation();
 
   if (people.length === 0) {
@@ -28,13 +35,13 @@ export function PeopleCardView({ people }: { people: PersonListItem[] }) {
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
       {people.map((person) => (
-        <PersonCard key={person.id} person={person} />
+        <PersonCard key={person.id} person={person} family={familyLine?.(person) ?? null} />
       ))}
     </div>
   );
 }
 
-function PersonCard({ person }: { person: PersonListItem }) {
+function PersonCard({ person, family }: { person: PersonListItem; family: string | null }) {
   const { t } = useTranslation();
   const photoUrl = person.photoPath ? `${publicBackendUrl}/uploads/${person.photoPath}` : null;
   const lifespan = formatLifespan(person);
@@ -66,6 +73,11 @@ function PersonCard({ person }: { person: PersonListItem }) {
           <p className="text-base font-semibold">{formatPersonName(person)}</p>
           {lifespan && <p className="text-sm text-muted-foreground">{lifespan}</p>}
           {place && <p className="text-sm text-muted-foreground">{place}</p>}
+          {family && (
+            <p className="line-clamp-2 text-xs text-muted-foreground" title={family}>
+              {family}
+            </p>
+          )}
           <Badge variant={person.isLiving ? "secondary" : "outline"} className="mt-1">
             {person.isLiving ? t("people.living") : t("people.deceased")}
           </Badge>

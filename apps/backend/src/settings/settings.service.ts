@@ -1,5 +1,6 @@
 import type {
   AddConfigurableOption,
+  PeopleListSettings,
   PersonSettings,
   RecordSettings,
   TreeSettings,
@@ -9,6 +10,7 @@ import {
   appSettingsKeys,
   themeSettingsSchema,
   type ThemeSettings,
+  parsePeopleListSettings,
   parsePersonSettings,
   parseRecordSettings,
   parseTreeSettings,
@@ -83,6 +85,15 @@ export class SettingsService {
   }
 
   /** The family site's theme. A saved value that no longer parses falls back to Nova. */
+  async getPeopleListSettings(): Promise<PeopleListSettings> {
+    return parsePeopleListSettings(await this.readSection(appSettingsKeys.peopleList));
+  }
+
+  async updatePeopleListSettings(settings: PeopleListSettings): Promise<PeopleListSettings> {
+    await this.writeSection(appSettingsKeys.peopleList, settings);
+    return this.getPeopleListSettings();
+  }
+
   async getThemeSettings(): Promise<ThemeSettings> {
     const parsed = themeSettingsSchema.safeParse(
       (await this.readSection(appSettingsKeys.theme)) ?? {},

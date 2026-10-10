@@ -2,6 +2,7 @@ import {
   addConfigurableOptionSchema,
   configurableOptionIdSchema,
   moveConfigurableOptionSchema,
+  peopleListSettingsSchema,
   personSettingsSchema,
   recordSettingsSchema,
   treeSettingsSchema,
@@ -46,6 +47,13 @@ export class SettingsRouter {
       updateRecordSettings: adminProcedure
         .input(recordSettingsSchema)
         .mutation(({ input }) => this.settings.updateRecordSettings(input)),
+
+      // Read by every member's People list; only an admin changes them.
+      peopleListSettings: protectedProcedure.query(() => this.settings.getPeopleListSettings()),
+
+      updatePeopleListSettings: adminProcedure
+        .input(peopleListSettingsSchema)
+        .mutation(({ input }) => this.settings.updatePeopleListSettings(input)),
 
       addOption: adminProcedure
         .input(addConfigurableOptionSchema)

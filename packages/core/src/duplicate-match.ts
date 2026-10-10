@@ -111,7 +111,7 @@ export function foldName(value: string): string {
  * spelling variants land on the same key: Christensen/Kristensen (ch, c →
  * k), Petersen/Pedersen (d between vowels → t), Nielsen/Nilsen (ie → i),
  * Mathias/Matthias (th → t, doubled letters collapse), Aage/Åge (aa → a),
- * Søren/Sören/Soeren (all oe). Deliberately conservative: a key that's too
+ * Søren/Sören/Soeren/Soren (ø, ö and oe all → o). Deliberately conservative: a key that's too
  * loose turns every Jens into every Hans.
  */
 export function soundKey(word: string): string {
@@ -132,7 +132,11 @@ function computeSoundKey(word: string): string {
     .replaceAll("z", "s")
     .replaceAll("w", "v")
     .replaceAll("y", "i")
-    .replaceAll("ie", "i");
+    .replaceAll("ie", "i")
+    // ø and ö are folded to "oe" (ü to "ue"), but they're as often typed as
+    // a plain o (u) on a keyboard without them — Sorensen for Sørensen.
+    .replaceAll("oe", "o")
+    .replaceAll("ue", "u");
   // Collapse doubles before and after the vowel rule: "aa" (å) becomes "a",
   // and "Pedder" becomes "Peder" before its d is softened.
   key = key.replaceAll(/(.)\1+/g, "$1");

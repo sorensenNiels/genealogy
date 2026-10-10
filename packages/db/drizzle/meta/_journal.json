@@ -330,6 +330,27 @@
       "when": 1791644333568,
       "tag": "0046_full_text_search",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1791645879237,
+      "tag": "0047_people_list_view",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1791646378745,
+      "tag": "0048_drop_people_list_view",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791646379277,
+      "tag": "0049_people_list_preferences",
+      "breakpoints": true
     }
   ]
 }
