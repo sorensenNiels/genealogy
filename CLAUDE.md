@@ -1,6 +1,10 @@
 # CLAUDE.md
 
-Guidance for Claude Code when working in this repository.
+Guidance for Claude Code when working in this repository. The rules for how an
+agent works here — git, package manager, the disposable database — are in
+AGENTS.md, imported here so they always load:
+
+@AGENTS.md
 
 ## What this is
 
@@ -27,9 +31,7 @@ devcontainer exec --workspace-folder . bash -lc "<command>"
 `docker-outside-of-docker` feature), so `docker compose ...` and `make db-up`
 from in here manage the same containers as on the host — including the `db`
 service holding the dev data. `docker compose down -v` or `make db-reset`
-destroys that data. It is disposable and can be rebuilt by importing
-`family-tree.ged` (see [AGENTS.md](AGENTS.md)), but it is the user's working
-copy, so ask before resetting it. Bind mounts in
+destroys that data — ask first (see "Database" in AGENTS.md). Bind mounts in
 `docker-compose.yml` are resolved on the host, so they use
 `${LOCAL_WORKSPACE_FOLDER:-.}` (set in `devcontainer.json`) rather than a bare
 `./` path. Inside the container, Postgres is reached at `host.docker.internal`
@@ -51,8 +53,11 @@ See [DEVELOPMENT_ENVIRONMENT.md](DEVELOPMENT_ENVIRONMENT.md) for the full setup.
 | `pnpm db:migrate`             | Apply pending migrations                                                  |
 | `pnpm db:studio`              | Drizzle Studio                                                            |
 
-Run `pnpm check` and `pnpm test` before reporting work as done. A `make` target
-exists for each of these if you prefer (`make check`, `make dev`, …).
+Run `pnpm check` and `pnpm test` before reporting work as done. The Makefile
+mirrors most of these under slightly different names (`make fmt`,
+`make db-generate`, …) — note `make lint` applies fixes, unlike `pnpm lint` —
+and adds `db-up`/`db-reset`/`redis-up` for the containers; `make help` lists
+them.
 
 ## Layout
 
@@ -248,8 +253,8 @@ prompted it.
   a route file if `typecheck` complains it can't find `./routeTree.gen`.
 - A schema change: edit `packages/db/src/schema.ts`, then `pnpm db:generate` and
   `pnpm db:migrate`. If the change adds people, remember the matching graph node.
-  The migration only has to work on an empty database. Don't write backfills or
-  compatibility shims for existing rows (see [AGENTS.md](AGENTS.md)).
+  The migration only has to work on an empty database — no backfills (see
+  "Database" in AGENTS.md).
 - **A dropdown or radio group with a closed set of choices: never a static
   `z.enum([...])`/Postgres `pgEnum`.** Add a topic to `configurableOptions`
   instead (`packages/db/src/schema.ts`), seed it in the migration, and add its
@@ -273,14 +278,16 @@ prompted it.
   the dot for a spinner (and disables the button) while the save is in
   flight — one look everywhere, first built for the person-details Save
   button. Pass `isDirty`/`isPending` from the TanStack Form instance driving
-  the form (`useStore(form.store, (s) => s.isDirty)` /
-  `useStore(form.store, (s) => s.isSubmitting)` — `isSubmitting` covers a
-  multi-mutation `onSubmit` correctly, a single mutation's own `isPending`
-  doesn't). If a Select or other picker for the form lives in its own
-  `useState` instead of a `form.Field` — which several forms in
-  `routes/people/$personId.tsx` do, for a dropdown backed by `configurableOptions`
-  — `state.isDirty` won't see a change to it; OR in a manual comparison
-  against that state's initial value, the way `NameForm`/`EventForm` do. A
+  the form via `useFormDirtyPending(form)`
+  (`@genealogy/ui/hooks/use-form-dirty-pending`), which reads `isDirty` and
+  `isSubmitting` off its store — `isSubmitting` covers a multi-mutation
+  `onSubmit` correctly, a single mutation's own `isPending` doesn't. If a
+  Select or other picker for the form lives in its own `useState` instead of
+  a `form.Field` — which several person-page forms do, for a dropdown backed
+  by `configurableOptions` — the form's `isDirty` won't see a change to it;
+  OR in a manual comparison against that state's initial value, the way
+  `NameForm` (`routes/people/-alternate-names.tsx`) and `EventForm`
+  (`-event-form.tsx`) do. A
   form with no TanStack Form at all (`CitationForm`) snapshots its `useState`
   fields once on mount and compares against that snapshot instead — see its
   comment for why a `useState` snapshot is used there rather than a `useRef`
