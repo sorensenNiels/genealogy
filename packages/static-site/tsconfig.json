@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+    "types": ["node"]
+  },
+  // The generator only: Node, compiled to dist/ for apps/backend. The viewer
+  // runs in the browser and is bundled by Vite (vite.config.ts), so it's
+  // checked by tsconfig.viewer.json instead.
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "src/viewer", "**/*.test.ts"]
+}

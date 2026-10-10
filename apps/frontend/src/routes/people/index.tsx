@@ -26,7 +26,8 @@ import {
   TableRow,
 } from "@genealogy/ui/components/table";
 import { useViewMode } from "@genealogy/ui/hooks/use-view-mode";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { cn } from "@genealogy/ui/lib/utils";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
 import type { TFunction } from "i18next";
@@ -45,12 +46,23 @@ import {
   labelFor,
   genderLabel,
 } from "../../lib/person-display";
-import { createPerson, listPersons, removePerson } from "../../server/functions/person.functions";
-import { listOptions } from "../../server/functions/settings.functions";
+import { DEFAULT_PERSON_LIST_INPUT, listOptionsQuery, personListQuery } from "../../lib/queries";
+import type { listPersons } from "../../server/functions/person.functions";
+import { createPerson, removePerson } from "../../server/functions/person.functions";
+import type { listOptions } from "../../server/functions/settings.functions";
 import { PeopleCardView } from "./-people-card-view";
 import { historicalDatePreview } from "./-shared";
 
 export const Route = createFileRoute("/people/")({
+  // Prefetch the default first page (and the option labels it shows) into
+  // the shared query cache — see the loader note in routes/index.tsx. A
+  // member using the card view (a smaller page size, chosen in the browser)
+  // simply misses this prefetch and loads as before.
+  loader: ({ context: { queryClient } }) =>
+    Promise.all([
+      queryClient.prefetchQuery(personListQuery(DEFAULT_PERSON_LIST_INPUT)),
+      queryClient.prefetchQuery(listOptionsQuery()),
+    ]),
   component: People,
 });
 
@@ -130,10 +142,13 @@ function People() {
     sort,
   };
   const people = useQuery({
-    queryKey: ["person", "list", listInput],
-    queryFn: () => listPersons({ data: listInput }),
+    ...personListQuery(listInput),
+    // Keep showing the current rows while the next page, sort or filter
+    // loads, instead of emptying the table in between; they're dimmed
+    // (`isPlaceholderData`) until the new ones arrive.
+    placeholderData: keepPreviousData,
   });
-  const options = useQuery({ queryKey: ["settings", "listOptions"], queryFn: () => listOptions() });
+  const options = useQuery(listOptionsQuery());
 
   // Creates a blank record (every field on CreatePerson defaults) and drops
   // straight onto its own page — the same always-editable "person ui" used
@@ -308,51 +323,59 @@ function People() {
               {t("people.showingCount", { shown: rows.length, total })}
             </p>
 
-            {viewMode === "table" ? (
-              <Table>
-                <TableHeader>
-                  {table.getHeaderGroups().map((group) => (
-                    <TableRow key={group.id}>
-                      {group.headers.map((header) => (
-                        <TableHead key={header.id}>
-                          {header.isPlaceholder ? null : <table.FlexRender header={header} />}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableHeader>
-                <TableBody>
-                  {table.getRowModel().rows.map((row) => (
-                    <TableRow key={row.id} className="group">
-                      {row.getAllCells().map((cell) => (
+            <div
+              aria-busy={people.isPlaceholderData}
+              className={cn(
+                "transition-opacity",
+                people.isPlaceholderData && "opacity-60 delay-150",
+              )}
+            >
+              {viewMode === "table" ? (
+                <Table>
+                  <TableHeader>
+                    {table.getHeaderGroups().map((group) => (
+                      <TableRow key={group.id}>
+                        {group.headers.map((header) => (
+                          <TableHead key={header.id}>
+                            {header.isPlaceholder ? null : <table.FlexRender header={header} />}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableHeader>
+                  <TableBody>
+                    {table.getRowModel().rows.map((row) => (
+                      <TableRow key={row.id} className="group">
+                        {row.getAllCells().map((cell) => (
+                          <TableCell
+                            key={cell.id}
+                            className={
+                              cell.column.id === "actions"
+                                ? "opacity-0 transition-opacity group-hover:opacity-100"
+                                : undefined
+                            }
+                          >
+                            <table.FlexRender cell={cell} />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                    {rows.length === 0 && !people.isPending && (
+                      <TableRow>
                         <TableCell
-                          key={cell.id}
-                          className={
-                            cell.column.id === "actions"
-                              ? "opacity-0 transition-opacity group-hover:opacity-100"
-                              : undefined
-                          }
+                          colSpan={columns.length}
+                          className="py-8 text-center text-muted-foreground"
                         >
-                          <table.FlexRender cell={cell} />
+                          {t("people.noMatches")}
                         </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-                  {rows.length === 0 && !people.isPending && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={columns.length}
-                        className="py-8 text-center text-muted-foreground"
-                      >
-                        {t("people.noMatches")}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            ) : (
-              <PeopleCardView people={rows} />
-            )}
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              ) : (
+                <PeopleCardView people={rows} />
+              )}
+            </div>
 
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <p>{t("people.pageOf", { page: page + 1, totalPages })}</p>

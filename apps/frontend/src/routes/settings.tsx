@@ -51,6 +51,7 @@ import {
   updateRecordSettings,
   updateTreeSettings,
 } from "../server/functions/settings.functions";
+import { AppearanceSettingsPanel } from "./-appearance-settings";
 
 // The enum always has at least one member, so this is never actually undefined.
 const DEFAULT_TOPIC = configurableTopicSchema.options[0]!;
@@ -68,7 +69,12 @@ export const Route = createFileRoute("/settings")({
   validateSearch: (
     search: Record<string, unknown>,
   ): { topic?: ConfigurableTopic; section?: SettingsSection } => {
-    if (search.section === "tree" || search.section === "person" || search.section === "records") {
+    if (
+      search.section === "tree" ||
+      search.section === "person" ||
+      search.section === "records" ||
+      search.section === "appearance"
+    ) {
       return { section: search.section };
     }
     const result = configurableTopicSchema.safeParse(search.topic);
@@ -82,7 +88,7 @@ type ConfigurableOptionRow = RouterOutputs["settings"]["listOptions"][number];
 
 const LIST_OPTIONS_KEY = ["settings", "listOptions"];
 
-type SettingsSection = "tree" | "person" | "records";
+type SettingsSection = "tree" | "person" | "records" | "appearance";
 
 const NAV_LINK_CLASS =
   "rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
@@ -139,6 +145,13 @@ function SettingsRoute() {
               >
                 {t("settings.records.title")}
               </Link>
+              <Link
+                to="/settings"
+                search={{ section: "appearance" }}
+                className={cn(NAV_LINK_CLASS, section === "appearance" && NAV_LINK_ACTIVE_CLASS)}
+              >
+                {t("appearance.title")}
+              </Link>
             </nav>
           </SectionCard>
           <SectionCard title={t("settings.dropdowns")} titleClassName="text-base">
@@ -165,6 +178,8 @@ function SettingsRoute() {
           <PersonSettingsPanel />
         ) : section === "records" ? (
           <RecordSettingsPanel options={options.data ?? []} />
+        ) : section === "appearance" ? (
+          <AppearanceSettingsPanel />
         ) : (
           <TopicPanel
             topic={topic}

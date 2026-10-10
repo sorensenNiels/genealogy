@@ -1,6 +1,6 @@
 import { formatLifespan, formatPersonName } from "@genealogy/core";
 import { Combobox } from "@genealogy/ui/components/combobox";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -52,6 +52,9 @@ export function PersonPicker({
   const search = useQuery({
     queryKey: ["person", "list", searchInput],
     queryFn: () => listPersons({ data: searchInput }),
+    // Keep the last results listed while the next keystroke's search runs,
+    // instead of the list emptying (and the popup resizing) on every key.
+    placeholderData: keepPreviousData,
   });
   const people = (search.data?.items ?? []).filter((person) => !excludeIds?.has(person.id));
 

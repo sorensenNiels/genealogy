@@ -68,10 +68,18 @@ apps/frontend     TanStack Start — renders every page (SSR + client), on
 packages/core     Framework-free domain model (people, dates, relationships)
 packages/db       Drizzle schema + the Apache AGE (Cypher) access layer
 packages/ui       shadcn/ui components and the shared Tailwind theme
+packages/tree-chart  The tree chart, framework-free (topola + our cards) —
+                  shared by the app's tree page and the static site
+packages/static-site The static family website: page generator (Node) and
+                  the tree viewer bundle (browser)
 ```
 
 Dependency direction is one-way: `frontend → ui → (nothing)`, `frontend → core`,
-`backend → db → core`. `apps/frontend` never touches `packages/db` — it has no
+`frontend → tree-chart → core`, `backend → db → core`,
+`backend → static-site → core` (`static-site → tree-chart` only for its browser
+bundle). `@genealogy/tree-chart` is DOM-free and safe anywhere; the chart
+itself is `@genealogy/tree-chart/chart` (topola, CommonJS, needs the DOM) —
+load it with a dynamic `import()` in an effect, never at module level. `apps/frontend` never touches `packages/db` — it has no
 database access at all. Its server side (`apps/frontend/src/server/`) is a proxy:
 every server function calls apps/backend's tRPC router over HTTP through a
 server-side vanilla client (`server/trpc-proxy-client.ts`), forwarding the
@@ -202,6 +210,18 @@ from the route component with plain `useQuery`/`useMutation` — there is no
 `useTRPC()` hook in `apps/frontend`, and no shared typed router object the way
 `AppRouter` gives the backend; each server function is an independently
 imported function, grouped into files by domain purely as a convention.
+
+**A page that should open with its data loaded** gets a route `loader` that
+prefetches into the query cache: define the query once as a `queryOptions`
+factory in `apps/frontend/src/lib/queries.ts`, have the loader
+`await queryClient.prefetchQuery(...)` it (not `ensureQueryData` — that
+throws, bypassing the page's own inline error state), and have the component
+`useQuery` the same factory, so key and function can't drift apart. With
+preload-on-intent the data is usually fetched before the click. A list that
+pages, sorts or filters adds `placeholderData: keepPreviousData` so it doesn't
+empty in between. A small, near-certain edit (a toggle, mark-as-read, a role)
+uses `useOptimisticMutation` (`lib/optimistic.ts`) so the UI changes before
+the round trip and rolls back if the server refuses.
 
 ## Recommending or adding a library
 

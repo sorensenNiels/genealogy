@@ -15,6 +15,7 @@ What the genealogy app can do today (✅). Planned work (🚧) and undecided ide
 - ✅ Person profile photo (local upload, or picked from an Immich photo — see Photos below).
 - ✅ Delete a person outright, once they have no recorded parent/spouse/child; confirm-before-remove on relationships, alternate names, and life events.
 - ✅ Merge a duplicate into a person ("Merge with…"): a preview of what moves, everything moved in one transaction, nothing on the kept person overwritten, identical facts not doubled; refused for people related to each other.
+- ✅ Duplicate person detection (Tools → Possible duplicates): pairs that look like one person recorded twice, rated Likely/Possible/Name only with the reasons (name, dates, places, parents, spouse). Danish names compare by sound — Søren/Sören, Christensen/Kristensen, Petersen/Pedersen, Sørensen/Sørensdatter — and alternate names count. Merge a pair from there (choosing which to keep), or mark it "Not the same person" so it isn't suggested again. "Merge with…" on the person page lists that person's likely duplicates first. See "Duplicate detection" in TECH_STACK.md.
 - ✅ Research notes per person: open questions to chase down later (a "brick wall"), each with a type and a resolved flag.
 - ✅ Single-person printable report ("family group sheet") at `/people/$personId/print`.
 
@@ -61,6 +62,7 @@ What the genealogy app can do today (✅). Planned work (🚧) and undecided ide
 - ✅ Members & roles: Admin (members, Settings, Tools, merge/delete), Editor (edits the tree and photos), Viewer (read-only). A Members page to change roles, remove members, and manage invitations.
 - ✅ Invite family members by email: a link valid 14 days, with role, an optional "this is you" person and a personal message; sent in the inviting admin's language, and always shown to copy in case email isn't set up.
 - ✅ Living people are shown to Viewers by name only — dates, places, notes, photos and records hidden; the deceased are never restricted; a Viewer's own person is never hidden from them.
+- ✅ Static family website: Tools → Family website exports the whole tree as a zip of plain pages — everyone A–Z with a filter box and surname index, a page per person (names, vitals, family links, life events, notes, footnoted sources), a sources page, and the interactive tree (the app's own chart: pan/zoom, minimap, keyboard, chart and direction switcher). Opens offline from `index.html` or on any web server; English or Danish; the family site's theme, light and dark. Living people are name only — the Viewer rule, the exporting admin included. Profile photos only. See "Static family website" in TECH_STACK.md.
 
 ## Tools
 
@@ -68,12 +70,13 @@ An admin utility page (`/tools`).
 
 - ✅ Backup the database (background job, notified when ready) and restore from a backup file (locked against overlap, typed confirmation). Alongside it, "Download all albums" queues a zip of every photo in every album the same way — one notification per file if the library needs more than one archive.
 - ✅ Re-scan for faces (Immich), GEDCOM export and import.
-- ✅ Data integrity checks (dangling citations, possible duplicate people, dangling Immich links) and a two-store consistency check (Postgres vs. the Apache AGE graph).
+- ✅ Data integrity checks (dangling citations, dangling Immich links, record ages that disagree with a birth) and a two-store consistency check (Postgres vs. the Apache AGE graph).
 - ✅ Development tools, shown only when the app runs on localhost: the component showcase (every shared UI component in both themes).
 
 ## Platform
 
 - ✅ Dark mode.
+- ✅ Themes: five built in (Nova, Heritage, Fjord, Meadow, Ink) — colors, heading and body fonts, corner roundness. Admins pick the family site's theme and make their own on Settings → Appearance (fonts from a bundled set, every color for light and dark, live preview); each member can choose a different one on their profile.
 - ✅ A shared component library: shadcn/ui on Base UI, composed into app-level components (React Aria only for the photo grid, file drop zone, tag chips and calendar).
 
 ## Internationalization

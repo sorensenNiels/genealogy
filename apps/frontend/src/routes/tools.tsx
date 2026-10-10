@@ -5,11 +5,13 @@ import {
   type GedcomImportInput,
   type GedcomVersion,
   isAdmin,
+  type Language,
 } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
 import { FileDropZone } from "@genealogy/ui/components/file-drop-zone";
 import { Input } from "@genealogy/ui/components/input";
+import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
 import { cn } from "@genealogy/ui/lib/utils";
@@ -20,9 +22,11 @@ import {
   DatabaseBackupIcon,
   FileDownIcon,
   FileUpIcon,
+  GlobeIcon,
   ScanFaceIcon,
   SearchCheckIcon,
   UploadIcon,
+  XIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -40,6 +44,9 @@ import {
 import { enqueueAllAlbumsZip, rescanImmichFaces } from "../server/functions/immich.functions";
 import { checkDataIntegrity, checkGraphConsistency } from "../server/functions/integrity.functions";
 import { getPresumedDeceased, markPresumedDeceased } from "../server/functions/person.functions";
+import { createStaticSite } from "../server/functions/static-site.functions";
+import { DuplicatesPanel } from "./-duplicates-panel";
+import { formatPersonWithLifespan, PersonPicker, type PersonListItem } from "./-person-picker";
 
 const TOOLS = [
   "backup",
@@ -47,6 +54,8 @@ const TOOLS = [
   "immich-faces",
   "gedcom-export",
   "gedcom-import",
+  "family-website",
+  "duplicates",
   "data-integrity",
   "presumed-deceased",
   "graph-consistency",
@@ -60,6 +69,8 @@ function toolLabels(t: TFunction): Record<Tool, string> {
     "immich-faces": t("tools.tool.immich-faces"),
     "gedcom-export": t("tools.tool.gedcom-export"),
     "gedcom-import": t("tools.tool.gedcom-import"),
+    "family-website": t("tools.tool.family-website"),
+    duplicates: t("tools.tool.duplicates"),
     "data-integrity": t("tools.tool.data-integrity"),
     "presumed-deceased": t("tools.tool.presumed-deceased"),
     "graph-consistency": t("tools.tool.graph-consistency"),
@@ -145,6 +156,8 @@ function ToolsRoute() {
         {tool === "immich-faces" && immichAvailable && <FaceRescanPanel />}
         {tool === "gedcom-export" && <GedcomExportPanel />}
         {tool === "gedcom-import" && <GedcomImportPanel />}
+        {tool === "family-website" && <FamilyWebsitePanel />}
+        {tool === "duplicates" && <DuplicatesPanel title={toolLabels(t).duplicates} />}
         {tool === "data-integrity" && <DataIntegrityPanel />}
         {tool === "presumed-deceased" && <PresumedDeceasedPanel />}
         {tool === "graph-consistency" && <GraphConsistencyPanel />}
@@ -344,6 +357,99 @@ function GedcomExportPanel() {
           <FileDownIcon className="size-4" aria-hidden="true" />
           {exportMutation.isPending ? t("tools.exporting") : t("tools.exportGedcom")}
         </Button>
+        {exportMutation.isError && (
+          <p className="mt-2 text-sm text-destructive">
+            {exportMutation.error instanceof Error
+              ? exportMutation.error.message
+              : t("tools.exportFailed")}
+          </p>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
+/** Each language named in itself, as in the header's language menu. */
+const SITE_LANGUAGES: { value: Language; label: string }[] = [
+  { value: "en", label: "English" },
+  { value: "da", label: "Dansk" },
+];
+
+/**
+ * The static family website export (see "Static family website" in
+ * TECH_STACK.md): the whole tree as a zip of plain HTML pages plus the
+ * interactive tree, to open offline or put on any web server. A queued job
+ * like the backup — the notification bell says when the zip is ready.
+ */
+function FamilyWebsitePanel() {
+  const { t, i18n } = useTranslation();
+  const [title, setTitle] = useState(() => t("tools.familyWebsite.defaultTitle"));
+  const [language, setLanguage] = useState<Language>(() => toSupportedLanguage(i18n.language));
+  const [startPerson, setStartPerson] = useState<PersonListItem | null>(null);
+  const exportMutation = useMutation({
+    mutationFn: () =>
+      createStaticSite({
+        data: { title: title.trim(), language, startPersonId: startPerson?.id ?? null },
+      }),
+  });
+
+  return (
+    <SectionCard title={toolLabels(t)["family-website"]}>
+      <p className="text-sm text-muted-foreground">{t("tools.familyWebsite.description")}</p>
+      <p className="mt-3 rounded-md border-l-2 border-primary bg-muted px-3 py-2 text-sm">
+        {t("tools.familyWebsite.privacy")}
+      </p>
+      <div className="mt-4 max-w-md space-y-4">
+        <LabeledField label={t("tools.familyWebsite.title")}>
+          <Input value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} />
+        </LabeledField>
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">{t("tools.familyWebsite.language")}</p>
+          <ButtonRadioGroup
+            aria-label={t("tools.familyWebsite.language")}
+            value={language}
+            onValueChange={setLanguage}
+            options={SITE_LANGUAGES}
+          />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">{t("tools.familyWebsite.startPerson")}</p>
+          {startPerson ? (
+            <div className="flex items-center gap-2 text-sm">
+              <span>{formatPersonWithLifespan(startPerson)}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t("tools.familyWebsite.clearStartPerson")}
+                onClick={() => setStartPerson(null)}
+              >
+                <XIcon className="size-4" aria-hidden="true" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <PersonPicker
+                aria-label={t("tools.familyWebsite.startPerson")}
+                onSelect={setStartPerson}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("tools.familyWebsite.startPersonDefault")}
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="mt-4">
+        <Button
+          disabled={exportMutation.isPending || title.trim() === ""}
+          onClick={() => exportMutation.mutate()}
+        >
+          <GlobeIcon className="size-4" aria-hidden="true" />
+          {exportMutation.isPending ? t("tools.starting") : t("tools.familyWebsite.export")}
+        </Button>
+        {exportMutation.isSuccess && (
+          <p className="mt-2 text-sm text-muted-foreground">{t("tools.familyWebsite.queued")}</p>
+        )}
         {exportMutation.isError && (
           <p className="mt-2 text-sm text-destructive">
             {exportMutation.error instanceof Error
@@ -730,22 +836,6 @@ function DataIntegrityPanel() {
                     surname: citation.personSurname,
                   })}
                 />
-              </li>
-            ))}
-          </ReportSection>
-
-          <ReportSection
-            title={t("tools.possibleDuplicates")}
-            isEmpty={report.possibleDuplicates.length === 0}
-          >
-            {report.possibleDuplicates.map((group) => (
-              <li key={`${group.given}|${group.surname}`}>
-                {group.people.map((person, index) => (
-                  <span key={person.id}>
-                    {index > 0 && ", "}
-                    <PersonLink personId={person.id} name={formatPersonName(person)} />
-                  </span>
-                ))}
               </li>
             ))}
           </ReportSection>

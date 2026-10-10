@@ -20,7 +20,7 @@ import {
 } from "@genealogy/ui/components/table";
 import { useViewMode } from "@genealogy/ui/hooks/use-view-mode";
 import { ReadOnlyProvider } from "@genealogy/ui/lib/read-only";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { LayoutGridIcon, ListIcon, BookOpenIcon } from "lucide-react";
 import { useState } from "react";
@@ -131,6 +131,8 @@ function AlbumsSection() {
   const albums = useQuery({
     queryKey: ["immich", "listAlbums", filterInput],
     queryFn: () => listImmichAlbums({ data: filterInput }),
+    // Keep the current albums on screen while a changed filter or sort loads.
+    placeholderData: keepPreviousData,
   });
 
   const categories = useAlbumCategories();

@@ -19,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@genealogy/ui/components/card";
+import { CardRadioGroup } from "@genealogy/ui/components/card-radio-group";
 import { Checkbox } from "@genealogy/ui/components/checkbox";
 import { ColorSwatchPicker } from "@genealogy/ui/components/color-swatch-picker";
 import { Combobox } from "@genealogy/ui/components/combobox";
@@ -178,6 +179,38 @@ function NoQualifierDateDemo({ label, initialValue }: { label: string; initialVa
       <p className="text-xs text-muted-foreground">{label}</p>
       <HistoricalDateInput value={value} onChange={setValue} preview={preview} />
     </div>
+  );
+}
+
+function CardRadioGroupDemo() {
+  const [layout, setLayout] = useState<"compact" | "detailed" | "photos">("detailed");
+  return (
+    <CardRadioGroup
+      aria-label="Layout"
+      className="w-full max-w-2xl"
+      value={layout}
+      onValueChange={setLayout}
+      options={[
+        {
+          value: "compact",
+          label: "Compact",
+          description: "Names and years",
+          preview: <span className="block h-16 bg-muted" />,
+        },
+        {
+          value: "detailed",
+          label: "Detailed",
+          description: "Dates and places",
+          preview: <span className="block h-16 bg-accent" />,
+        },
+        {
+          value: "photos",
+          label: "With photos",
+          description: "A portrait on each card",
+          preview: <span className="block h-16 bg-primary/20" />,
+        },
+      ]}
+    />
   );
 }
 
@@ -391,6 +424,10 @@ function ComponentsShowcase() {
         <SaveButton isDirty={false} isPending>
           Save
         </SaveButton>
+      </Section>
+
+      <Section title="Card Radio Group">
+        <CardRadioGroupDemo />
       </Section>
 
       <Section title="Button Radio Group">

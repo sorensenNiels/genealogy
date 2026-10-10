@@ -26,12 +26,6 @@ export interface DanglingCitation {
   sourceTitle: string;
 }
 
-export interface DuplicatePersonGroup {
-  given: string;
-  surname: string;
-  people: { id: string; given: string; surname: string }[];
-}
-
 export interface DanglingImmichLink {
   linkId: string;
   personId: string;
@@ -42,7 +36,6 @@ export interface DanglingImmichLink {
 
 export interface DataIntegrityReport {
   danglingCitations: DanglingCitation[];
-  possibleDuplicates: DuplicatePersonGroup[];
   /** Null (not just empty) when Immich isn't available — nothing to check against. */
   danglingImmichLinks: DanglingImmichLink[] | null;
   /** People whose age in a record disagrees with their recorded birth by more than a couple of years. */
@@ -71,18 +64,19 @@ export class IntegrityService {
   ) {}
 
   async checkData(): Promise<DataIntegrityReport> {
-    const [danglingCitations, possibleDuplicates, danglingImmichLinks, recordAgeMismatches] =
-      await Promise.all([
-        this.findDanglingCitations(),
-        this.findPossibleDuplicates(),
-        // `isAvailable`, not `isConfigured`: with Immich down, every lookup
-        // would throw and take the whole report with it.
-        this.immich
-          .isAvailable()
-          .then((available) => (available ? this.immich.listDanglingLinks() : null)),
-        this.records.ageMismatches(),
-      ]);
-    return { danglingCitations, possibleDuplicates, danglingImmichLinks, recordAgeMismatches };
+    // Possible duplicate people used to be listed here too, by exact name;
+    // they're their own tool now (DuplicateService), which scores spelling
+    // variants, dates and relatives instead.
+    const [danglingCitations, danglingImmichLinks, recordAgeMismatches] = await Promise.all([
+      this.findDanglingCitations(),
+      // `isAvailable`, not `isConfigured`: with Immich down, every lookup
+      // would throw and take the whole report with it.
+      this.immich
+        .isAvailable()
+        .then((available) => (available ? this.immich.listDanglingLinks() : null)),
+      this.records.ageMismatches(),
+    ]);
+    return { danglingCitations, danglingImmichLinks, recordAgeMismatches };
   }
 
   async checkGraphConsistency(): Promise<GraphConsistencyReport> {
@@ -157,24 +151,5 @@ export class IntegrityService {
       ...danglingUnions.map((row) => Object.assign(row, { factType: "union" })),
       ...danglingAssociations.map((row) => Object.assign(row, { factType: "association" })),
     ];
-  }
-
-  private async findPossibleDuplicates(): Promise<DuplicatePersonGroup[]> {
-    const allPersons = await this.db
-      .select({ id: persons.id, given: persons.given, surname: persons.surname })
-      .from(persons);
-    const groups = new Map<string, DuplicatePersonGroup>();
-    for (const person of allPersons) {
-      const normalizedSurname = person.surname.trim().toLowerCase();
-      if (normalizedSurname === "") continue;
-      const key = `${person.given.trim().toLowerCase()}|${normalizedSurname}`;
-      const existing = groups.get(key);
-      if (existing) {
-        existing.people.push(person);
-      } else {
-        groups.set(key, { given: person.given, surname: person.surname, people: [person] });
-      }
-    }
-    return [...groups.values()].filter((group) => group.people.length > 1);
   }
 }

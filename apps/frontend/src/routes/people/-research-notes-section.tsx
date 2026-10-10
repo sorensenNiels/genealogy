@@ -13,7 +13,9 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useOptimisticMutation } from "../../lib/optimistic";
 import { labelFor, optionsFor } from "../../lib/person-display";
+import { researchNotesQuery } from "../../lib/queries";
 import { addNote, removeNote, updateNote } from "../../server/functions/research-note.functions";
 import type { ConfigurableOptionRow, ResearchNoteRow } from "./-types";
 
@@ -34,13 +36,20 @@ export function ResearchNotesSection({
   onChanged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const updateNoteMutation = useMutation({ mutationFn: updateNote });
   const removeNoteMutation = useMutation({ mutationFn: removeNote });
 
-  const toggleResolved = async (note: ResearchNoteRow) => {
-    await updateNoteMutation.mutateAsync({ data: { id: note.id, resolved: !note.resolved } });
-    await onChanged();
-  };
+  // Flips on the spot (see `useOptimisticMutation`); only the notes list depends
+  // on `resolved`, so that's the one query to keep in step.
+  const toggleResolvedMutation = useOptimisticMutation({
+    mutationFn: updateNote,
+    queryKey: researchNotesQuery(personId).queryKey,
+    update: (cached: ResearchNoteRow[], { data }) =>
+      cached.map((note) =>
+        note.id === data.id ? { ...note, resolved: data.resolved ?? note.resolved } : note,
+      ),
+  });
+  const toggleResolved = (note: ResearchNoteRow) =>
+    toggleResolvedMutation.mutate({ data: { id: note.id, resolved: !note.resolved } });
 
   const remove = async (id: string) => {
     await removeNoteMutation.mutateAsync({ data: { id } });
@@ -80,7 +89,7 @@ export function ResearchNotesSection({
               {labelFor(options, "research_note_type", note.noteType)}
             </Badge>
             <div className="flex items-center gap-2">
-              <Switch checked={note.resolved} onCheckedChange={() => void toggleResolved(note)}>
+              <Switch checked={note.resolved} onCheckedChange={() => toggleResolved(note)}>
                 {t("person.researchNotes.resolved")}
               </Switch>
               <RemoveButton

@@ -16,9 +16,12 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { authClient, useSession } from "../lib/auth-client";
+import { themeStateQuery } from "../lib/queries";
 import { getPersonById } from "../server/functions/person.functions";
 import { getMyProfile, updateProfile } from "../server/functions/profile.functions";
+import { setMyTheme } from "../server/functions/theme.functions";
 import { PersonPicker } from "./-person-picker";
+import { ThemePicker, ThemeSwatches } from "./-theme-components";
 
 // Language isn't here: it's switched from the header (`LanguageMenu` in
 // `__root.tsx`), so it's one click away on every page.
@@ -181,8 +184,17 @@ function ProfileForm({
         )}
 
         {section === "theme" && (
-          <SectionCard title={t("profile.theme")}>
-            <ThemePicker />
+          <SectionCard title={t("profile.theme")} contentClassName="space-y-6">
+            <div className="space-y-2">
+              <p className="text-sm font-medium">{t("profile.mode")}</p>
+              <ModePicker />
+            </div>
+            <div className="space-y-2">
+              <p id="my-theme-label" className="text-sm font-medium">
+                {t("appearance.myTheme")}
+              </p>
+              <MyThemePicker />
+            </div>
           </SectionCard>
         )}
 
@@ -300,13 +312,14 @@ function ChangePassword() {
   );
 }
 
-function ThemePicker() {
+/** Light, dark or follow the system — per browser (see use-theme.ts). */
+function ModePicker() {
   const { t } = useTranslation();
   const { preference, setPreference } = useTheme();
 
   return (
     <ButtonRadioGroup
-      aria-label={t("profile.theme")}
+      aria-label={t("profile.mode")}
       value={preference ?? "system"}
       onValueChange={(value) => setPreference(value === "system" ? null : value)}
       options={[
@@ -315,6 +328,50 @@ function ThemePicker() {
         { value: "system", label: t("profile.themeSystem") },
       ]}
     />
+  );
+}
+
+const SITE_THEME = "site";
+
+/**
+ * The member's own theme, or "same as the family site" — saved on their
+ * profile, so it follows them to every device. The page restyles at once:
+ * the active theme query is invalidated and the root's <style> re-renders.
+ */
+function MyThemePicker() {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const state = useQuery(themeStateQuery());
+  const setMine = useMutation({
+    mutationFn: setMyTheme,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["theme"] }),
+  });
+  if (!state.data) return <p className="text-sm text-muted-foreground">{t("common.loading")}</p>;
+  const { themes, siteDefaultId, myThemeId } = state.data;
+  const siteTheme = themes.find((theme) => theme.id === siteDefaultId) ?? themes[0];
+
+  return (
+    <>
+      <ThemePicker
+        aria-label={t("appearance.myTheme")}
+        themes={themes}
+        value={myThemeId ?? SITE_THEME}
+        onValueChange={(id) => setMine.mutate({ data: { id: id === SITE_THEME ? null : id } })}
+        before={
+          siteTheme
+            ? [
+                {
+                  value: SITE_THEME,
+                  label: t("appearance.sameAsSite"),
+                  description: siteTheme.definition.name,
+                  preview: <ThemeSwatches theme={siteTheme.definition} />,
+                },
+              ]
+            : []
+        }
+      />
+      {setMine.isError && <p className="text-sm text-destructive">{setMine.error.message}</p>}
+    </>
   );
 }
 

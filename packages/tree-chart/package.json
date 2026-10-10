@@ -1,0 +1,31 @@
+{
+  "name": "@genealogy/tree-chart",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The family tree chart (topola + our cards, pan/zoom, minimap, keyboard), framework-free — shared by apps/frontend and the static family website.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./chart": "./src/chart.ts",
+    "./tree-chart.css": "./src/tree-chart.css"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@genealogy/core": "workspace:*",
+    "d3-selection": "catalog:",
+    "d3-transition": "catalog:",
+    "d3-zoom": "catalog:",
+    "topola": "catalog:"
+  },
+  "devDependencies": {
+    "@types/d3-selection": "catalog:",
+    "@types/d3-transition": "catalog:",
+    "@types/d3-zoom": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

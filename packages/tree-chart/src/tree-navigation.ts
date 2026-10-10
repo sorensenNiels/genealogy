@@ -1,4 +1,4 @@
-/** A card centre on the chart — see `CardPosition` in `routes/-tree-card-renderer.ts`. */
+/** A card centre on the chart — see `CardPosition` in `card-renderer.ts`. */
 export interface Point {
   x: number;
   y: number;

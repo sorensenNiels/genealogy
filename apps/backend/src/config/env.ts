@@ -35,6 +35,8 @@ const envSchema = z.object({
   BACKUPS_DIR: z.string().default("./data/backups"),
   /** Where a queued album/library zip download waits for its notification to be acted on — same lifecycle as `BACKUPS_DIR`. */
   ALBUM_ZIPS_DIR: z.string().default("./data/album-zips"),
+  /** Where an exported static family website (a zip) waits for its notification to be acted on — same lifecycle as `BACKUPS_DIR`. */
+  STATIC_SITES_DIR: z.string().default("./data/static-sites"),
   /** Disk-streamed cap for a re-uploaded backup file on the Tools page's restore flow — same reasoning as `IMMICH_MAX_UPLOAD_BYTES`, just a much larger default since a whole-database dump is bigger than a photo. */
   RESTORE_MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(524_288_000), // 500MB
 

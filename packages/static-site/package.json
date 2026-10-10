@@ -1,0 +1,37 @@
+{
+  "name": "@genealogy/static-site",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Generates the static family website: the page generator (Node) and the tree viewer bundle (browser) it ships with.",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && vite build",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.viewer.json --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@genealogy/core": "workspace:*",
+    "handlebars": "catalog:",
+    "micromark": "catalog:"
+  },
+  "devDependencies": {
+    "@genealogy/tree-chart": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

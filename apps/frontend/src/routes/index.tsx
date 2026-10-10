@@ -9,21 +9,27 @@ import {
   immichUnavailableMessage,
   useImmichStatus,
 } from "../lib/immich-status";
-import { getHealth } from "../server/functions/health.functions";
+import { healthQuery, PERSON_COUNT_INPUT, personListQuery } from "../lib/queries";
 import { getImmichStatus } from "../server/functions/immich.functions";
-import { listPersons } from "../server/functions/person.functions";
 
 export const Route = createFileRoute("/")({
+  // Prefetch what the page reads into the shared query cache, so it renders
+  // with its data instead of a loading state — and with preload-on-intent
+  // (router.tsx), usually before the link is even clicked. `prefetchQuery`,
+  // not `ensureQueryData`: it never throws, so a failed request still lands
+  // in the page's own inline error state rather than an error route.
+  loader: ({ context: { queryClient } }) =>
+    Promise.all([
+      queryClient.prefetchQuery(healthQuery()),
+      queryClient.prefetchQuery(personListQuery(PERSON_COUNT_INPUT)),
+    ]),
   component: Overview,
 });
 
 function Overview() {
   const { t } = useTranslation();
-  const health = useQuery({ queryKey: ["health"], queryFn: () => getHealth() });
-  const people = useQuery({
-    queryKey: ["person", "list", { limit: 1, offset: 0, search: null }],
-    queryFn: () => listPersons({ data: { limit: 1, offset: 0, search: null } }),
-  });
+  const health = useQuery(healthQuery());
+  const people = useQuery(personListQuery(PERSON_COUNT_INPUT));
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">

@@ -19,6 +19,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useSession } from "../lib/auth-client";
+import { useOptimisticMutation } from "../lib/optimistic";
 import {
   inviteMember,
   listInvitations,
@@ -39,6 +40,7 @@ export const Route = createFileRoute("/members")({
 });
 
 const MEMBERS_KEY = ["members", "list"];
+type MemberRow = Awaited<ReturnType<typeof listMembers>>[number];
 const INVITATIONS_KEY = ["members", "invitations"];
 
 function MembersPage() {
@@ -103,7 +105,14 @@ function MembersCard() {
   const { data: session } = useSession();
   const members = useQuery({ queryKey: MEMBERS_KEY, queryFn: () => listMembers() });
   const refresh = () => queryClient.invalidateQueries({ queryKey: MEMBERS_KEY });
-  const roleMutation = useMutation({ mutationFn: updateMemberRole, onSuccess: refresh });
+  // The new role shows at once and is put back if the change is refused
+  // (e.g. demoting the last admin) — see `useOptimisticMutation`.
+  const roleMutation = useOptimisticMutation({
+    mutationFn: updateMemberRole,
+    queryKey: MEMBERS_KEY,
+    update: (cached: MemberRow[], { data }) =>
+      cached.map((member) => (member.id === data.userId ? { ...member, role: data.role } : member)),
+  });
   const removeMutation = useMutation({ mutationFn: removeMember, onSuccess: refresh });
   const error = roleMutation.error ?? removeMutation.error;
 

@@ -23,6 +23,7 @@
   "dependencies": {
     "@genealogy/core": "workspace:*",
     "@genealogy/db": "workspace:*",
+    "@genealogy/static-site": "workspace:*",
     "@nestjs/bullmq": "catalog:",
     "@nestjs/common": "catalog:",
     "@nestjs/config": "catalog:",
@@ -33,6 +34,7 @@
     "bullmq": "catalog:",
     "drizzle-orm": "catalog:",
     "express": "catalog:",
+    "fflate": "catalog:",
     "handlebars": "catalog:",
     "ioredis": "catalog:",
     "multer": "catalog:",

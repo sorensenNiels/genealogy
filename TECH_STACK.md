@@ -38,10 +38,15 @@ apps/frontend     TanStack Start — renders every page; its server side proxies
 packages/core     Domain model, no framework dependencies
 packages/db       Drizzle schema + Apache AGE access layer
 packages/ui       shadcn/ui components + shared Tailwind theme
+packages/tree-chart  The tree chart (topola + our cards), framework-free
+packages/static-site The static family website: page generator + tree viewer
 ```
 
 `apps/` holds things you can run; `packages/` holds things they share.
-Dependencies point one way: `frontend → ui`, `frontend → core`, `backend → db → core`.
+Dependencies point one way: `frontend → ui`, `frontend → core`,
+`frontend → tree-chart → core`, `backend → db → core`,
+`backend → static-site → core` (and `static-site → tree-chart` for its
+browser bundle only).
 `apps/frontend` has no dependency on `packages/db` at all — see "TanStack Start,
 apps/frontend as a proxy" below. It takes a **type-only** dependency on the backend
 to obtain `AppRouter`.
@@ -501,6 +506,66 @@ Stuck opacity, mispositioned overlays, a transition that never completes —
 verify those against the dev server in a real browser (this project's pattern:
 a throwaway Playwright script checking `getComputedStyle` on the real DOM).
 
+### Themes
+
+A theme is a name, 19 color tokens for light and 19 for dark (the CSS
+variables in packages/ui/src/styles.css), a heading and a body font, and a
+corner radius — `ThemeDefinition` in `@genealogy/core` (`theme.ts`). Five are
+built in, as data in code: Nova (the original look), Heritage, Fjord, Meadow
+and Ink. Admins make more on Settings → Appearance (stored in the `themes`
+table) and pick the family site's theme (`app_settings` "theme"); each member
+can choose their own on their profile (`user_profiles.theme_id`), which wins.
+`ThemeService` resolves member → site → Nova, skipping an id that no longer
+exists, so deleting a theme never breaks a page. Light/dark stays a separate,
+per-browser switch.
+
+Applying it: the root loader prefetches the active theme, and `ThemeStyle`
+in `__root.tsx` renders `themeToCss(theme)` as a `<style>` in the
+server-rendered `<head>`, after the app stylesheet — so the first paint is
+already themed, and choosing another theme restyles the page as soon as the
+query is invalidated. The stylesheet keeps Nova's values as the fallback.
+`themeToCss` is the only way a theme becomes CSS, and it re-validates first:
+colors must match a strict pattern (hex, or `oklch(…)`/`rgb(…)`/`hsl(…)`
+with only numbers inside), fonts must be catalog keys, the name never reaches
+CSS — a stored value can't close the declaration or break out of the
+`<style>`. `theme.active` is a public procedure so the sign-in page wears the
+family's theme too.
+
+Fonts are a closed, code-tied list (`FONTS` in core): system default plus
+twelve self-hosted Fontsource variable fonts (OFL), imported in
+apps/frontend/src/styles.css. Each import only declares `@font-face`; a
+browser fetches a font's files when the page uses it, and nothing is ever
+requested from Google. Tailwind's `font-sans` is the theme's body font, and
+headings plus card/dialog/popover titles take its heading font. The editor's
+live preview and the theme cards apply a theme to one element by setting its
+variables inline (`ThemeScope`, `themeVariables`).
+
+### Data loading: route loaders prefetch, Query owns the cache
+
+Pages read data with TanStack Query; the busiest ones (Overview, People, a
+person's page) also have a route `loader` that `prefetchQuery`s exactly what
+the component reads, from shared `queryOptions` factories in
+`apps/frontend/src/lib/queries.ts`. On first load the loader runs during SSR
+and the data is dehydrated into the page (`setupRouterSsrQueryIntegration`);
+on navigation it runs on hover (`defaultPreload: "intent"`), so the page
+usually opens with its data instead of a loading state. Query's `staleTime`
+(30s) is the only freshness rule — the router's own preload cache is turned
+off (`defaultPreloadStaleTime: 0`) so a hover can't mark a loader done on
+data that's since been invalidated. Loaders use `prefetchQuery`, which never
+throws, so failures still show in each page's inline error state.
+
+Lists that page, sort or filter (People, album list, the person search) keep
+their previous results on screen while the next ones load
+(`keepPreviousData`), dimmed on People. Small edits that almost always
+succeed — a research note's "resolved", marking notifications read, a
+member's role — are optimistic (`useOptimisticMutation` in
+`lib/optimistic.ts`): the cache changes immediately, rolls back if the server
+refuses, and is refetched once settled.
+
+Real-time updates (SSE via tRPC subscriptions, through a pass-through API
+route like `/api/auth/*`) were considered and left for later — notifications
+are still polled every 15s.
+
 ### TanStack Devtools, in development only
 
 One TanStack Devtools shell (`@tanstack/react-devtools`, the palm-tree button
@@ -858,7 +923,12 @@ active but essentially one maintainer — a risk to watch.
 `family-chart` (Ancestry-style re-centring) was the other candidate; last
 release October 2025 and pre-1.0, so riskier.
 
-**Our data → topola** (`apps/frontend/src/lib/topola-data.ts`, unit-tested).
+The chart itself lives in `packages/tree-chart`, framework-free, so the
+static family website draws the very same one (see "Static family website"
+below); the app's `TopolaChart` is a thin React wrapper over its
+`createTreeChart`.
+
+**Our data → topola** (`packages/tree-chart/src/topola-data.ts`, unit-tested).
 Topola thinks in GEDCOM families: a couple plus their children, and each
 person has at most one family-as-child. Every pair of partners — married, or
 simply both parents of the same child — becomes one family keyed by the two
@@ -873,14 +943,21 @@ colour comes from each person's own sex, not the slot. Dates are passed as
 our own localized `formatDisplayDate` text, since topola only knows exact
 GEDCOM dates and has no Danish qualifiers.
 
-**The wrapper** (`apps/frontend/src/routes/-topola-chart.tsx`). Topola is
-CommonJS-only and needs the DOM, so it's loaded with a dynamic `import()` in
-an effect — never during SSR. It draws into an `<svg>` it finds by selector
-and sets that svg's size and its `<g>`'s translate itself, so d3-zoom sits
-on an outer svg with its own transform layer. The chart is rebuilt only when
-the chart type, direction or animation setting changes; a data change (load
-more, add, remove) is `setData` + `render`, so topola animates it and the
-user's pan/zoom stays.
+**The chart and its wrapper** (`createTreeChart` in
+`packages/tree-chart/src/chart.ts`; `apps/frontend/src/routes/-topola-chart.tsx`
+wraps it for React). Topola is CommonJS-only and needs the DOM, so the
+package keeps it out of its main entry: `@genealogy/tree-chart` is the
+DOM-free half (data conversion, cards, navigation), and
+`@genealogy/tree-chart/chart` — loaded with a dynamic `import()` in an
+effect, never during SSR — is the chart. It draws into an `<svg>` it finds
+by selector and sets that svg's size and its `<g>`'s translate itself, so
+d3-zoom sits on an outer svg with its own transform layer. The chart is
+rebuilt only when the chart type, direction, language or animation setting
+changes; a data change (load more, add, remove) is `update` — `setData` +
+`render` on the same handle — so topola animates it and the user's pan/zoom
+stays. The minimap and keyboard handling live in the chart too (drawn with
+D3, styled by `tree-chart.css`); the zoom buttons are the host's, so the
+app keeps its own `Button`s.
 
 **Smooth re-centring.** `FamilyTree` is deliberately not keyed by the centre
 person. It keeps every `person.tree` fetched this visit (`visitedRoots` +
@@ -904,7 +981,7 @@ card's centre at the end of each render (`onPositions`), computed from the
 layout rather than read off the DOM — so it's the final position even while
 cards are still animating, and cards topola is fading out aren't in it.
 Find in tree, the minimap and arrow-key movement all work from that map.
-Arrow keys are spatial (`nearestCard` in `lib/tree-navigation.ts`, tested):
+Arrow keys are spatial (`nearestCard` in `tree-chart/src/tree-navigation.ts`, tested):
 the nearest card on that side, weighting "nearest generation" for moves
 along the generations and "same generation" for sideways moves, so they go
 where the eye expects in both layouts. The canvas is `role="application"`
@@ -961,7 +1038,7 @@ instead — it depends on the screen — stored relative to the centre card
 rather than as a raw transform, which would point elsewhere once more
 people load. Both are off when `rememberLastView` is.
 
-**The cards** (`apps/frontend/src/routes/-tree-card-renderer.ts`) are a
+**The cards** (`packages/tree-chart/src/card-renderer.ts`) are a
 topola renderer of our own, extending its `CompositeRenderer` (which does the
 size bookkeeping and the points lines attach to), drawn with D3 since topola
 calls it with D3 selections. A card is fixed-size: the photo (or tinted initials)
@@ -1437,11 +1514,11 @@ incoming "Peder Sørensen b. 1801" is the "Peder Sørensen" already in the
 tree, and then merging names/events/relationships/citations, is a much
 bigger problem than reading the file — so import never attempts it.
 Every INDI becomes a new person; the preview step lists incoming people
-whose normalized given+surname matches an existing person (the same rule
-`IntegrityService`'s possible-duplicates check uses, so the two agree),
-and resolving them is left to the user — with "Merge with…" on the person
-page (see "Merging people" below); automatic duplicate detection is still an
-idea in IDEAS.md.
+whose name matches an existing person by `nameMatchKey` (the same
+spelling-variant folding duplicate detection uses, so the two agree), and
+resolving them is left to the user — Tools → Possible duplicates finds and
+scores them after the import, and merging is "Merge with…" (see "Duplicate
+detection" and "Merging people" below).
 
 - **Split by layer.** `packages/core/src/gedcom-import.ts` is pure:
   `decodeGedcomBytes` (bytes → text), `parseGedcom` (text → level-nested
@@ -1671,7 +1748,7 @@ tree and photos. **Viewer**: reads, with living people redacted.
 kept (`apps/backend/src/person/person-merge.service.ts`): pick the duplicate,
 see a preview of exactly what moves (`person.mergePreview`, writes nothing),
 confirm. It's the manual half of duplicate handling — GEDCOM import adds
-everyone as new people — and the planned duplicate detection can point here.
+everyone as new people — and duplicate detection (below) points here.
 
 - **Everything moves, in one `inGraphTransaction`.** Every table that
   references a person — names, events, unions (both sides), citations,
@@ -1703,6 +1780,52 @@ everyone as new people — and the planned duplicate detection can point here.
   one `pg` client, and overlapping queries on a client are deprecated (and
   an error in `pg` 9).
 
+### Duplicate detection: scored pairs, Danish names, nothing automatic
+
+Tools → Possible duplicates lists pairs of people who look like one person
+recorded twice, and the person page's "Merge with…" lists the same
+suggestions for that person above its search. The scoring is pure and
+unit-tested in `packages/core/src/duplicate-match.ts`; the backend
+(`apps/backend/src/duplicate/`) only gathers the inputs in a few bulk reads —
+people with vitals, alternate names, christening/burial dates, and every
+`PARENT_OF`/`SPOUSE_OF` edge — and scores the whole tree in memory. Admin
+only, like merging; nothing is ever merged automatically.
+
+- **Danish names compare by sound, not spelling.** `foldName` spells out
+  æ/ø/å (and ä/ö/ü) as ae/oe/aa, so Søren, Sören and Soeren fold alike;
+  `soundKey` then evens out the common variants (ch/c → k, th → t, d
+  between vowels → t, ie → i, doubled letters) so Christensen/Kristensen,
+  Petersen/Pedersen, Nielsen/Nilsen and Aage/Åge match; `surnameStem` cuts
+  patronymic endings back to the genitive s, so Sørensen and Sørensdatter
+  share "soerens". Kept conservative on purpose: a looser key makes every
+  Jens a Hans. A person's alternate names (birth, married) count too.
+- **Equal names say little in a Danish tree**, so confidence is rule-based
+  rather than a score threshold — the UI can say why. A name match alone
+  is "low" (shown as "Name only"); one corroborating fact (a birth or death
+  within two years, the same birth/death parish, a parent or spouse of the
+  same name) is "medium"; an identical full date or two corroborating facts
+  is "high". Name-only pairs are left out entirely for a name more than
+  `MAX_NAME_ONLY_GROUP` (3) people share — thirty Jens Jensens are a
+  parish, not thirty duplicates. The score only orders pairs within a level.
+- **Ruled out before scoring:** no given name in common (a subset counts —
+  Anne Marie / Marie), different known genders, birth or death dates more
+  than five years apart, each other's parent/child/spouse (merge refuses
+  those anyway), and children of the same parent born years apart — the
+  custom of naming a child after a sibling who died young.
+- **Christening and burial stand in** for a missing birth and death: a
+  church book records those, so an imported person often has nothing else.
+- **Blocking keeps it fast.** Pairs are only compared when they share a key
+  (a given name with the surname stem, or a given name with the birth year
+  for a woman recorded under two surnames). A synthetic 10,000-person tree
+  of 16 given names and 10 surnames — far worse than a real one — scores in
+  under half a second.
+- **"Not the same person" is remembered** in `duplicate_dismissals`, one
+  row per pair (smaller id first, enforced by a check constraint), cascading
+  with either person. "Suggest again" on the Tools page clears them all.
+- It replaced the data integrity check's old exact-name "possible
+  duplicates" list rather than sitting beside it, so there's one answer to
+  "who might be a duplicate".
+
 ### Data integrity checks: report-only
 
 The Tools page's data integrity check and two-store consistency check both
@@ -1715,9 +1838,7 @@ call.
   since-deleted `personNames`/`personEvents`/`unions` row — the schema's
   own comment says the app, not the database, is responsible for
   clearing these, since Postgres can't cascade a polymorphic foreign
-  key), possible duplicate people (same normalized given+surname, grouped
-  in JS rather than SQL — simpler at this app's scale than a `GROUP BY`
-  plus a second lookup), and dangling Immich links (via a new
+  key), and dangling Immich links (via a new
   `ImmichService.listDanglingLinks()`, reusing `getPerson`'s own
   fails-open check but surfacing it instead of swallowing it).
 - `checkGraphConsistency()`: diffs every `persons.id` in Postgres against
@@ -1731,6 +1852,73 @@ call.
   the other — a point-in-time skew that disappears on re-run, not real
   drift. Judged not worth wrapping in a transaction for a single-family,
   low-write-concurrency app; both call sites note it.
+
+### Static family website: generated pages plus the app's own chart
+
+Tools → Family website exports the whole tree as a static website — a zip
+that opens offline from `index.html` or can be put on any web server. An
+admin picks a title, the language (en/da) and the person the tree opens on
+(default: their own linked person, else the first A–Z).
+
+**Privacy is the Viewer rule.** Everyone is included, but `isRedactedFor`
+with the `viewer` role decides who is name-only — so every living person,
+the exporting admin included (a published site has no signed-in reader to
+make an exception for). A redacted person keeps name, gender and their
+place in the tree; their photo, notes, alternate names, events and
+citations go, so does a union with them as a partner (its date is their
+marriage date), and so does any source only those facts cited (a source's
+title can name them). `redactSiteData` in `packages/static-site` does it,
+and it runs twice: in the backend before photos are read (so a living
+person's photo file is never opened), and again inside `buildSite`, so the
+output never depends on a caller remembering. Its tests feed a fixture
+full of `SECRET` markers and check no file contains one.
+
+**Shape** (every link relative, so it works from `file://` and in any
+subfolder): `index.html` (counts, privacy note, surname index, everyone
+A–Z with a filter box), `tree.html` (`?person=<publicId>`),
+`people/<publicId>.html` (publicIds are stable, so links survive
+re-exports), `sources.html` with an anchor per source, and `assets/`
+(`site.css`, `theme.css`, `tree.js`, `photos/`). The tree's data is
+`data/tree.js` setting `window.TREE_DATA` — browsers refuse `fetch()` of a
+local file under `file://`, but a classic `<script src>` works, which is
+also why the viewer is an IIFE bundle and not an ES module. Profile photos
+only, no Immich photos; research notes and witnesses are left out.
+
+**Two halves in `packages/static-site`.** The _generator_ (Node, built with
+`tsc`) is pure: `buildSite(data) → Map<path, contents>`, Handlebars
+templates (auto-escaping; the only triple-stash output is HTML the package
+made itself), notes through micromark — the parser under react-markdown,
+so notes read as in the app, and safe by default (raw HTML escaped,
+`javascript:` links dropped). Its own strings in both languages live in
+the package, since the backend can't import the frontend's i18n files;
+dates go through core's `resolveHistoricalDate` like the app. The _viewer_
+(`src/viewer/main.ts`, a Vite library build into `dist/viewer/`) is
+`createTreeChart` plus a little glue — chart/direction switcher, the
+selected person with "Open page", "Centre tree here", zoom buttons — so the
+site's tree is the app's tree, not a lookalike that could drift. The
+generator already formats every date, so the viewer bundle carries no date
+parser (and no zod). Colours come from the family site's theme as CSS
+variables (`theme.css`), light by default and dark under
+`prefers-color-scheme`; the theme's fonts fall back to their system stacks,
+since the font files aren't shipped.
+
+**Backend.** A `static-site` BullMQ job, the same shape as backup and the
+album zip: `staticSite.create` (`adminProcedure` — it exports everyone)
+refuses an empty tree and enqueues; `StaticSiteService.generate` gathers
+both stores, maps rows to the generator's input (`assembleSiteData`: ids
+become publicIds, option keys become labels, citations attach to their
+facts — pure and tested), redacts, reads the remaining profile photos from
+`UPLOADS_DIR`, builds, adds the viewer assets and writes a zip with
+**fflate** under `STATIC_SITES_DIR` (text deflated, photos stored as they
+are, all inside one `family-website/` folder). A `static_site_ready`
+notification links to `StaticSiteController`, which streams the zip once
+and deletes it, as `BackupController` does.
+
+Libraries, vetted 2026-10-09: fflate 0.8.3 (released 2026-07, last commit
+2026-05, ~3k stars; already in the lockfile via jsPDF) over archiver 8
+(more open issues) and yazl (last release 2024-11); micromark 4.0.3
+(released 2026-09) over marked 18 (very active, but passes raw HTML
+through, so it would need a sanitizer).
 
 ### Backup and restore, and the Apache AGE limitation that shaped them
 

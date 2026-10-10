@@ -73,7 +73,7 @@
     "requestFailed": "Anmodningen mislykkedes — se browserkonsollen for detaljer.",
     "passwordUpdated": "Adgangskode opdateret.",
     "saving": "Gemmer…",
-    "theme": "Tema",
+    "theme": "Udseende",
     "themeLight": "Lys",
     "themeDark": "Mørk",
     "themeSystem": "System",
@@ -81,7 +81,8 @@
     "whoYouAre": "Hvem du er i slægtstræet",
     "couldNotLoad": "Kunne ikke indlæse: {{message}}",
     "change": "Skift",
-    "searchPeople": "Søg efter personer"
+    "searchPeople": "Søg efter personer",
+    "mode": "Lyst eller mørkt"
   },
   "login": {
     "signIn": "Log ind",
@@ -335,9 +336,11 @@
       "immich-faces": "Genscan efter ansigter",
       "gedcom-export": "Eksportér GEDCOM",
       "gedcom-import": "Importér GEDCOM",
+      "family-website": "Familiens websted",
       "data-integrity": "Dataintegritetstjek",
       "graph-consistency": "Konsistenstjek mellem de to lagre",
-      "presumed-deceased": "Formodet døde"
+      "presumed-deceased": "Formodet døde",
+      "duplicates": "Mulige dubletter"
     },
     "backupDescription": "Genererer et gzip-komprimeret SQL-dump af hele databasen — personer, kilder, kildehenvisninger og slægtstræ-grafen — i én fil. Gendan den fra \"Gendan database\"-værktøjet i sidebjælken (et almindeligt psql < fil virker ikke — slægtstræ-grafen kræver et par ekstra trin, som gendannelsesværktøjet allerede håndterer). Du får en notifikation (øverst til højre), når den er klar til download.",
     "starting": "Starter…",
@@ -435,7 +438,7 @@
       "possibleDuplicates_other": "Findes muligvis allerede i dit træ ({{count}})",
       "moreDuplicates_one": "…og {{count}} mere.",
       "moreDuplicates_other": "…og {{count}} flere.",
-      "duplicatesHint": "Disse har samme navn som en, der allerede er i dit træ. De tilføjes stadig som nye personer — brug dataintegritetstjekket bagefter til at finde og flette dem manuelt.",
+      "duplicatesHint": "Disse har samme navn (eller en stavemåde af det) som en, der allerede er i dit træ. De tilføjes stadig som nye personer — åbn Mulige dubletter bagefter for at sammenligne og flette dem.",
       "importPeople_one": "Importér {{count}} person",
       "importPeople_other": "Importér {{count}} personer",
       "importing": "Importerer…",
@@ -445,12 +448,11 @@
       "viewPeople": "Se personer"
     },
     "unnamed": "(unavngivet)",
-    "dataIntegrityDescription": "En skrivebeskyttet rapport: kildehenvisninger, der peger på et slettet navn/begivenhed/union, personer der måske er dubletter, og (hvis Immich er konfigureret) links, der peger på en slettet Immich-person. Intet ændres automatisk her — hvert fund er til din egen vurdering.",
+    "dataIntegrityDescription": "En skrivebeskyttet rapport: kildehenvisninger, der peger på et slettet navn/begivenhed/union, (hvis Immich er konfigureret) links, der peger på en slettet Immich-person, og aldre i kilder, der ikke passer med fødslen. Intet ændres automatisk her — hvert fund er til din egen vurdering. Mulige dubletpersoner har deres eget værktøj.",
     "checking": "Kontrollerer…",
     "runCheck": "Kør tjek",
     "danglingCitations": "Løse kildehenvisninger",
     "danglingCitationText": "En kildehenvisning fra \"{{source}}\" refererer til en slettet {{factType}} —",
-    "possibleDuplicates": "Mulige dubletpersoner",
     "danglingImmichLinks": "Løse Immich-links",
     "danglingImmichLinkText": "er tilknyttet en Immich-person, der ikke længere findes.",
     "graphConsistencyDescription": "Sammenligner alle personer i databasen med slægtstræ-grafen, der gemmer, hvordan de er beslægtede. En uoverensstemmelse her betyder, at de to er drevet fra hinanden — skrivebeskyttet, intet ændres automatisk.",
@@ -482,7 +484,19 @@
     "devTool": {
       "components": "Komponentoversigt"
     },
-    "devOnlyLocalhost": "Udviklerværktøjer er kun tilgængelige, når appen kører på localhost."
+    "devOnlyLocalhost": "Udviklerværktøjer er kun tilgængelige, når appen kører på localhost.",
+    "familyWebsite": {
+      "description": "Eksporterer hele træet som et websted: en side for hver person, kilderne og det interaktive stamtræ — det samme som her. Du får en zip-fil: pak den ud og åbn index.html, eller læg mappen på en hvilken som helst webserver. Du får en notifikation (øverst til højre), når den er klar til download.",
+      "privacy": "Alle kommer med, men nulevende personer vises kun med navn — ingen datoer, steder, noter, billeder eller kilder, ligesom for en Læser. Det gælder også dig. Kun profilbilleder kommer med.",
+      "title": "Titel",
+      "defaultTitle": "Stamtræ",
+      "language": "Sprog",
+      "startPerson": "Stamtræet åbner på",
+      "startPersonDefault": "Lad feltet stå tomt for at starte med din egen person i træet, ellers den første fra A–Å.",
+      "clearStartPerson": "Ryd startperson",
+      "export": "Eksportér websted",
+      "queued": "Startet — notifikationsklokken fortæller, når webstedet er klar til download."
+    }
   },
   "settings": {
     "title": "Indstillinger",
@@ -965,7 +979,10 @@
         "directlyRelated": "De er registreret som hinandens forælder, barn eller ægtefælle — fjern den relation først, hvis de virkelig er samme person.",
         "sameLineage": "Den ene er registreret som den andens ane — en fletning ville gøre personen til sin egen ane.",
         "bothLinkedToAccounts": "Begge er koblet til brugerkonti (\"det er mig\"). Fjern koblingen fra den ene først."
-      }
+      },
+      "suggestionsHeading": "Sandsynlige dubletter",
+      "orSearch": "Eller søg efter en anden:",
+      "swap": "Behold den anden i stedet"
     },
     "presumedDeceased": {
       "hint": "Født for mere end {{years}} år siden — sandsynligvis død.",
@@ -1231,5 +1248,123 @@
       "birthplace": "Fødested i {{record}}: {{place}}.",
       "useAsBirthplace": "Brug som fødested"
     }
+  },
+  "appearance": {
+    "title": "Udseende",
+    "custom": "Egen",
+    "light": "Lyst",
+    "dark": "Mørkt",
+    "previewText": "Født i Ribe, gift i Esbjerg.",
+    "previewPrimary": "Gem",
+    "previewOutline": "Annullér",
+    "previewDestructive": "Slet",
+    "previewInput": "Dato",
+    "previewSwitch": "Levende",
+    "newThemeName": "Mit tema",
+    "group": {
+      "page": "Side",
+      "cards": "Kort, menuer og pop op",
+      "brand": "Brand",
+      "subtle": "Sekundær, fremhævning og dæmpet",
+      "lines": "Linjer",
+      "danger": "Fare"
+    },
+    "token": {
+      "background": "Sidebaggrund",
+      "foreground": "Tekst",
+      "card": "Kort",
+      "card-foreground": "Tekst på kort",
+      "popover": "Menu og pop op",
+      "popover-foreground": "Tekst i menu og pop op",
+      "primary": "Primær",
+      "primary-foreground": "Tekst på primær",
+      "secondary": "Sekundær",
+      "secondary-foreground": "Tekst på sekundær",
+      "accent": "Fremhævning",
+      "accent-foreground": "Tekst på fremhævning",
+      "muted": "Dæmpet",
+      "muted-foreground": "Dæmpet tekst",
+      "destructive": "Fare",
+      "destructive-foreground": "Tekst på fare",
+      "border": "Kanter",
+      "input": "Feltkanter",
+      "ring": "Fokusring"
+    },
+    "radius": {
+      "square": "Firkantet",
+      "small": "Små",
+      "medium": "Mellem",
+      "large": "Runde"
+    },
+    "name": "Navn",
+    "copyFrom": "Kopiér farver og skrifter fra",
+    "copyFromPlaceholder": "Vælg et tema…",
+    "headingFont": "Skrift til overskrifter",
+    "bodyFont": "Skrift til brødtekst",
+    "corners": "Hjørner",
+    "colors": "Farver",
+    "preview": "Forhåndsvisning",
+    "invalid": "Nogle farver er endnu ikke gyldige CSS-farver — brug #rrggbb eller en funktion som oklch(…).",
+    "create": "Opret tema",
+    "siteTheme": "Familiesidens tema",
+    "siteThemeHelp": "Det alle ser — medmindre de har valgt deres eget tema på deres profil.",
+    "customThemes": "Egne temaer",
+    "customThemesHelp": "Temaer du laver her, tilbydes alle medlemmer sammen med de indbyggede.",
+    "newTheme": "Nyt tema",
+    "noCustomThemes": "Ingen egne temaer endnu.",
+    "editTheme": "Redigér {{name}}",
+    "editTitle": "Redigér tema",
+    "removeDescription": "Alle der bruger det, går tilbage til familiesidens tema; er det sidens tema, går siden tilbage til Nova.",
+    "myTheme": "Tema",
+    "sameAsSite": "Samme som familiesiden"
+  },
+  "duplicates": {
+    "description": "Personer, der ligner én person registreret to gange — matchet på navne (også danske stavemåder som Christensen/Kristensen og Sørensen/Sørensdatter), datoer, steder, forældre og ægtefæller. Intet flettes automatisk: sammenlign hvert par og flet det, eller markér det som ikke samme person, så det ikke foreslås igen.",
+    "loading": "Leder efter dubletter…",
+    "none": "Ingen sandsynlige dubletter fundet.",
+    "filterLabel": "Vis",
+    "filter": {
+      "all_one": "Alle ({{count}})",
+      "all_other": "Alle ({{count}})",
+      "high_one": "Høj ({{count}})",
+      "high_other": "Høj ({{count}})",
+      "medium_one": "Middel ({{count}})",
+      "medium_other": "Middel ({{count}})",
+      "low_one": "Kun navn ({{count}})",
+      "low_other": "Kun navn ({{count}})"
+    },
+    "confidence": {
+      "high": "Sandsynlig",
+      "medium": "Mulig",
+      "low": "Kun navn"
+    },
+    "reason": {
+      "sameName": "samme navn",
+      "similarName": "lignende navn",
+      "sameBirthDate": "samme fødselsdato",
+      "similarBirthDate": "fødsel tæt på",
+      "sameDeathDate": "samme dødsdato",
+      "similarDeathDate": "død tæt på",
+      "sameBirthPlace": "samme fødested",
+      "sameDeathPlace": "samme dødssted",
+      "sameParents": "samme forældre",
+      "sameSpouse": "samme ægtefælle"
+    },
+    "born": "f.",
+    "died": "d.",
+    "merge": "Flet…",
+    "mergeTitle": "Flet to personer",
+    "dismiss": "Ikke samme person",
+    "dismissed": "{{a}} og {{b}} foreslås ikke igen.",
+    "undo": "Fortryd",
+    "more_one": "{{count}} par mere er ikke vist — det dukker op, efterhånden som disse flettes eller afvises.",
+    "more_other": "{{count}} par mere er ikke vist — de dukker op, efterhånden som disse flettes eller afvises.",
+    "dismissedCount_one": "{{count}} par markeret som ikke samme person.",
+    "dismissedCount_other": "{{count}} par markeret som ikke samme person.",
+    "clearItemLabel": "afviste par",
+    "clearTitle": "Foreslå afviste par igen?",
+    "clearDescription_one": "Det {{count}} par, der er markeret som ikke samme person, foreslås igen.",
+    "clearDescription_other": "Alle {{count}} par, der er markeret som ikke samme person, foreslås igen.",
+    "clearAction": "Foreslå igen"
   }
 }

@@ -193,7 +193,7 @@ function yearOf(date: HistoricalDate | null): string | null {
   return iso ? iso.slice(0, 4) : null;
 }
 
-/** What a tree card shows — see `CardInfo` in `routes/-tree-card-renderer.ts`. */
+/** What a tree card shows — see `CardInfo` in `card-renderer.ts`. */
 export interface TreeCard {
   name: string;
   /** Up to two lines under the name — dates, then place if there's room. */

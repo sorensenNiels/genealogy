@@ -7,6 +7,7 @@ import {
   type TreeOrientation,
   treeOrientationSchema,
 } from "@genealogy/core";
+import { directLine, toTopolaJson, treeCard } from "@genealogy/tree-chart";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Button, buttonVariants } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
@@ -30,7 +31,6 @@ import { toSupportedLanguage } from "../i18n/create-i18n-instance";
 import { publicBackendUrl } from "../lib/env";
 import { formatDisplayDate } from "../lib/format-date";
 import { usePermissions } from "../lib/permissions";
-import { directLine, toTopolaJson, treeCard } from "../lib/topola-data";
 import {
   addOptions,
   type AddOption,

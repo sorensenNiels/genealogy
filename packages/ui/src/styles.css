@@ -9,7 +9,12 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* These are Nova, the default theme. The active theme (Nova or another)
+     overrides every variable here with a <style> element the app renders in
+     <head> (themeToCss in @genealogy/core); these stay as the fallback. */
   --radius: 0.625rem;
+  --app-font-body: ui-sans-serif, system-ui, sans-serif;
+  --app-font-heading: ui-sans-serif, system-ui, sans-serif;
 
   --background: #f5f5f2;
   --foreground: oklch(0.129 0.042 264.695);
@@ -84,6 +89,11 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* The theme's fonts: `font-sans` (Tailwind's default, so all body text) is
+     the body font; `font-heading` is for headings and titles (see below). */
+  --font-sans: var(--app-font-body);
+  --font-heading: var(--app-font-heading);
 }
 
 @layer base {
@@ -93,6 +103,19 @@
 
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* Headings and the titles of cards, dialogs and popovers take the theme's
+     heading font — a serif theme can set headings apart from body text. */
+  h1,
+  h2,
+  h3,
+  h4,
+  [data-slot="card-title"],
+  [data-slot="dialog-title"],
+  [data-slot="alert-dialog-title"],
+  [data-slot="popover-title"] {
+    font-family: var(--font-heading);
   }
 }
 

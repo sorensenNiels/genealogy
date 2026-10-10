@@ -167,6 +167,42 @@ catalogs:
     '@base-ui/react':
       specifier: 1.8.0
       version: 1.8.0
+    '@fontsource-variable/atkinson-hyperlegible-next':
+      specifier: 5.3.0
+      version: 5.3.0
+    '@fontsource-variable/eb-garamond':
+      specifier: 5.3.0
+      version: 5.3.0
+    '@fontsource-variable/figtree':
+      specifier: 5.3.0
+      version: 5.3.0
+    '@fontsource-variable/fraunces':
+      specifier: 5.3.0
+      version: 5.3.0
+    '@fontsource-variable/inter':
+      specifier: 5.3.0
+      version: 5.3.0
+    '@fontsource-variable/literata':
+      specifier: 5.3.0
+      version: 5.3.0
+    '@fontsource-variable/lora':
+      specifier: 5.3.0
+      version: 5.3.0
+    '@fontsource-variable/nunito':
+      specifier: 5.3.0
+      version: 5.3.0
+    '@fontsource-variable/playfair-display':
+      specifier: 5.3.0
+      version: 5.3.0
+    '@fontsource-variable/source-sans-3':
+      specifier: 5.3.0
+      version: 5.3.0
+    '@fontsource-variable/source-serif-4':
+      specifier: 5.3.0
+      version: 5.3.0
+    '@fontsource-variable/work-sans':
+      specifier: 5.3.0
+      version: 5.3.0
     '@internationalized/date':
       specifier: 3.12.4
       version: 3.12.4
@@ -314,6 +350,9 @@ catalogs:
     express:
       specifier: 5.2.0
       version: 5.2.0
+    fflate:
+      specifier: 0.8.3
+      version: 0.8.3
     handlebars:
       specifier: 4.7.9
       version: 4.7.9
@@ -332,6 +371,9 @@ catalogs:
     lucide-react:
       specifier: 1.47.0
       version: 1.47.0
+    micromark:
+      specifier: 4.0.3
+      version: 4.0.3
     multer:
       specifier: 2.4.0
       version: 2.4.0
@@ -430,6 +472,9 @@ importers:
       '@genealogy/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@genealogy/static-site':
+        specifier: workspace:*
+        version: link:../../packages/static-site
       '@nestjs/bullmq':
         specifier: 'catalog:'
         version: 12.0.0(@nestjs/common@12.0.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@12.0.3)(bullmq@6.3.9(ioredis@6.0.0)(pg@8.23.0))
@@ -460,6 +505,9 @@ importers:
       express:
         specifier: 'catalog:'
         version: 5.2.0
+      fflate:
+        specifier: 'catalog:'
+        version: 0.8.3
       handlebars:
         specifier: 'catalog:'
         version: 4.7.9
@@ -521,9 +569,48 @@ importers:
 
   apps/frontend:
     dependencies:
+      '@fontsource-variable/atkinson-hyperlegible-next':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/eb-garamond':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/figtree':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/fraunces':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/inter':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/literata':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/lora':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/nunito':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/playfair-display':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/source-sans-3':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/source-serif-4':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/work-sans':
+        specifier: 'catalog:'
+        version: 5.3.0
       '@genealogy/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@genealogy/tree-chart':
+        specifier: workspace:*
+        version: link:../../packages/tree-chart
       '@genealogy/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -554,15 +641,6 @@ importers:
       better-auth:
         specifier: 'catalog:'
         version: 1.7.5(@tanstack/react-start@1.168.57(esbuild@0.28.2)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(rolldown@1.2.11)(vite@8.3.0(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)))(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@types/pg@8.23.1)(kysely@0.29.6)(pg@8.23.0))(pg@8.23.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(solid-js@1.9.17)(vitest@5.0.1(@types/node@26.6.4)(jsdom@30.1.0(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)))
-      d3-selection:
-        specifier: 'catalog:'
-        version: 3.0.0
-      d3-transition:
-        specifier: 'catalog:'
-        version: 3.0.1(d3-selection@3.0.0)
-      d3-zoom:
-        specifier: 'catalog:'
-        version: 3.0.0
       i18next:
         specifier: 'catalog:'
         version: 26.4.2(typescript@6.0.3)
@@ -584,9 +662,6 @@ importers:
       superjson:
         specifier: 'catalog:'
         version: 2.2.6
-      topola:
-        specifier: 'catalog:'
-        version: 3.10.4
       zod:
         specifier: 'catalog:'
         version: 4.6.5
@@ -609,15 +684,6 @@ importers:
       '@tanstack/react-router-devtools':
         specifier: 'catalog:'
         version: 1.167.2(@tanstack/react-router@1.170.38(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@tanstack/router-core@1.171.32)(csstype@3.2.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@types/d3-selection':
-        specifier: 'catalog:'
-        version: 3.0.12
-      '@types/d3-transition':
-        specifier: 'catalog:'
-        version: 3.0.9
-      '@types/d3-zoom':
-        specifier: 'catalog:'
-        version: 3.0.9
       '@types/react':
         specifier: 'catalog:'
         version: 19.3.0
@@ -677,6 +743,68 @@ importers:
       drizzle-kit:
         specifier: 'catalog:'
         version: 0.31.10
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.1(@types/node@26.6.4)(jsdom@30.1.0(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@26.6.4))
+
+  packages/static-site:
+    dependencies:
+      '@genealogy/core':
+        specifier: workspace:*
+        version: link:../core
+      handlebars:
+        specifier: 'catalog:'
+        version: 4.7.9
+      micromark:
+        specifier: 'catalog:'
+        version: 4.0.3
+    devDependencies:
+      '@genealogy/tree-chart':
+        specifier: workspace:*
+        version: link:../tree-chart
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vite:
+        specifier: 'catalog:'
+        version: 8.3.0(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.1(@types/node@26.6.4)(jsdom@30.1.0(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@26.6.4))
+
+  packages/tree-chart:
+    dependencies:
+      '@genealogy/core':
+        specifier: workspace:*
+        version: link:../core
+      d3-selection:
+        specifier: 'catalog:'
+        version: 3.0.0
+      d3-transition:
+        specifier: 'catalog:'
+        version: 3.0.1(d3-selection@3.0.0)
+      d3-zoom:
+        specifier: 'catalog:'
+        version: 3.0.0
+      topola:
+        specifier: 'catalog:'
+        version: 3.10.4
+    devDependencies:
+      '@types/d3-selection':
+        specifier: 'catalog:'
+        version: 3.0.12
+      '@types/d3-transition':
+        specifier: 'catalog:'
+        version: 3.0.9
+      '@types/d3-zoom':
+        specifier: 'catalog:'
+        version: 3.0.9
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -1600,6 +1728,42 @@ packages:
 
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
+
+  '@fontsource-variable/atkinson-hyperlegible-next@5.3.0':
+    resolution: {integrity: sha512-UnLzNUy1RWoLDfydAatP4NaRm99X/WbQEph7q/PymJnCFIOOwKOx3pBmp5ys8trO0dM+CKGuJgeZP9fAR4mQpA==}
+
+  '@fontsource-variable/eb-garamond@5.3.0':
+    resolution: {integrity: sha512-656OJsA9Vv24yhqRZFEzXnzS2AYgKdEILLgHJYLzzXndgcWFKfSXFqzbRI5/6Yk1Yt7UfWrUeppE5nRQPQMwlQ==}
+
+  '@fontsource-variable/figtree@5.3.0':
+    resolution: {integrity: sha512-VRVodD7OiG7apQwE8/2fMjaqpY/a0qRJqL5HtYj8CKIVps+9amaFcdfKmDIf7iqYQx6iPLlArVXAfKeIZmVcNQ==}
+
+  '@fontsource-variable/fraunces@5.3.0':
+    resolution: {integrity: sha512-9BYGySn4AHEJdgp9Z28tQ3X+laJMEOITXkQarZXeloWQZDq5oOvXJ3kDA8c7MGIfpogIaZfjrQBqmda8POOCKA==}
+
+  '@fontsource-variable/inter@5.3.0':
+    resolution: {integrity: sha512-OupL48va4JNofb97w6NYeF9S7W/kHNKM0Er8Dem5nqi4jeOLrVJDoE8tZEpnMJmtkvNbB1EIPPwHcdkF6b1oUA==}
+
+  '@fontsource-variable/literata@5.3.0':
+    resolution: {integrity: sha512-1Jw7xvOcoGyB83lxB2nG4bfNbqtX2/TTbdh9sHAOmU064SvmSdulDtA5RBu5JYWf64fdaKX7xU+z3GO1T2bCHA==}
+
+  '@fontsource-variable/lora@5.3.0':
+    resolution: {integrity: sha512-2ph8KiZ8Bn141hWuC3ErtpJ+Ui8p2MJQn8TJNRSRmLmnCIOCtHfiBM9R7WLRPeUG/q6hXyHOxWQ8DvRSX+ixvQ==}
+
+  '@fontsource-variable/nunito@5.3.0':
+    resolution: {integrity: sha512-tw0ch7evIDSwoeUy+0XzocYHfbRWLeCRPJy22KgbrLjDLAbNw/fErBiil10Ssrs3Sjr55zaZrr36a975j8cBkQ==}
+
+  '@fontsource-variable/playfair-display@5.3.0':
+    resolution: {integrity: sha512-IHdzTvE8eGIXHteZql7KXoqdc3Gfm+Zs1u4XlSC3MeplkwviT3sx/P6gI0tLwg/xIYLF4ZJYveZ5V+bl9cnDwA==}
+
+  '@fontsource-variable/source-sans-3@5.3.0':
+    resolution: {integrity: sha512-dpi0GZk7EQe2tYpg6Q0Fx0OmUgnuGu+0rHPgtXqtKhglYmJuP7jZ12Mu1uN+NfRaJRY1Emn8AQJEWzmoZ4wa9g==}
+
+  '@fontsource-variable/source-serif-4@5.3.0':
+    resolution: {integrity: sha512-9vch9WqxjaaA+1o9Ur8pOgIGbCYLjRReOUel23A6lOpD1syptgjtkORevvNmldJ5kGXQL29onQUqI5Ltz0s3bQ==}
+
+  '@fontsource-variable/work-sans@5.3.0':
+    resolution: {integrity: sha512-le8h/OIIuhm5Z7TdvuMw0yKg2gaCZUiMec8zaumsVVjzeJRBPEF0bQI/MkaZDHCVzZDvZoP/O2LiGOSfDLSbaw==}
 
   '@inquirer/ansi@2.0.8':
     resolution: {integrity: sha512-WpQM+Ti6Z40EFwwt+uL2p4UabT+W179zHp6HhLVOzfbwnVn05IPO/eXIZXGNqcT1jbQ15SujNLzQ39k4QPPxBQ==}
@@ -4987,6 +5151,9 @@ packages:
   micromark-util-decode-string@2.0.1:
     resolution: {integrity: sha512-nDV/77Fj6eH1ynwscYTOsbK7rR//Uj0bZXBwJZRfaLEJ1iGBR6kIfNmlNqaqJf649EP0F3NWNdeJi03elllNUQ==}
 
+  micromark-util-edit-map@1.0.0:
+    resolution: {integrity: sha512-Pa2ljlsEL6sVwFaYeyrOLSYbQt73JvGbPOYFq+9AElXiSnfI5Q4465RRZ1sHv7lDjDOnGRDDaqPXqClqWK/q1Q==}
+
   micromark-util-encode@2.0.1:
     resolution: {integrity: sha512-c3cVx2y4KqUnwopcO9b/SCdo2O67LwJJ/UyqGfbigahfegL9myoEFoDYZgkT7f36T0bLrM9hZTAaAyH+PCAXjw==}
 
@@ -5016,6 +5183,9 @@ packages:
 
   micromark@4.0.2:
     resolution: {integrity: sha512-zpe98Q6kvavpCr1NPVSCMebCKfD7CA2NqZ+rykeNhONIJBpc1tFKt9hucLGwha3jNTNI8lHpctWJWoimVF4PfA==}
+
+  micromark@4.0.3:
+    resolution: {integrity: sha512-oGYfQzHSG5dOMovQcJ3fyTmZlWAWpi0XA0sJwJs+i6OT88o1+Jtw/8z0CmdowSLxGhhFK89rQ/oXph/wN02PNw==}
 
   mime-db@1.52.0:
     resolution: {integrity: sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg==}
@@ -6875,6 +7045,30 @@ snapshots:
       tabbable: 6.5.0
 
   '@floating-ui/utils@0.2.12': {}
+
+  '@fontsource-variable/atkinson-hyperlegible-next@5.3.0': {}
+
+  '@fontsource-variable/eb-garamond@5.3.0': {}
+
+  '@fontsource-variable/figtree@5.3.0': {}
+
+  '@fontsource-variable/fraunces@5.3.0': {}
+
+  '@fontsource-variable/inter@5.3.0': {}
+
+  '@fontsource-variable/literata@5.3.0': {}
+
+  '@fontsource-variable/lora@5.3.0': {}
+
+  '@fontsource-variable/nunito@5.3.0': {}
+
+  '@fontsource-variable/playfair-display@5.3.0': {}
+
+  '@fontsource-variable/source-sans-3@5.3.0': {}
+
+  '@fontsource-variable/source-serif-4@5.3.0': {}
+
+  '@fontsource-variable/work-sans@5.3.0': {}
 
   '@inquirer/ansi@2.0.8': {}
 
@@ -10381,6 +10575,10 @@ snapshots:
       micromark-util-decode-numeric-character-reference: 2.0.2
       micromark-util-symbol: 2.0.1
 
+  micromark-util-edit-map@1.0.0:
+    dependencies:
+      micromark-util-types: 2.0.2
+
   micromark-util-encode@2.0.1: {}
 
   micromark-util-events-to-acorn@2.0.3:
@@ -10432,6 +10630,29 @@ snapshots:
       micromark-util-chunked: 2.0.1
       micromark-util-combine-extensions: 2.0.1
       micromark-util-decode-numeric-character-reference: 2.0.2
+      micromark-util-encode: 2.0.1
+      micromark-util-normalize-identifier: 2.0.1
+      micromark-util-resolve-all: 2.0.1
+      micromark-util-sanitize-uri: 2.0.1
+      micromark-util-subtokenize: 2.1.0
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+    transitivePeerDependencies:
+      - supports-color
+
+  micromark@4.0.3:
+    dependencies:
+      '@types/debug': 4.1.13
+      debug: 4.4.3
+      decode-named-character-reference: 1.3.0
+      devlop: 1.1.0
+      micromark-core-commonmark: 2.0.3
+      micromark-factory-space: 2.0.1
+      micromark-util-character: 2.1.1
+      micromark-util-chunked: 2.0.1
+      micromark-util-combine-extensions: 2.0.1
+      micromark-util-decode-numeric-character-reference: 2.0.2
+      micromark-util-edit-map: 1.0.0
       micromark-util-encode: 2.0.1
       micromark-util-normalize-identifier: 2.0.1
       micromark-util-resolve-all: 2.0.1

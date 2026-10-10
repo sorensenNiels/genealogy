@@ -21,6 +21,12 @@ export function getRouter() {
     // resolves the real value per request — see __root.tsx.
     context: { queryClient, language: "en", role: "viewer" },
     defaultPreload: "intent",
+    // Route loaders only prefetch into TanStack Query (see lib/queries.ts),
+    // so Query's staleTime is the one source of truth for freshness. With
+    // the router's own preload cache on top (30s by default), a hover
+    // preload could mark a loader "done" and skip it on the real navigation
+    // even after the query had been invalidated.
+    defaultPreloadStaleTime: 0,
   });
 
   setupRouterSsrQueryIntegration({ router, queryClient });

@@ -7,6 +7,8 @@ import type {
 } from "@genealogy/core";
 import {
   appSettingsKeys,
+  themeSettingsSchema,
+  type ThemeSettings,
   parsePersonSettings,
   parseRecordSettings,
   parseTreeSettings,
@@ -77,6 +79,19 @@ export class SettingsService {
 
   async updateRecordSettings(settings: RecordSettings): Promise<RecordSettings> {
     await this.writeSection(appSettingsKeys.records, settings);
+    return settings;
+  }
+
+  /** The family site's theme. A saved value that no longer parses falls back to Nova. */
+  async getThemeSettings(): Promise<ThemeSettings> {
+    const parsed = themeSettingsSchema.safeParse(
+      (await this.readSection(appSettingsKeys.theme)) ?? {},
+    );
+    return parsed.success ? parsed.data : themeSettingsSchema.parse({});
+  }
+
+  async updateThemeSettings(settings: ThemeSettings): Promise<ThemeSettings> {
+    await this.writeSection(appSettingsKeys.theme, settings);
     return settings;
   }
 

@@ -88,6 +88,22 @@ catalog:
   # released (Query 5.104.1 on 2026-10-02, Router 1.167.2 on 2026-09-13, the
   # shell 0.10.13 on 2026-09-23, Form 0.2.34 on 2026-08-11); the shell and the
   # Form panel are still 0.x. Query devtools pinned to match react-query.
+  # Theme fonts (see "Themes" in TECH_STACK.md): self-hosted Fontsource
+  # variable fonts, OFL-licensed; 5.3.0 released 2026-07-19 for all, the
+  # fontsource/font-files repo pushed 2026-09. Imported in
+  # apps/frontend/src/styles.css; keep in step with FONTS in @genealogy/core.
+  "@fontsource-variable/inter": 5.3.0
+  "@fontsource-variable/source-sans-3": 5.3.0
+  "@fontsource-variable/nunito": 5.3.0
+  "@fontsource-variable/work-sans": 5.3.0
+  "@fontsource-variable/figtree": 5.3.0
+  "@fontsource-variable/atkinson-hyperlegible-next": 5.3.0
+  "@fontsource-variable/fraunces": 5.3.0
+  "@fontsource-variable/literata": 5.3.0
+  "@fontsource-variable/lora": 5.3.0
+  "@fontsource-variable/source-serif-4": 5.3.0
+  "@fontsource-variable/eb-garamond": 5.3.0
+  "@fontsource-variable/playfair-display": 5.3.0
   "@tanstack/react-devtools": 0.10.13
   "@tanstack/react-query-devtools": 5.103.1
   "@tanstack/react-router-devtools": 1.167.2
@@ -176,6 +192,16 @@ catalog:
   # Both ship their own TypeScript types — no @types/* package for either.
   nodemailer: 10.0.11
   handlebars: 4.7.9
+
+  # --- static family website (see "Static family website" in TECH_STACK.md) ---
+  # Both vetted 2026-10-09 per the "Recommending or adding a library" rule.
+  # fflate writes the zip, streaming (0.8.3 released 2026-07, last commit
+  # 2026-05, ~3k stars; already in the lockfile via jspdf). micromark turns
+  # notes into HTML — the parser react-markdown uses, so notes render the
+  # same as in the app, and safe by default (raw HTML escaped, javascript:
+  # links dropped). Last released 2026-09.
+  fflate: 0.8.3
+  micromark: 4.0.3
 
 minimumReleaseAgeExclude:
   - "@tanstack/react-start-rsc@0.1.56"

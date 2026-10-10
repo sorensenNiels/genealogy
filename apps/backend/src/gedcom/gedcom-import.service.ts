@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   GedcomImportError,
   countGedcomImportPlan,
+  nameMatchKey,
   planGedcomImport,
   type ConfigurableTopic,
   type GedcomImportAssociation,
@@ -71,9 +72,10 @@ export interface GedcomImportPreview {
  * GEDCOM import: every incoming person is added as a *new* person, in one
  * transaction spanning Postgres and the AGE graph. Matching an incoming
  * person against someone already in the tree is deliberately not attempted
- * — `preview` only reports likely matches (same rule as the integrity
- * check's "possible duplicates"), so the user can decide before importing,
- * and merge afterwards. See "GEDCOM import" in TECH_STACK.md.
+ * — `preview` only reports likely matches (by `nameMatchKey`, the same
+ * spelling-variant folding duplicate detection uses), so the user can
+ * decide before importing, and merge afterwards (Tools → Possible
+ * duplicates finds them). See "GEDCOM import" in TECH_STACK.md.
  *
  * Stateless across the two calls: `import` re-parses the same text `preview`
  * saw rather than the server holding a parsed plan between requests —
@@ -105,7 +107,7 @@ export class GedcomImportService {
       .orderBy(asc(persons.surname), asc(persons.given));
     const existingByName = new Map<string, (DuplicateCandidate & { id: string })[]>();
     for (const row of existing) {
-      const key = duplicateKey(row);
+      const key = nameMatchKey(row);
       if (!key) continue;
       const group = existingByName.get(key) ?? [];
       group.push({
@@ -120,7 +122,7 @@ export class GedcomImportService {
     const possibleDuplicates: GedcomImportPreview["possibleDuplicates"] = [];
     let possibleDuplicateCount = 0;
     for (const person of plan.persons) {
-      const key = duplicateKey(person);
+      const key = nameMatchKey(person);
       const matches = key ? existingByName.get(key) : undefined;
       if (!matches) continue;
       possibleDuplicateCount += 1;
@@ -428,13 +430,6 @@ export class GedcomImportService {
       return countGedcomImportPlan(plan);
     });
   }
-}
-
-/** Same name rule as `IntegrityService`'s possible-duplicates check, so the two agree on what "looks like the same person" means. */
-function duplicateKey(person: { given: string; surname: string }): string | null {
-  const surname = person.surname.trim().toLowerCase();
-  if (surname === "") return null;
-  return `${person.given.trim().toLowerCase()}|${surname}`;
 }
 
 function chunked<T>(rows: T[]): T[][] {

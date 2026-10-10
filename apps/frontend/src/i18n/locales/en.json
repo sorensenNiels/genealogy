@@ -73,7 +73,7 @@
     "requestFailed": "Request failed — check the browser console for details.",
     "passwordUpdated": "Password updated.",
     "saving": "Saving…",
-    "theme": "Theme",
+    "theme": "Appearance",
     "themeLight": "Light",
     "themeDark": "Dark",
     "themeSystem": "System",
@@ -81,7 +81,8 @@
     "whoYouAre": "Who you are in the tree",
     "couldNotLoad": "Could not load: {{message}}",
     "change": "Change",
-    "searchPeople": "Search people"
+    "searchPeople": "Search people",
+    "mode": "Light or dark"
   },
   "login": {
     "signIn": "Sign in",
@@ -335,9 +336,11 @@
       "immich-faces": "Re-scan for faces",
       "gedcom-export": "Export GEDCOM",
       "gedcom-import": "Import GEDCOM",
+      "family-website": "Family website",
       "data-integrity": "Data integrity checks",
       "graph-consistency": "Two-store consistency check",
-      "presumed-deceased": "Presumed deceased"
+      "presumed-deceased": "Presumed deceased",
+      "duplicates": "Possible duplicates"
     },
     "backupDescription": "Generates a gzipped SQL dump of the whole database — people, sources, citations, and the family tree graph — in one file. Restore it from the \"Restore database\" tool in the sidebar (a plain psql < file won't work — the family tree graph needs a couple of extra steps the restore tool already handles). You'll get a notification (top right) once it's ready to download.",
     "starting": "Starting…",
@@ -435,7 +438,7 @@
       "possibleDuplicates_other": "Possibly already in your tree ({{count}})",
       "moreDuplicates_one": "…and {{count}} more.",
       "moreDuplicates_other": "…and {{count}} more.",
-      "duplicatesHint": "These share a name with someone already in your tree. They'll still be added as new people — use the data integrity check afterwards to find and merge them by hand.",
+      "duplicatesHint": "These share a name (or a spelling of it) with someone already in your tree. They'll still be added as new people — open Possible duplicates afterwards to compare and merge them.",
       "importPeople_one": "Import {{count}} person",
       "importPeople_other": "Import {{count}} people",
       "importing": "Importing…",
@@ -445,12 +448,11 @@
       "viewPeople": "View people"
     },
     "unnamed": "(unnamed)",
-    "dataIntegrityDescription": "A read-only report: citations pointing at a deleted name/event/union, people who might be duplicates, and (if Immich is configured) links pointing at a deleted Immich person. Nothing here is changed automatically — each finding is for you to judge.",
+    "dataIntegrityDescription": "A read-only report: citations pointing at a deleted name/event/union, (if Immich is configured) links pointing at a deleted Immich person, and record ages that disagree with a birth. Nothing here is changed automatically — each finding is for you to judge. Possible duplicate people have their own tool.",
     "checking": "Checking…",
     "runCheck": "Run check",
     "danglingCitations": "Dangling citations",
     "danglingCitationText": "A citation from \"{{source}}\" references a deleted {{factType}} —",
-    "possibleDuplicates": "Possible duplicate people",
     "danglingImmichLinks": "Dangling Immich links",
     "danglingImmichLinkText": "is linked to an Immich person that no longer exists.",
     "graphConsistencyDescription": "Compares every person in the database against the family-tree graph that stores how they're related. A mismatch here means the two have drifted apart — read-only, nothing is changed automatically.",
@@ -482,7 +484,19 @@
     "devTool": {
       "components": "Component showcase"
     },
-    "devOnlyLocalhost": "Development tools are only available when the app runs on localhost."
+    "devOnlyLocalhost": "Development tools are only available when the app runs on localhost.",
+    "familyWebsite": {
+      "description": "Exports the whole tree as a website: a page for every person, the sources, and the interactive tree — the same chart as here. You get a zip: unzip it and open index.html, or upload the folder to any web server. You'll get a notification (top right) once it's ready to download.",
+      "privacy": "Everyone is included, but living people are shown by name only — no dates, places, notes, photos or sources, the same as for a Viewer. That includes you. Photos are profile photos only.",
+      "title": "Site title",
+      "defaultTitle": "Family tree",
+      "language": "Language",
+      "startPerson": "The tree opens on",
+      "startPersonDefault": "Leave empty to start with your own person in the tree, or else the first person A–Z.",
+      "clearStartPerson": "Clear start person",
+      "export": "Export website",
+      "queued": "Started — the notification bell will tell you when the website is ready to download."
+    }
   },
   "settings": {
     "title": "Settings",
@@ -965,7 +979,10 @@
         "directlyRelated": "They're recorded as each other's parent, child or spouse — remove that relationship first if they really are one person.",
         "sameLineage": "One is recorded as the other's ancestor — merging would make them their own ancestor.",
         "bothLinkedToAccounts": "Both are linked to user accounts (\"this is me\"). Unlink one of them first."
-      }
+      },
+      "suggestionsHeading": "Likely duplicates",
+      "orSearch": "Or search for someone else:",
+      "swap": "Keep the other instead"
     },
     "presumedDeceased": {
       "hint": "Born more than {{years}} years ago — probably deceased.",
@@ -1231,5 +1248,123 @@
       "birthplace": "Birthplace in the {{record}}: {{place}}.",
       "useAsBirthplace": "Use as birth place"
     }
+  },
+  "appearance": {
+    "title": "Appearance",
+    "custom": "Custom",
+    "light": "Light",
+    "dark": "Dark",
+    "previewText": "Born in Ribe, married in Esbjerg.",
+    "previewPrimary": "Save",
+    "previewOutline": "Cancel",
+    "previewDestructive": "Delete",
+    "previewInput": "Date",
+    "previewSwitch": "Living",
+    "newThemeName": "My theme",
+    "group": {
+      "page": "Page",
+      "cards": "Cards, menus and popups",
+      "brand": "Brand",
+      "subtle": "Secondary, highlights and muted",
+      "lines": "Lines",
+      "danger": "Danger"
+    },
+    "token": {
+      "background": "Page background",
+      "foreground": "Text",
+      "card": "Card",
+      "card-foreground": "Card text",
+      "popover": "Menu & popup",
+      "popover-foreground": "Menu & popup text",
+      "primary": "Primary",
+      "primary-foreground": "Text on primary",
+      "secondary": "Secondary",
+      "secondary-foreground": "Text on secondary",
+      "accent": "Highlight",
+      "accent-foreground": "Text on highlight",
+      "muted": "Muted",
+      "muted-foreground": "Muted text",
+      "destructive": "Danger",
+      "destructive-foreground": "Text on danger",
+      "border": "Borders",
+      "input": "Field borders",
+      "ring": "Focus ring"
+    },
+    "radius": {
+      "square": "Square",
+      "small": "Small",
+      "medium": "Medium",
+      "large": "Round"
+    },
+    "name": "Name",
+    "copyFrom": "Copy colors and fonts from",
+    "copyFromPlaceholder": "Choose a theme…",
+    "headingFont": "Heading font",
+    "bodyFont": "Body font",
+    "corners": "Corners",
+    "colors": "Colors",
+    "preview": "Preview",
+    "invalid": "Some colors aren't valid CSS colors yet — use #rrggbb or a function such as oklch(…).",
+    "create": "Create theme",
+    "siteTheme": "Family site theme",
+    "siteThemeHelp": "What everyone sees — unless they've chosen their own theme on their profile.",
+    "customThemes": "Custom themes",
+    "customThemesHelp": "Themes you make here are offered to every member, alongside the built-in ones.",
+    "newTheme": "New theme",
+    "noCustomThemes": "No custom themes yet.",
+    "editTheme": "Edit {{name}}",
+    "editTitle": "Edit theme",
+    "removeDescription": "Anyone using it goes back to the family site's theme; if it is the site's theme, the site goes back to Nova.",
+    "myTheme": "Theme",
+    "sameAsSite": "Same as the family site"
+  },
+  "duplicates": {
+    "description": "People who look like one person recorded twice — matched on names (including Danish spelling variants like Christensen/Kristensen and Sørensen/Sørensdatter), dates, places, parents and spouses. Nothing is merged automatically: compare each pair and merge it, or mark it as not the same person so it isn't suggested again.",
+    "loading": "Looking for duplicates…",
+    "none": "No likely duplicates found.",
+    "filterLabel": "Show",
+    "filter": {
+      "all_one": "All ({{count}})",
+      "all_other": "All ({{count}})",
+      "high_one": "High ({{count}})",
+      "high_other": "High ({{count}})",
+      "medium_one": "Medium ({{count}})",
+      "medium_other": "Medium ({{count}})",
+      "low_one": "Name only ({{count}})",
+      "low_other": "Name only ({{count}})"
+    },
+    "confidence": {
+      "high": "Likely",
+      "medium": "Possible",
+      "low": "Name only"
+    },
+    "reason": {
+      "sameName": "same name",
+      "similarName": "similar name",
+      "sameBirthDate": "same birth date",
+      "similarBirthDate": "birth close",
+      "sameDeathDate": "same death date",
+      "similarDeathDate": "death close",
+      "sameBirthPlace": "same birthplace",
+      "sameDeathPlace": "same place of death",
+      "sameParents": "same parents",
+      "sameSpouse": "same spouse"
+    },
+    "born": "b.",
+    "died": "d.",
+    "merge": "Merge…",
+    "mergeTitle": "Merge two people",
+    "dismiss": "Not the same person",
+    "dismissed": "{{a}} and {{b}} won't be suggested again.",
+    "undo": "Undo",
+    "more_one": "{{count}} more pair is not listed — it will show up as these are merged or dismissed.",
+    "more_other": "{{count}} more pairs are not listed — they will show up as these are merged or dismissed.",
+    "dismissedCount_one": "{{count}} pair marked as not the same person.",
+    "dismissedCount_other": "{{count}} pairs marked as not the same person.",
+    "clearItemLabel": "dismissed pairs",
+    "clearTitle": "Suggest dismissed pairs again?",
+    "clearDescription_one": "The {{count}} pair marked as not the same person will be suggested again.",
+    "clearDescription_other": "All {{count}} pairs marked as not the same person will be suggested again.",
+    "clearAction": "Suggest again"
   }
 }

@@ -159,4 +159,9 @@ export function parseRecordSettings(value: unknown): RecordSettings {
   return parseSettingsSection(recordSettingsSchema, defaultRecordSettings, value);
 }
 
-export const appSettingsKeys = { tree: "tree", person: "person", records: "records" } as const;
+export const appSettingsKeys = {
+  tree: "tree",
+  person: "person",
+  records: "records",
+  theme: "theme",
+} as const;

@@ -6,6 +6,7 @@ import { AlbumCategoryRouter } from "../album-category/album-category.router.js"
 import { AssociationRouter } from "../association/association.router.js";
 import { AUTH, type Auth } from "../auth/auth.module.js";
 import { BackupRouter } from "../backup/backup.router.js";
+import { DuplicateRouter } from "../duplicate/duplicate.router.js";
 import { ExternalIdRouter } from "../external-id/external-id.router.js";
 import { GedcomRouter } from "../gedcom/gedcom.router.js";
 import { ImmichRouter } from "../immich/immich.router.js";
@@ -19,6 +20,8 @@ import { RecordRouter } from "../records/record.router.js";
 import { ResearchNoteRouter } from "../research-note/research-note.router.js";
 import { SettingsRouter } from "../settings/settings.router.js";
 import { SourceRouter } from "../source/source.router.js";
+import { StaticSiteRouter } from "../static-site/static-site.router.js";
+import { ThemeRouter } from "../theme/theme.router.js";
 import { UserNoteRouter } from "../user-note/user-note.router.js";
 import { publicProcedure, router } from "./trpc.base.js";
 import { createContextFactory } from "./trpc.context.js";
@@ -33,6 +36,7 @@ export class TrpcRouter {
     private readonly settings: SettingsRouter,
     private readonly immich: ImmichRouter,
     private readonly profile: ProfileRouter,
+    private readonly theme: ThemeRouter,
     private readonly researchNote: ResearchNoteRouter,
     private readonly userNote: UserNoteRouter,
     private readonly mail: MailRouter,
@@ -40,11 +44,13 @@ export class TrpcRouter {
     private readonly backup: BackupRouter,
     private readonly gedcom: GedcomRouter,
     private readonly integrity: IntegrityRouter,
+    private readonly duplicate: DuplicateRouter,
     private readonly association: AssociationRouter,
     private readonly albumCategory: AlbumCategoryRouter,
     private readonly externalId: ExternalIdRouter,
     private readonly members: MembersRouter,
     private readonly records: RecordRouter,
+    private readonly staticSite: StaticSiteRouter,
     @Inject(AUTH) private readonly auth: Auth,
   ) {}
 
@@ -59,6 +65,7 @@ export class TrpcRouter {
       settings: this.settings.build(),
       immich: this.immich.build(),
       profile: this.profile.build(),
+      theme: this.theme.build(),
       researchNote: this.researchNote.build(),
       userNote: this.userNote.build(),
       mail: this.mail.build(),
@@ -66,11 +73,13 @@ export class TrpcRouter {
       backup: this.backup.build(),
       gedcom: this.gedcom.build(),
       integrity: this.integrity.build(),
+      duplicate: this.duplicate.build(),
       association: this.association.build(),
       albumCategory: this.albumCategory.build(),
       externalId: this.externalId.build(),
       members: this.members.build(),
       records: this.records.build(),
+      staticSite: this.staticSite.build(),
     });
   }
 

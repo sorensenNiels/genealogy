@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import type { MemberRole } from "@genealogy/core";
+import { themeToCss, type MemberRole } from "@genealogy/core";
 import { Avatar, AvatarFallback } from "@genealogy/ui/components/avatar";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button } from "@genealogy/ui/components/button";
@@ -42,7 +42,9 @@ import { I18nextProvider, useTranslation } from "react-i18next";
 import { createI18nInstance, type SupportedLanguage } from "../i18n/create-i18n-instance";
 import { authClient, useSession } from "../lib/auth-client";
 import { useImmichAvailable } from "../lib/immich-status";
+import { useOptimisticMutation } from "../lib/optimistic";
 import { roleOf, usePermissions } from "../lib/permissions";
+import { activeThemeQuery } from "../lib/queries";
 import {
   deleteAllNotifications,
   deleteNotification,
@@ -94,6 +96,9 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     ],
     links: [{ rel: "stylesheet", href: appCss }],
   }),
+  // The active theme is in the server-rendered <head> (see ThemeStyle), so
+  // the page never paints in Nova first and then switches.
+  loader: ({ context: { queryClient } }) => queryClient.prefetchQuery(activeThemeQuery()),
   component: RootComponent,
   notFoundComponent: () => (
     <div className="p-8 text-muted-foreground">That page does not exist.</div>
@@ -125,6 +130,25 @@ function RootComponent() {
 // build, so the devtools never reach the production bundle.
 const Devtools = import.meta.env.DEV ? lazy(() => import("./-devtools")) : null;
 
+/**
+ * The active theme as a stylesheet, after the app's own CSS so it overrides
+ * Nova's defaults there. Rendered by React (not a static file), so choosing
+ * another theme restyles the page at once — the query is invalidated, this
+ * re-renders. `themeToCss` validates the theme again before writing a byte
+ * of it; a theme that somehow fails is skipped, leaving Nova.
+ */
+function ThemeStyle() {
+  const { data: theme } = useQuery(activeThemeQuery());
+  if (!theme) return null;
+  let css: string;
+  try {
+    css = themeToCss(theme.definition);
+  } catch {
+    return null;
+  }
+  return <style id="app-theme" dangerouslySetInnerHTML={{ __html: css }} />;
+}
+
 function RootDocument({
   children,
   language,
@@ -143,6 +167,7 @@ function RootDocument({
     >
       <head>
         <HeadContent />
+        <ThemeStyle />
         <script
           // Mirrors packages/ui/src/hooks/use-theme.ts's resolution, applied
           // synchronously before any stylesheet paints so there's no flash of
@@ -295,6 +320,7 @@ function RootLayout() {
 }
 
 const NOTIFICATIONS_KEY = ["notifications"];
+type NotificationRow = Awaited<ReturnType<typeof listNotifications>>[number];
 
 /**
  * Polled, not pushed — this app has no real-time channel (no WebSocket/SSE;
@@ -314,13 +340,18 @@ function NotificationsBell() {
     refetchInterval: NOTIFICATIONS_POLL_INTERVAL_MS,
     enabled: !!session,
   });
-  const markReadMutation = useMutation({
+  // Read state (and the badge count) changes on click, not after the round
+  // trip — see `useOptimisticMutation`.
+  const markReadMutation = useOptimisticMutation({
     mutationFn: markNotificationRead,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY }),
+    queryKey: NOTIFICATIONS_KEY,
+    update: (items: NotificationRow[], { data }) =>
+      items.map((item) => (item.id === data.id ? { ...item, isRead: true } : item)),
   });
-  const markAllReadMutation = useMutation({
-    mutationFn: markAllNotificationsRead,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY }),
+  const markAllReadMutation = useOptimisticMutation({
+    mutationFn: () => markAllNotificationsRead(),
+    queryKey: NOTIFICATIONS_KEY,
+    update: (items: NotificationRow[]) => items.map((item) => ({ ...item, isRead: true })),
   });
   const deleteMutation = useMutation({
     mutationFn: deleteNotification,

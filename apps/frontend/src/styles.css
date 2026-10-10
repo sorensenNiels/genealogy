@@ -1,142 +1,27 @@
 @import "@genealogy/ui/styles.css";
+/* The tree chart's own styles (cards, lines, minimap) — shared with the
+   static family website, so they live with the chart. */
+@import "@genealogy/tree-chart/tree-chart.css";
+
+/* The fonts themes can use (FONTS in @genealogy/core — keep the two lists in
+   step). Self-hosted Fontsource variable fonts: each import only declares
+   @font-face rules, and a browser downloads a font's files only when the page
+   actually uses it — so all twelve cost a few KB of CSS, and no request ever
+   goes to Google Fonts. Here rather than imported from JS so they're part of
+   the stylesheet linked in the server-rendered <head>. */
+@import "@fontsource-variable/atkinson-hyperlegible-next";
+@import "@fontsource-variable/eb-garamond";
+@import "@fontsource-variable/figtree";
+@import "@fontsource-variable/fraunces";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/literata";
+@import "@fontsource-variable/lora";
+@import "@fontsource-variable/nunito";
+@import "@fontsource-variable/playfair-display";
+@import "@fontsource-variable/source-sans-3";
+@import "@fontsource-variable/source-serif-4";
+@import "@fontsource-variable/work-sans";
 
 /* The shared component package is symlinked into node_modules, which Tailwind
    skips when scanning for class names, so point it there explicitly. */
 @source "../../../packages/ui/src/**/*.tsx";
-
-/* The tree chart (routes/-topola-chart.tsx, cards drawn by
-   routes/-tree-card-renderer.ts). Plain CSS rather than Tailwind classes
-   because the elements are created by D3, not React; coloured from the theme
-   tokens so light and dark both work. */
-.topola-chart {
-  --tree-line: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
-  --tree-male: var(--color-sky-500);
-  --tree-female: var(--color-rose-500);
-  --tree-unknown: var(--color-slate-400);
-  background-color: color-mix(in oklab, var(--muted) 45%, var(--background));
-  background-image: radial-gradient(
-    color-mix(in oklab, var(--muted-foreground) 18%, transparent) 1px,
-    transparent 1px
-  );
-  background-size: 22px 22px;
-}
-.topola-chart .link,
-.topola-chart .marriage {
-  fill: none;
-  stroke: var(--tree-line);
-  stroke-width: 1.5px;
-  stroke-linejoin: round;
-}
-.topola-chart .additional-marriage {
-  stroke-dasharray: 4 3;
-}
-.topola-chart g.indi {
-  cursor: pointer;
-  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.08)) drop-shadow(0 4px 10px rgb(0 0 0 / 0.06));
-}
-.topola-chart .card-bg {
-  fill: var(--card);
-}
-.topola-chart .card-border {
-  fill: none;
-  stroke: var(--border);
-  stroke-width: 1px;
-  transition: stroke 120ms;
-}
-.topola-chart g.indi:hover .card-border {
-  stroke: var(--ring);
-}
-/* `highlightDirectLine`: the centre person's ancestors and descendants. */
-.topola-chart g.indi.direct-line .card-bg {
-  fill: color-mix(in oklab, var(--primary) 9%, var(--card));
-}
-.topola-chart g.indi.direct-line .card-border {
-  stroke: color-mix(in oklab, var(--primary) 45%, var(--border));
-}
-.topola-chart g.indi.is-root .card-border {
-  stroke: var(--primary);
-  stroke-width: 2.5px;
-}
-.topola-chart g.indi.is-selected .card-border {
-  stroke: var(--foreground);
-  stroke-width: 2px;
-}
-.topola-chart g.indi.male {
-  --tree-gender: var(--tree-male);
-}
-.topola-chart g.indi.female {
-  --tree-gender: var(--tree-female);
-}
-.topola-chart g.indi.unknown {
-  --tree-gender: var(--tree-unknown);
-}
-/* Black in both themes on purpose — it's the traditional mourning colour.
-   The thin light edge keeps it visible against a dark photo. */
-.topola-chart .card-mourning {
-  stroke: #111;
-  stroke-width: 7px;
-  filter: drop-shadow(0 0 0.5px rgb(255 255 255 / 0.7));
-}
-/* While exporting (lib/tree-export.ts reads computed styles), transitions
-   are off so a class taken off for the export shows at once. */
-.topola-chart.is-exporting * {
-  transition: none !important;
-}
-/* The "+" (add a relative) at the bottom of a card — only on the selected
-   card and the one under the pointer, so the chart isn't full of buttons. */
-.topola-chart .card-add {
-  cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms;
-}
-.topola-chart g.indi:hover .card-add,
-.topola-chart g.indi.is-selected .card-add {
-  opacity: 1;
-  pointer-events: auto;
-}
-.topola-chart .card-add circle {
-  fill: var(--primary);
-  stroke: var(--card);
-  stroke-width: 2px;
-}
-.topola-chart .card-add path {
-  fill: none;
-  stroke: var(--primary-foreground);
-  stroke-width: 2px;
-  stroke-linecap: round;
-}
-.topola-chart .card-add:hover circle {
-  fill: color-mix(in oklab, var(--primary) 85%, var(--foreground));
-}
-.topola-chart .card-gender circle {
-  fill: var(--tree-gender);
-  stroke: var(--card);
-  stroke-width: 2px;
-}
-/* Stroke width is in the icon's own 24-unit space (scaled down ~2x). */
-.topola-chart .card-gender-icon path {
-  fill: none;
-  stroke: white;
-  stroke-width: 3px;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.topola-chart .card-name {
-  fill: var(--foreground);
-  font-size: 13.5px;
-  font-weight: 600;
-}
-.topola-chart .card-meta {
-  fill: var(--muted-foreground);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-.topola-chart .card-initials-bg {
-  fill: color-mix(in oklab, var(--tree-gender) 16%, var(--card));
-}
-.topola-chart .card-initials {
-  fill: color-mix(in oklab, var(--tree-gender) 75%, var(--foreground));
-  font-size: 16px;
-  font-weight: 600;
-}

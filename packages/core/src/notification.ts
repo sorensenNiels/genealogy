@@ -12,6 +12,7 @@ export const notificationTypeSchema = z.enum([
   "immich_faces_rescanned",
   "restore_complete",
   "album_zip_ready",
+  "static_site_ready",
 ]);
 export type NotificationType = z.infer<typeof notificationTypeSchema>;
 

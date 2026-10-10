@@ -6,17 +6,19 @@ import { useTranslation } from "react-i18next";
 
 import { usePermissions } from "../../lib/permissions";
 import { usePersonSettings } from "../../lib/person-settings";
-import { listAssociations } from "../../server/functions/association.functions";
 import {
-  getPersonById,
-  getRelatives,
-  listEvents,
-  listNames,
-  listUnions,
-} from "../../server/functions/person.functions";
-import { listNotes } from "../../server/functions/research-note.functions";
-import { listOptions } from "../../server/functions/settings.functions";
-import { listCitations, listSources } from "../../server/functions/source.functions";
+  associationsQuery,
+  citationsQuery,
+  eventsQuery,
+  listOptionsQuery,
+  namesQuery,
+  personByIdQuery,
+  prefetchPersonPage,
+  relativesQuery,
+  researchNotesQuery,
+  sourcesQuery,
+  unionsQuery,
+} from "../../lib/queries";
 import { AssociationsCard } from "./-associations-card";
 import { CitationsSection } from "./-citations-section";
 import { ExternalIdsCard } from "./-external-ids-card";
@@ -29,6 +31,13 @@ import { RecordsCard } from "./-records-card";
 import { ResearchNotesSection } from "./-research-notes-section";
 
 export const Route = createFileRoute("/people/$personId")({
+  // Prefetch what the page reads into the shared query cache, so it renders
+  // with its data instead of a loading state — and with preload-on-intent
+  // (router.tsx), usually before the link is even clicked. `prefetchQuery`,
+  // not `ensureQueryData`: it never throws, so a failed request still lands
+  // in the page's own inline error state rather than an error route.
+  loader: ({ context: { queryClient }, params: { personId } }) =>
+    prefetchPersonPage(queryClient, personId),
   component: PersonDetailRoute,
 });
 
@@ -49,43 +58,16 @@ function PersonDetailRoute() {
   const personSettings = usePersonSettings();
   const navigate = useNavigate();
 
-  const person = useQuery({
-    queryKey: ["person", "byId", personId],
-    queryFn: () => getPersonById({ data: { id: personId } }),
-  });
-  const relatives = useQuery({
-    queryKey: ["person", "relatives", personId],
-    queryFn: () => getRelatives({ data: { id: personId } }),
-  });
-  const names = useQuery({
-    queryKey: ["person", "listNames", personId],
-    queryFn: () => listNames({ data: { personId } }),
-  });
-  const events = useQuery({
-    queryKey: ["person", "listEvents", personId],
-    queryFn: () => listEvents({ data: { personId } }),
-  });
-  const unions = useQuery({
-    queryKey: ["person", "listUnions", personId],
-    queryFn: () => listUnions({ data: { personId } }),
-  });
-  const sourcesList = useQuery({
-    queryKey: ["source", "listSources"],
-    queryFn: () => listSources(),
-  });
-  const citationsList = useQuery({
-    queryKey: ["source", "listCitations", personId],
-    queryFn: () => listCitations({ data: { personId } }),
-  });
-  const researchNotesList = useQuery({
-    queryKey: ["researchNote", "listNotes", personId],
-    queryFn: () => listNotes({ data: { personId } }),
-  });
-  const associationsList = useQuery({
-    queryKey: ["association", "list", personId],
-    queryFn: () => listAssociations({ data: { personId } }),
-  });
-  const options = useQuery({ queryKey: ["settings", "listOptions"], queryFn: () => listOptions() });
+  const person = useQuery(personByIdQuery(personId));
+  const relatives = useQuery(relativesQuery(personId));
+  const names = useQuery(namesQuery(personId));
+  const events = useQuery(eventsQuery(personId));
+  const unions = useQuery(unionsQuery(personId));
+  const sourcesList = useQuery(sourcesQuery());
+  const citationsList = useQuery(citationsQuery(personId));
+  const researchNotesList = useQuery(researchNotesQuery(personId));
+  const associationsList = useQuery(associationsQuery(personId));
+  const options = useQuery(listOptionsQuery());
 
   const refresh = async () => {
     await Promise.all([

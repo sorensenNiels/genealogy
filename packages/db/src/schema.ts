@@ -825,6 +825,7 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "immich_faces_rescanned",
   "restore_complete",
   "album_zip_ready",
+  "static_site_ready",
 ]);
 
 /**
@@ -864,6 +865,21 @@ export const notifications = pgTable(
  * below rather than in application code alone, so a bug can't silently let
  * two accounts both claim to be the same person.
  */
+/**
+ * Custom themes, made by admins on the Settings page and offered to every
+ * member alongside the built-ins (which live in code — `BUILT_IN_THEMES` in
+ * @genealogy/core). `definition` is a `ThemeDefinition` (colors for light and
+ * dark, fonts, radius), validated with `themeDefinitionSchema` on write and
+ * again on read before any of it becomes CSS.
+ */
+export const themes = pgTable("themes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  definition: jsonb("definition").notNull(),
+  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const userProfiles = pgTable(
   "user_profiles",
   {
@@ -885,6 +901,11 @@ export const userProfiles = pgTable(
     }),
     lastTreeView: text("last_tree_view"),
     lastTreeOrientation: text("last_tree_orientation"),
+    // The member's own theme, overriding the site's (`app_settings` "theme").
+    // A built-in slug ("heritage") or a `themes.id`; plain text, no foreign
+    // key, since built-ins aren't rows — a theme deleted since just falls
+    // back to the site default on read (see ThemeService).
+    themeId: text("theme_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -895,7 +916,34 @@ export const userProfiles = pgTable(
   ],
 );
 
+/**
+ * Pairs of people an admin has looked at and marked "not a duplicate", so
+ * duplicate detection (Tools → Possible duplicates) stops suggesting them.
+ * Stored once per pair with the smaller id first — the check constraint
+ * keeps (a, b) and (b, a) from both existing. Cascades with either person:
+ * after a merge or delete there's no pair left to remember.
+ */
+export const duplicateDismissals = pgTable(
+  "duplicate_dismissals",
+  {
+    personAId: uuid("person_a_id")
+      .notNull()
+      .references(() => persons.id, { onDelete: "cascade" }),
+    personBId: uuid("person_b_id")
+      .notNull()
+      .references(() => persons.id, { onDelete: "cascade" }),
+    dismissedBy: text("dismissed_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.personAId, table.personBId] }),
+    index("duplicate_dismissals_person_b_idx").on(table.personBId),
+    check("duplicate_dismissals_ordered", sql`${table.personAId} < ${table.personBId}`),
+  ],
+);
+
 export const schema = {
+  themes,
   persons,
   personNames,
   personEvents,
@@ -916,6 +964,7 @@ export const schema = {
   researchNotes,
   userNotes,
   notifications,
+  duplicateDismissals,
   genderEnum,
   citationFactTypeEnum,
   notificationTypeEnum,

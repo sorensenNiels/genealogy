@@ -1,22 +1,22 @@
 import type { TreeSettings } from "@genealogy/core";
-import type { select, Selection } from "d3-selection";
-import type * as Topola from "topola";
-import type {
-  FamDetails,
-  IndiDetails,
-  Renderer,
-  RendererOptions,
-  TreeEntry,
-  TreeNode,
-  TreeNodeSelection,
+import { select, type Selection } from "d3-selection";
+import {
+  CompositeRenderer,
+  type FamDetails,
+  type IndiDetails,
+  type Renderer,
+  type RendererOptions,
+  type TreeEntry,
+  type TreeNode,
+  type TreeNodeSelection,
 } from "topola";
 
-import type { TreeCard } from "../lib/topola-data";
+import type { TreeCard } from "./topola-data";
 
-/** What a card shows for one person — built by the tree page from our own rows (`treeCard`), not from topola's GEDCOM fields. */
+/** What a card shows for one person — built by the host page from our own rows (`treeCard`), not from topola's GEDCOM fields. */
 export type CardInfo = TreeCard;
 
-/** The card itself. Fixed, so topola never has to measure text (see `TopolaChart`). */
+/** The card itself. Fixed, so topola never has to measure text (see `createTreeChart`). */
 export const CARD_WIDTH = 248;
 export const CARD_HEIGHT = 72;
 /**
@@ -59,7 +59,7 @@ export interface CardPosition {
   y: number;
 }
 
-/** What the renderer reads and reports, through `TopolaChart`'s refs so it's always current. */
+/** What the renderer reads and reports — `createTreeChart` passes closures over its current state, so it's always current. */
 export interface CardRendererHooks {
   cardFor: (id: string) => CardInfo | undefined;
   /** Read at draw time, so a settings change shows on the next render. */
@@ -89,23 +89,15 @@ interface CardDatum {
   y: number;
 }
 
-type TopolaModule = typeof Topola;
-type SelectFn = typeof select;
-
 /**
- * Builds topola's renderer class for our cards. A factory because topola is
- * only loaded in the browser (a dynamic import in `TopolaChart`), so its
- * `CompositeRenderer` base class isn't available at module load. The base
- * class does the sizing bookkeeping and the anchor points lines attach to;
- * this only says how big a card is and how to draw it.
+ * Builds topola's renderer class for our cards. A factory because topola
+ * instantiates the class itself, so the hooks can only reach it through a
+ * closure. The base class does the sizing bookkeeping and the anchor points
+ * lines attach to; this only says how big a card is and how to draw it.
  */
-export function createCardRendererClass(
-  topola: TopolaModule,
-  select: SelectFn,
-  hooks: CardRendererHooks,
-) {
+export function createCardRendererClass(hooks: CardRendererHooks) {
   const { cardFor, settings } = hooks;
-  return class CardRenderer extends topola.CompositeRenderer implements Renderer {
+  return class CardRenderer extends CompositeRenderer implements Renderer {
     constructor(readonly rendererOptions: RendererOptions<IndiDetails, FamDetails>) {
       super(rendererOptions);
     }
@@ -114,7 +106,7 @@ export function createCardRendererClass(
       return [CARD_WIDTH + PAD_X * 2, CARD_HEIGHT + PAD_Y * 2];
     }
 
-    // Styling lives in styles.css under `.topola-chart`, with the theme tokens.
+    // Styling lives in tree-chart.css under `.topola-chart`, with the theme tokens.
     getCss(): string {
       return "";
     }
@@ -336,8 +328,8 @@ function drawGenderBadge(
 
 /**
  * The "+" at the bottom centre of a card: opens a menu to add a parent,
- * sibling or child (see `AddRelativeMenu` on the tree page). Shown only on
- * the selected card and the one under the pointer (styles.css), so a chart
+ * sibling or child (see `AddRelativeMenu` on the app's tree page). Shown only
+ * on the selected card and the one under the pointer (tree-chart.css), so a chart
  * full of cards isn't a chart full of buttons; on a touch screen, tapping a
  * card selects it, which shows its "+".
  */
