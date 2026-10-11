@@ -2,7 +2,6 @@ import {
   allCensuses,
   censusesInLifetime,
   findCensus,
-  formatPersonName,
   recordTypeSchema,
   type RecordType,
 } from "@genealogy/core";
@@ -12,6 +11,7 @@ import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { yearsBetween } from "../../lib/life-summary";
+import { usePersonName } from "../../lib/person-name";
 import { useRecordSettingsQuery } from "../../lib/record-settings";
 import { getPersonById } from "../../server/functions/person.functions";
 import {
@@ -53,6 +53,7 @@ function defaultRole(type: RecordType, sex: string): string {
 
 function NewRecordPage() {
   const { t, i18n } = useTranslation();
+  const { formatName } = usePersonName();
   const language = toSupportedLanguage(i18n.language);
   const { type = "census", personId, census: censusParam } = Route.useSearch();
   const settings = useRecordSettingsQuery();
@@ -83,7 +84,7 @@ function NewRecordPage() {
     const born = person.data.birth?.earliest ?? person.data.birth?.latest ?? null;
     const age = census ? yearsBetween(born, census.date) : null;
     Object.assign(first, {
-      name: formatPersonName(person.data),
+      name: formatName(person.data),
       sex: person.data.gender,
       age: age === null ? "" : String(age),
       person: { id: person.data.id, given: person.data.given, surname: person.data.surname },
@@ -112,7 +113,7 @@ function NewRecordPage() {
             params={{ personId: person.data.id }}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
-            ← {formatPersonName(person.data)}
+            ← {formatName(person.data)}
           </Link>
         )}
         <h1 className="text-2xl font-semibold">

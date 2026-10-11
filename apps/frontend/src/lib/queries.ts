@@ -2,7 +2,19 @@ import { queryOptions, type QueryClient } from "@tanstack/react-query";
 
 import { listAssociations } from "../server/functions/association.functions";
 import { getHealth } from "../server/functions/health.functions";
-import { getLastTree, getMyLine, getRecentPeople } from "../server/functions/overview.functions";
+import {
+  getCensusGaps,
+  getFamilyAtAGlance,
+  getFeaturedAncestor,
+  getLastTree,
+  getMyLine,
+  getOnThisDay,
+  getRecentChanges,
+  getRecentPeople,
+  getResearchTodo,
+  getTopPlaces,
+  getUpkeep,
+} from "../server/functions/overview.functions";
 import {
   getPersonById,
   getRelatives,
@@ -11,10 +23,18 @@ import {
   listPersons,
   listUnions,
 } from "../server/functions/person.functions";
-import { getPeopleListPreferences } from "../server/functions/profile.functions";
+import {
+  getOverviewPreferences,
+  getPeopleListPreferences,
+} from "../server/functions/profile.functions";
 import { listNotes } from "../server/functions/research-note.functions";
 import { searchFullText } from "../server/functions/search.functions";
-import { getPeopleListSettings, listOptions } from "../server/functions/settings.functions";
+import {
+  getOverviewSettings,
+  getPeopleListSettings,
+  getPersonSettings,
+  listOptions,
+} from "../server/functions/settings.functions";
 import { listCitations, listSources } from "../server/functions/source.functions";
 import { getActiveTheme, getThemeState } from "../server/functions/theme.functions";
 
@@ -35,9 +55,6 @@ export const personListQuery = (input: PersonListInput) =>
     queryKey: ["person", "list", input],
     queryFn: () => listPersons({ data: input }),
   });
-
-/** Just the total — the Overview's person count. */
-export const PERSON_COUNT_INPUT = { limit: 1, offset: 0, search: null } as const;
 
 export const listOptionsQuery = () =>
   queryOptions({ queryKey: ["settings", "listOptions"], queryFn: () => listOptions() });
@@ -108,6 +125,13 @@ export const prefetchPersonPage = (queryClient: QueryClient, personId: string) =
     queryClient.prefetchQuery(listOptionsQuery()),
   ]);
 
+/**
+ * The person page's settings — and the name format every page uses (see
+ * `usePersonName`), which is why the root loader prefetches them.
+ */
+export const personSettingsQuery = () =>
+  queryOptions({ queryKey: ["settings", "personSettings"], queryFn: () => getPersonSettings() });
+
 /** The theme applied app-wide (the root loader prefetches it, so it's in the server-rendered page). */
 export const activeThemeQuery = () =>
   queryOptions({ queryKey: ["theme", "active"], queryFn: () => getActiveTheme() });
@@ -138,6 +162,20 @@ export const peopleListPreferencesQuery = () =>
     queryFn: () => getPeopleListPreferences(),
   });
 
+/** Which Overview cards show, and in what order (Settings → Overview). */
+export const overviewSettingsQuery = () =>
+  queryOptions({
+    queryKey: ["settings", "overviewSettings"],
+    queryFn: () => getOverviewSettings(),
+  });
+
+/** The Overview cards this member has hidden for themselves. */
+export const overviewPreferencesQuery = () =>
+  queryOptions({
+    queryKey: ["profile", "overviewPreferences"],
+    queryFn: () => getOverviewPreferences(),
+  });
+
 /** The Overview's "Your place in the tree" — null until the member says who they are. */
 export const myLineQuery = () =>
   queryOptions({ queryKey: ["overview", "myLine"], queryFn: () => getMyLine() });
@@ -149,3 +187,40 @@ export const lastTreeQuery = () =>
 /** The people this member opened most recently, newest first. */
 export const recentPeopleQuery = () =>
   queryOptions({ queryKey: ["overview", "recentPeople"], queryFn: () => getRecentPeople() });
+
+/** "On this day" for the member's own date (YYYY-MM-DD). */
+export const onThisDayQuery = (today: string) =>
+  queryOptions({
+    queryKey: ["overview", "onThisDay", today],
+    queryFn: () => getOnThisDay({ data: { today } }),
+  });
+
+/** The day's featured ancestor — a different one each day. */
+export const featuredAncestorQuery = (today: string) =>
+  queryOptions({
+    queryKey: ["overview", "featuredAncestor", today],
+    queryFn: () => getFeaturedAncestor({ data: { today } }),
+  });
+
+export const familyAtAGlanceQuery = () =>
+  queryOptions({ queryKey: ["overview", "familyAtAGlance"], queryFn: () => getFamilyAtAGlance() });
+
+export const topPlacesQuery = () =>
+  queryOptions({ queryKey: ["overview", "topPlaces"], queryFn: () => getTopPlaces() });
+
+/** Editors only, like the procedures behind them. */
+export const researchTodoQuery = () =>
+  queryOptions({ queryKey: ["overview", "researchTodo"], queryFn: () => getResearchTodo() });
+
+export const censusGapsQuery = () =>
+  queryOptions({ queryKey: ["overview", "censusGaps"], queryFn: () => getCensusGaps() });
+
+export const recentChangesQuery = () =>
+  queryOptions({ queryKey: ["overview", "recentChanges"], queryFn: () => getRecentChanges() });
+
+/** Admins only. The server keeps the counts for ten minutes; "Check again" asks it to redo them. */
+export const upkeepQuery = () =>
+  queryOptions({
+    queryKey: ["overview", "upkeep"],
+    queryFn: () => getUpkeep({ data: { refresh: false } }),
+  });

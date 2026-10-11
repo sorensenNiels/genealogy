@@ -1,10 +1,4 @@
-import {
-  formatLifespan,
-  formatPersonName,
-  parentageSchema,
-  type Parentage,
-  type Gender,
-} from "@genealogy/core";
+import { formatLifespan, parentageSchema, type Parentage, type Gender } from "@genealogy/core";
 import { AddButton } from "@genealogy/ui/components/add-button";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button } from "@genealogy/ui/components/button";
@@ -24,6 +18,7 @@ import { useTranslation } from "react-i18next";
 
 import { PersonPicker } from "../-person-picker";
 import { labelFor, optionsFor } from "../../lib/person-display";
+import { usePersonName } from "../../lib/person-name";
 import { createPerson, linkParent, unlinkParent } from "../../server/functions/person.functions";
 import type { ConfigurableOptionRow, ParentRow, PersonRow } from "./-types";
 
@@ -50,6 +45,7 @@ export function ParentsSection({
   onChanged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const unlinkParentMutation = useMutation({ mutationFn: unlinkParent });
 
   const remove = async (parentId: string) => {
@@ -102,7 +98,7 @@ export function ParentsSection({
                   params={{ personId: parent.id }}
                   className="hover:underline"
                 >
-                  {formatPersonName(parent)}
+                  {formatName(parent)}
                   {formatLifespan(parent) && (
                     <span className="ml-1 text-muted-foreground">({formatLifespan(parent)})</span>
                   )}
@@ -110,7 +106,7 @@ export function ParentsSection({
                 <Badge variant="outline">{labelFor(options, "parentage", parent.parentage)}</Badge>
               </div>
               <RemoveButton
-                itemLabel={t("person.family.relationshipWith", { name: formatPersonName(parent) })}
+                itemLabel={t("person.family.relationshipWith", { name: formatName(parent) })}
                 onConfirm={() => void remove(parent.id)}
                 trigger={
                   <Button
@@ -149,6 +145,7 @@ function ParentSlot({
   onChanged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   if (!parent) {
     return (
       <AddParentSlot
@@ -166,14 +163,14 @@ function ParentSlot({
       <div>
         <p className="text-xs text-muted-foreground">{label}</p>
         <Link to="/people/$personId" params={{ personId: parent.id }} className="hover:underline">
-          {formatPersonName(parent)}
+          {formatName(parent)}
           {formatLifespan(parent) && (
             <span className="ml-1 text-muted-foreground">({formatLifespan(parent)})</span>
           )}
         </Link>
       </div>
       <RemoveButton
-        itemLabel={t("person.family.relationshipWith", { name: formatPersonName(parent) })}
+        itemLabel={t("person.family.relationshipWith", { name: formatName(parent) })}
         onConfirm={() => void onRemove(parent.id)}
         trigger={
           <Button

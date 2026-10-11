@@ -19,9 +19,9 @@ import { CheckIcon, XIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
-import { formatDisplayDate } from "../../lib/format-date";
 import { usePermissions } from "../../lib/permissions";
 import { labelFor } from "../../lib/person-display";
+import { usePersonPageDate } from "../../lib/person-settings";
 import { useRecordSettings } from "../../lib/record-settings";
 import { updatePerson } from "../../server/functions/person.functions";
 import {
@@ -55,6 +55,7 @@ export function RecordsCard({
   onChanged: () => Promise<void>;
 }) {
   const { t, i18n } = useTranslation();
+  const formatDate = usePersonPageDate();
   const language = toSupportedLanguage(i18n.language);
   const { canEdit } = usePermissions();
   const navigate = useNavigate();
@@ -268,7 +269,7 @@ export function RecordsCard({
                 >
                   {recordTitle(t, entry.record, settings.customCensuses)}
                   {entry.record.recordType !== "census" && entry.record.date
-                    ? ` · ${formatDisplayDate(entry.record.date, language)}`
+                    ? ` · ${formatDate(entry.record.date)}`
                     : ""}
                   {entry.record.place ? ` · ${entry.record.place}` : ""}
                 </Link>
@@ -297,7 +298,7 @@ export function RecordsCard({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span>
                 {t("records.card.estimatedBirth", {
-                  birth: formatDisplayDate(estimatedBirth, language),
+                  birth: formatDate(estimatedBirth),
                   record: recordTitle(t, ageSource.record, settings.customCensuses),
                   age: ageSource.row.age,
                 })}

@@ -1,9 +1,4 @@
-import {
-  formatLifespan,
-  formatPersonName,
-  splitSearchSnippet,
-  type SearchHitKind,
-} from "@genealogy/core";
+import { formatLifespan, splitSearchSnippet, type SearchHitKind } from "@genealogy/core";
 import { Badge } from "@genealogy/ui/components/badge";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
 import { Card, CardContent } from "@genealogy/ui/components/card";
@@ -19,6 +14,7 @@ import { useTranslation } from "react-i18next";
 import { toSupportedLanguage } from "../i18n/create-i18n-instance";
 import { formatDisplayDate } from "../lib/format-date";
 import { labelFor } from "../lib/person-display";
+import { usePersonName } from "../lib/person-name";
 import { fullTextSearchQuery, listOptionsQuery } from "../lib/queries";
 import type { searchFullText } from "../server/functions/search.functions";
 
@@ -153,6 +149,7 @@ function SearchPage() {
 
 function HitRow({ hit }: { hit: SearchHit }) {
   const { t, i18n } = useTranslation();
+  const { formatName } = usePersonName();
   const language = toSupportedLanguage(i18n.language);
   const options = useQuery(listOptionsQuery());
 
@@ -175,7 +172,7 @@ function HitRow({ hit }: { hit: SearchHit }) {
             params={{ personId: hit.person.id }}
             className="font-medium text-primary hover:underline"
           >
-            {formatPersonName(hit.person) || t("tools.unnamed")}
+            {formatName(hit.person) || t("tools.unnamed")}
             {formatLifespan(hit.person) && (
               <span className="font-normal text-muted-foreground">
                 {" "}

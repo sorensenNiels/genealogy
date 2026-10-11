@@ -1,10 +1,4 @@
-import {
-  calculateAge,
-  formatFullPersonName,
-  formatPersonName,
-  researchChecklist,
-  type ResearchChecklist,
-} from "@genealogy/core";
+import { calculateAge, researchChecklist, type ResearchChecklist } from "@genealogy/core";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button, buttonVariants } from "@genealogy/ui/components/button";
@@ -21,12 +15,12 @@ import { CameraIcon, CheckCircle2Icon, CircleIcon, Network, Trash2Icon } from "l
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { publicBackendUrl } from "../../lib/env";
-import { formatDisplayDate } from "../../lib/format-date";
 import { useImmichAvailable } from "../../lib/immich-status";
 import { usePermissions } from "../../lib/permissions";
 import { genderLabel, initials, relationshipToRootLabel } from "../../lib/person-display";
+import { usePersonName } from "../../lib/person-name";
+import { usePersonPageDate, usePersonSettings } from "../../lib/person-settings";
 import { removePerson } from "../../server/functions/person.functions";
 import { MergePersonDialog } from "./-merge-person-dialog";
 import { SetPhotoFromImmichDialog } from "./-set-photo-from-immich-dialog";
@@ -61,16 +55,18 @@ export function PersonHeaderCard({
   canDelete: boolean;
   onDeleted: () => void;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const formatDate = usePersonPageDate();
+  const { formatName, formatFullName } = usePersonName();
   const { isAdmin } = usePermissions();
-  const language = toSupportedLanguage(i18n.language);
   const removePersonMutation = useMutation({ mutationFn: removePerson, onSuccess: onDeleted });
 
   const nicknames = names.filter((name) => name.nameType === "nickname").map((name) => name.given);
 
-  const age = calculateAge(person);
-  const birthDisplay = formatDisplayDate(person.birth, language);
-  const deathDisplay = formatDisplayDate(person.death, language);
+  // Settings → Person page can turn ages off.
+  const age = usePersonSettings().showAges ? calculateAge(person) : null;
+  const birthDisplay = formatDate(person.birth);
+  const deathDisplay = formatDate(person.death);
 
   // The page header's birth/death line — date *and* place together
   // ("b. 14 March 1838 · Give Sogn, Vejle Amt").
@@ -132,7 +128,7 @@ export function PersonHeaderCard({
               )}
             </div>
             <h1 className="text-2xl font-bold sm:text-3xl">
-              {formatFullPersonName({ ...person, nickname: nicknames })}
+              {formatFullName({ ...person, nickname: nicknames })}
             </h1>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
               {birthSummary && (
@@ -153,7 +149,7 @@ export function PersonHeaderCard({
             {akaName && (
               <p className="text-sm text-muted-foreground">
                 {t("person.header.alsoKnownAs")}{" "}
-                <span className="text-foreground">{formatPersonName(akaName)}</span>
+                <span className="text-foreground">{formatName(akaName)}</span>
                 {akaSource ? ` (${akaSource.title})` : ""}
               </p>
             )}
@@ -171,14 +167,14 @@ export function PersonHeaderCard({
             {isAdmin && (
               <MergePersonDialog
                 personId={person.id}
-                personName={formatFullPersonName(person)}
+                personName={formatFullName(person)}
                 onMerged={onChanged}
               />
             )}
             {canDelete && (
               <RemoveButton
-                itemLabel={formatFullPersonName(person)}
-                title={t("people.deleteTitle", { name: formatFullPersonName(person) })}
+                itemLabel={formatFullName(person)}
+                title={t("people.deleteTitle", { name: formatFullName(person) })}
                 description={t("people.deleteDescription")}
                 actionLabel={t("common.delete")}
                 onConfirm={() => removePersonMutation.mutate({ data: { id: person.id } })}
@@ -403,10 +399,11 @@ function PersonPhotoAvatar({
   dimensionClass: string;
   uploading: boolean;
 }) {
+  const { formatName } = usePersonName();
   return (
     <>
       <Avatar className={cn(dimensionClass, roundingClass)}>
-        {photoUrl && <AvatarImage src={photoUrl} alt={formatPersonName(person)} />}
+        {photoUrl && <AvatarImage src={photoUrl} alt={formatName(person)} />}
         <AvatarFallback className={size === "lg" ? "text-2xl" : "text-base"}>
           {initials(person)}
         </AvatarFallback>

@@ -1,5 +1,6 @@
 import type {
   AddConfigurableOption,
+  OverviewSettings,
   PeopleListSettings,
   PersonSettings,
   RecordSettings,
@@ -10,6 +11,7 @@ import {
   appSettingsKeys,
   themeSettingsSchema,
   type ThemeSettings,
+  parseOverviewSettings,
   parsePeopleListSettings,
   parsePersonSettings,
   parseRecordSettings,
@@ -92,6 +94,15 @@ export class SettingsService {
   async updatePeopleListSettings(settings: PeopleListSettings): Promise<PeopleListSettings> {
     await this.writeSection(appSettingsKeys.peopleList, settings);
     return this.getPeopleListSettings();
+  }
+
+  async getOverviewSettings(): Promise<OverviewSettings> {
+    return parseOverviewSettings(await this.readSection(appSettingsKeys.overview));
+  }
+
+  async updateOverviewSettings(settings: OverviewSettings): Promise<OverviewSettings> {
+    await this.writeSection(appSettingsKeys.overview, settings);
+    return this.getOverviewSettings();
   }
 
   async getThemeSettings(): Promise<ThemeSettings> {

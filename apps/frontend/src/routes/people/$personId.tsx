@@ -1,11 +1,12 @@
-import { formatFullPersonName } from "@genealogy/core";
+import { orderedPersonCards, PERSON_SIDE_CARDS, type PersonCard } from "@genealogy/core";
 import { ReadOnlyProvider } from "@genealogy/ui/lib/read-only";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { Fragment, useEffect, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { usePermissions } from "../../lib/permissions";
+import { usePersonName } from "../../lib/person-name";
 import { usePersonSettings } from "../../lib/person-settings";
 import {
   associationsQuery,
@@ -48,13 +49,15 @@ export const Route = createFileRoute("/people/$personId")({
  * The person-detail page: one full-width identity header, then everything
  * else in a two-column grid — a wide main column (Names & gender, Birth,
  * Living status & death, Photos, Life events, Sources & citations, Research
- * notes) and a narrower one holding the Family card. Each card owns its own
+ * notes) and a narrower one holding the Family card — each column in the
+ * order Settings → Person page sets, minus the cards it hides. Each card owns its own
  * data-fetching, form state and mutations (see each `-*.tsx` file next to
  * this one); this file's only job is fetching the shared read models once
  * and wiring one `refresh` callback everything below can call after a write.
  */
 function PersonDetailRoute() {
   const { t } = useTranslation();
+  const { formatFullName } = usePersonName();
   const { personId } = Route.useParams();
   const queryClient = useQueryClient();
   const { canEdit, isAdmin } = usePermissions();
@@ -133,6 +136,97 @@ function PersonDetailRoute() {
     children.length === 0 &&
     unionRows.length === 0;
 
+  // Every card, by its key in Settings → Person page ("Which cards show,
+  // and in what order"); `orderedPersonCards` says which and in what order,
+  // and each goes in its fixed column.
+  const cardElements: Record<PersonCard, ReactNode> = {
+    details: (
+      <PersonDetailsCard
+        person={person.data}
+        names={names.data ?? []}
+        unions={unions.data ?? []}
+        spouses={spouses}
+        childCount={children.length}
+        options={options.data ?? []}
+        onChanged={refresh}
+      />
+    ),
+    photos: <PersonPhotosCard personId={personId} />,
+    lifeEvents: (
+      <LifeEventsCard
+        personId={personId}
+        events={events.data ?? []}
+        unions={unions.data ?? []}
+        spouses={spouses}
+        parents={parents}
+        personChildren={children}
+        showFamilyEvents={personSettings.showFamilyEventsInTimeline}
+        person={person.data}
+        citations={citationsList.data ?? []}
+        sourcesList={sourcesList.data ?? []}
+        options={options.data ?? []}
+        onChanged={refresh}
+      />
+    ),
+    // A living person is name-only for a Viewer; their records are hidden too.
+    records: person.data.redacted ? null : (
+      <RecordsCard person={person.data} options={options.data ?? []} onChanged={refresh} />
+    ),
+    citations: (
+      <CitationsSection
+        personId={personId}
+        citations={citationsList.data ?? []}
+        sourcesList={sourcesList.data ?? []}
+        names={names.data ?? []}
+        events={events.data ?? []}
+        unions={unions.data ?? []}
+        associations={associationsList.data?.own ?? []}
+        options={options.data ?? []}
+        onChanged={refresh}
+      />
+    ),
+    associations: (
+      <AssociationsCard
+        personId={personId}
+        own={associationsList.data?.own ?? []}
+        appearances={associationsList.data?.appearances ?? []}
+        events={events.data ?? []}
+        unions={unions.data ?? []}
+        spouses={spouses}
+        options={options.data ?? []}
+        onChanged={refresh}
+      />
+    ),
+    researchNotes: (
+      <ResearchNotesSection
+        personId={personId}
+        notes={researchNotesList.data ?? []}
+        options={options.data ?? []}
+        onChanged={refresh}
+      />
+    ),
+    family: (
+      <FamilyCard
+        personId={personId}
+        parents={parents}
+        spouses={spouses}
+        childRelatives={children}
+        siblings={siblings}
+        extended={relatives.data}
+        excludeIds={excludeIds}
+        options={options.data ?? []}
+        unions={unions.data ?? []}
+        onChanged={refresh}
+      />
+    ),
+    externalIds: <ExternalIdsCard personId={personId} />,
+  };
+  const shownCards = orderedPersonCards(personSettings);
+  const column = (side: boolean) =>
+    shownCards
+      .filter((card) => PERSON_SIDE_CARDS.includes(card) === side)
+      .map((card) => <Fragment key={card}>{cardElements[card]}</Fragment>);
+
   // A Viewer sees the same page, read-only — every card's fields, Save,
   // Add and Remove follow `ReadOnlyProvider` (see packages/ui).
   return (
@@ -148,7 +242,7 @@ function PersonDetailRoute() {
             </Link>
             <span aria-hidden="true">/</span>
             <span className="text-foreground">
-              {formatFullPersonName({ ...person.data, nickname: nicknames })}
+              {formatFullName({ ...person.data, nickname: nicknames })}
             </span>
           </nav>
           <Link
@@ -171,77 +265,8 @@ function PersonDetailRoute() {
           onDeleted={() => navigate({ to: "/people" })}
         />
         <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-          <div className="space-y-6">
-            <PersonDetailsCard
-              person={person.data}
-              names={names.data ?? []}
-              unions={unions.data ?? []}
-              spouses={spouses}
-              childCount={children.length}
-              options={options.data ?? []}
-              onChanged={refresh}
-            />
-            <PersonPhotosCard personId={personId} />
-            <LifeEventsCard
-              personId={personId}
-              events={events.data ?? []}
-              unions={unions.data ?? []}
-              spouses={spouses}
-              parents={parents}
-              personChildren={children}
-              showFamilyEvents={personSettings.showFamilyEventsInTimeline}
-              person={person.data}
-              citations={citationsList.data ?? []}
-              sourcesList={sourcesList.data ?? []}
-              options={options.data ?? []}
-              onChanged={refresh}
-            />
-            {/* A living person is name-only for a Viewer; their records are hidden too. */}
-            {!person.data.redacted && (
-              <RecordsCard person={person.data} options={options.data ?? []} onChanged={refresh} />
-            )}
-            <CitationsSection
-              personId={personId}
-              citations={citationsList.data ?? []}
-              sourcesList={sourcesList.data ?? []}
-              names={names.data ?? []}
-              events={events.data ?? []}
-              unions={unions.data ?? []}
-              associations={associationsList.data?.own ?? []}
-              options={options.data ?? []}
-              onChanged={refresh}
-            />
-            <AssociationsCard
-              personId={personId}
-              own={associationsList.data?.own ?? []}
-              appearances={associationsList.data?.appearances ?? []}
-              events={events.data ?? []}
-              unions={unions.data ?? []}
-              spouses={spouses}
-              options={options.data ?? []}
-              onChanged={refresh}
-            />
-            <ResearchNotesSection
-              personId={personId}
-              notes={researchNotesList.data ?? []}
-              options={options.data ?? []}
-              onChanged={refresh}
-            />
-          </div>
-          <div className="space-y-6">
-            <FamilyCard
-              personId={personId}
-              parents={parents}
-              spouses={spouses}
-              childRelatives={children}
-              siblings={siblings}
-              excludeIds={excludeIds}
-              options={options.data ?? []}
-              unions={unions.data ?? []}
-              onChanged={refresh}
-            />
-            <ExternalIdsCard personId={personId} />
-          </div>
+          <div className="space-y-6">{column(false)}</div>
+          <div className="space-y-6">{column(true)}</div>
         </div>
       </div>
     </ReadOnlyProvider>

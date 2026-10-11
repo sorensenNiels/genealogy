@@ -1,4 +1,4 @@
-import { formatPersonName, type DuplicateConfidence } from "@genealogy/core";
+import { type DuplicateConfidence } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
 import { Dialog } from "@genealogy/ui/components/dialog";
@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage } from "../i18n/create-i18n-instance";
 import { formatDisplayDate } from "../lib/format-date";
+import { usePersonName } from "../lib/person-name";
 import {
   clearDuplicateDismissals,
   dismissDuplicate,
@@ -130,6 +131,7 @@ function CandidateRow({
   onChanged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const pair = { personAId: candidate.a.id, personBId: candidate.b.id };
   // Shown in place of the row until the list refetches, so a dismissal can
   // be undone right where it was made.
@@ -147,8 +149,8 @@ function CandidateRow({
     return (
       <li className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm text-muted-foreground">
         {t("duplicates.dismissed", {
-          a: formatPersonName(candidate.a) || t("tools.unnamed"),
-          b: formatPersonName(candidate.b) || t("tools.unnamed"),
+          a: formatName(candidate.a) || t("tools.unnamed"),
+          b: formatName(candidate.b) || t("tools.unnamed"),
         })}
         <Button
           variant="outline"
@@ -192,6 +194,7 @@ function CandidateRow({
 /** One side of a pair: the facts it was matched on, so most pairs can be judged without opening either page. */
 function PersonFacts({ person }: { person: PersonSummary }) {
   const { t, i18n } = useTranslation();
+  const { formatName } = usePersonName();
   const language = toSupportedLanguage(i18n.language);
   const line = (label: string, date: PersonSummary["birth"], place: string | null) => {
     const parts = [formatDisplayDate(date, language), place].filter(Boolean);
@@ -208,7 +211,7 @@ function PersonFacts({ person }: { person: PersonSummary }) {
         params={{ personId: person.id }}
         className="font-medium text-primary hover:underline"
       >
-        {formatPersonName(person) || t("tools.unnamed")}
+        {formatName(person) || t("tools.unnamed")}
       </Link>{" "}
       <span className="font-mono text-xs text-muted-foreground">{person.publicId}</span>
       <div className="text-muted-foreground">
@@ -237,6 +240,7 @@ function MergePairDialog({
   onMerged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const defaultKeepB = factCount(candidate.b) > factCount(candidate.a);
   const [keepB, setKeepB] = useState(defaultKeepB);
   const [keep, remove] = keepB ? [candidate.b, candidate.a] : [candidate.a, candidate.b];
@@ -256,7 +260,7 @@ function MergePairDialog({
       {(close) => (
         <MergeConfirmStep
           keepId={keep.id}
-          keepName={formatPersonName(keep) || t("tools.unnamed")}
+          keepName={formatName(keep) || t("tools.unnamed")}
           duplicateId={remove.id}
           onBack={close}
           backLabel={t("common.cancel")}

@@ -1,4 +1,4 @@
-import { formatLifespan, formatPersonName } from "@genealogy/core";
+import { formatLifespan } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
 import { Input } from "@genealogy/ui/components/input";
@@ -16,6 +16,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { authClient, useSession } from "../lib/auth-client";
+import { usePersonName } from "../lib/person-name";
 import { themeStateQuery } from "../lib/queries";
 import { getPersonById } from "../server/functions/person.functions";
 import { getMyProfile, updateProfile } from "../server/functions/profile.functions";
@@ -385,6 +386,7 @@ function LinkedPerson({
   isPending: boolean;
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const person = useQuery({
     queryKey: ["person", "byId", personId],
     queryFn: () => getPersonById({ data: { id: personId } }),
@@ -404,7 +406,7 @@ function LinkedPerson({
   return (
     <div className="flex items-center justify-between gap-2">
       <p className="text-sm">
-        {formatPersonName(person.data)}
+        {formatName(person.data)}
         {formatLifespan(person.data) ? ` (${formatLifespan(person.data)})` : ""}
       </p>
       <Button variant="outline" size="sm" disabled={isPending} onClick={onUnlink}>

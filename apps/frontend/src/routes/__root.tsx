@@ -46,7 +46,7 @@ import { authClient, useSession } from "../lib/auth-client";
 import { useImmichAvailable } from "../lib/immich-status";
 import { useOptimisticMutation } from "../lib/optimistic";
 import { roleOf, usePermissions } from "../lib/permissions";
-import { activeThemeQuery } from "../lib/queries";
+import { activeThemeQuery, personSettingsQuery } from "../lib/queries";
 import {
   deleteAllNotifications,
   deleteNotification,
@@ -99,8 +99,17 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     links: [{ rel: "stylesheet", href: appCss }],
   }),
   // The active theme is in the server-rendered <head> (see ThemeStyle), so
-  // the page never paints in Nova first and then switches.
-  loader: ({ context: { queryClient } }) => queryClient.prefetchQuery(activeThemeQuery()),
+  // the page never paints in Nova first and then switches. The person
+  // settings hold the name format every page shows names in — prefetched
+  // so names don't render one way and then switch either.
+  loader: ({ context: { queryClient }, location }) =>
+    Promise.all([
+      queryClient.prefetchQuery(activeThemeQuery()),
+      // Members only — the login and invitation pages show no names.
+      location.pathname === "/login" || location.pathname.startsWith("/invite/")
+        ? null
+        : queryClient.prefetchQuery(personSettingsQuery()),
+    ]),
   component: RootComponent,
   notFoundComponent: () => (
     <div className="p-8 text-muted-foreground">That page does not exist.</div>

@@ -5,6 +5,6 @@ import { DuplicateService } from "./duplicate.service.js";
 
 @Module({
   providers: [DuplicateService, DuplicateRouter],
-  exports: [DuplicateRouter],
+  exports: [DuplicateRouter, DuplicateService],
 })
 export class DuplicateModule {}

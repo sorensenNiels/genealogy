@@ -4,6 +4,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { usePersonName } from "../lib/person-name";
 import { listPersons } from "../server/functions/person.functions";
 
 /** One person as the person search returns them. */
@@ -12,9 +13,11 @@ export type PersonListItem = Awaited<ReturnType<typeof listPersons>>["items"][nu
 /** "Name (lifespan)", or just the name when nothing is known — how a person shows in a search result. */
 export function formatPersonWithLifespan(
   person: Parameters<typeof formatPersonName>[0] & Parameters<typeof formatLifespan>[0],
+  /** `usePersonName`'s, for the site's name format. */
+  formatName: (person: Parameters<typeof formatPersonName>[0]) => string = formatPersonName,
 ): string {
   const lifespan = formatLifespan(person);
-  return lifespan ? `${formatPersonName(person)} (${lifespan})` : formatPersonName(person);
+  return lifespan ? `${formatName(person)} (${lifespan})` : formatName(person);
 }
 
 export interface PersonPickerProps {
@@ -46,6 +49,7 @@ export function PersonPicker({
   className,
 }: PersonPickerProps) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const [query, setQuery] = useState("");
   const trimmed = query.trim();
   const searchInput = { limit, offset: 0, search: trimmed === "" ? null : trimmed };
@@ -64,8 +68,8 @@ export function PersonPicker({
       placeholder={placeholder ?? t("person.family.searchPeople")}
       items={people}
       itemKey={(person) => person.id}
-      itemLabel={formatPersonName}
-      renderItem={formatPersonWithLifespan}
+      itemLabel={formatName}
+      renderItem={(person) => formatPersonWithLifespan(person, formatName)}
       inputValue={query}
       onInputValueChange={setQuery}
       onSelect={onSelect}

@@ -165,6 +165,13 @@ export interface ListPersonsInput {
   /** Also return each row's parents and spouses (`family`) — the People list's detailed rows. */
   withFamily: boolean;
   viewerUserId: string;
+  /**
+   * Leave out everyone living but the viewer's own linked person — a
+   * Viewer when the person settings show them nothing of the living
+   * (`viewerLivingDetail` "hidden"), so not even a name search or a group
+   * header gives one away.
+   */
+  excludeLiving: boolean;
 }
 
 /** A relative named on a detailed People list row. */
@@ -213,8 +220,29 @@ export interface RelativesResult {
   parents: (PersonWithVitals & { parentage: Parentage })[];
   spouses: PersonWithVitals[];
   children: PersonWithVitals[];
-  /** Anyone sharing at least one of this person's own parents — half-siblings included. */
-  siblings: PersonWithVitals[];
+  /** Anyone sharing at least one of this person's own parents; `half` when each has a recorded parent the other doesn't. */
+  siblings: (PersonWithVitals & { half: boolean })[];
+  // The rest are worked out from marriages rather than recorded as edges —
+  // empty unless asked for (`RelativesOptions`). Nobody already in a list
+  // above, or an earlier list here, is repeated.
+  /** A parent's spouse who isn't a parent themselves. */
+  stepParents: PersonWithVitals[];
+  /** A step-parent's child who shares no parent with this person. */
+  stepSiblings: PersonWithVitals[];
+  /** A spouse's child who isn't this person's own. */
+  stepChildren: PersonWithVitals[];
+  /** A spouse's parents. */
+  parentsInLaw: PersonWithVitals[];
+  /** A spouse's siblings, and a sibling's spouses. */
+  siblingsInLaw: PersonWithVitals[];
+  /** A child's spouses. */
+  childrenInLaw: PersonWithVitals[];
+}
+
+/** The person settings' Family card scope — which of `RelativesResult`'s derived lists to work out. */
+export interface RelativesOptions {
+  stepRelations: boolean;
+  inLaws: boolean;
 }
 
 export interface TreeResult {
@@ -670,6 +698,14 @@ export class PersonService {
     }
     if (ancestorIds !== null) {
       clauses.push(inArray(persons.id, [...ancestorIds]));
+    }
+    if (input.excludeLiving) {
+      clauses.push(
+        or(
+          eq(persons.isLiving, false),
+          sql`${persons.id} = (select ${userProfiles.personId} from ${userProfiles} where ${userProfiles.userId} = ${input.viewerUserId})`,
+        )!,
+      );
     }
 
     return clauses.length > 0 ? and(...clauses) : undefined;
@@ -1138,47 +1174,170 @@ export class PersonService {
     return people.length;
   }
 
-  async relatives(id: string): Promise<RelativesResult> {
+  async relatives(
+    id: string,
+    options: RelativesOptions = { stepRelations: false, inLaws: false },
+  ): Promise<RelativesResult> {
     const [parentEdges, spouseNodes, childNodes] = await Promise.all([
       parentsOf(this.pool, id),
       spousesOf(this.pool, id),
       descendantsOf(this.pool, id, 1),
     ]);
+    const parentIds = parentEdges.map((edge) => edge.personId);
+    const spouseIds = spouseNodes.map((node) => node.personId);
+    const childIds = childNodes.map((node) => node.personId);
 
     // Siblings aren't a direct edge — they're anyone who shares at least one
     // of this person's own parents (half-siblings included), so this is a
     // parentsOf + childrenOf composition rather than a dedicated graph query.
     const siblingEdgesByParent = await Promise.all(
-      parentEdges.map((edge) => childrenOf(this.pool, edge.personId)),
+      parentIds.map((parentId) => childrenOf(this.pool, parentId)),
     );
-    const siblingIds = new Set(
-      siblingEdgesByParent
-        .flat()
-        .map((edge) => edge.personId)
-        .filter((childId) => childId !== id),
+    const siblingIds = [
+      ...new Set(
+        siblingEdgesByParent
+          .flat()
+          .map((edge) => edge.personId)
+          .filter((childId) => childId !== id),
+      ),
+    ];
+    // Half only on evidence, from both sides: each has a recorded parent the
+    // other doesn't (same mother, two different fathers). When one's parents
+    // are just a subset of the other's — a sibling linked to the mother but
+    // not (yet) to the father — that's a gap in the data, not a different
+    // father, and it must read the same from either person's page.
+    const ownParents = new Set(parentIds);
+    const siblingParents = await Promise.all(
+      siblingIds.map((siblingId) => parentsOf(this.pool, siblingId)),
+    );
+    const halfSiblingIds = new Set(
+      siblingIds.filter((_, index) => {
+        const theirs = new Set(siblingParents[index]!.map((edge) => edge.personId));
+        return (
+          [...theirs].some((parentId) => !ownParents.has(parentId)) &&
+          parentIds.some((parentId) => !theirs.has(parentId))
+        );
+      }),
     );
 
+    const derived = await this.derivedRelatives(id, options, {
+      parentIds,
+      spouseIds,
+      childIds,
+      siblingIds,
+    });
+
     const ids = [
-      ...new Set([...parentEdges, ...spouseNodes, ...childNodes].map((node) => node.personId)),
-      ...siblingIds,
+      ...new Set([...parentIds, ...spouseIds, ...childIds, ...siblingIds, ...derived.all]),
     ];
     const rows =
       ids.length > 0 ? await personsWithVitals(this.db).where(inArray(persons.id, ids)) : [];
     const byId = new Map(rows.map((row) => [row.id, row]));
-    const toRows = (nodes: PedigreeNode[]): PersonWithVitals[] =>
-      nodes.flatMap((node) => byId.get(node.personId) ?? []);
+    const toRows = (personIds: readonly string[]): PersonWithVitals[] =>
+      personIds.flatMap((personId) => byId.get(personId) ?? []);
 
     return {
       parents: parentEdges.flatMap((edge) => {
         const row = byId.get(edge.personId);
         return row ? [{ ...row, parentage: edge.parentage }] : [];
       }),
-      spouses: toRows(spouseNodes),
-      children: toRows(childNodes),
-      siblings: [...siblingIds].flatMap((siblingId) => {
+      spouses: toRows(spouseIds),
+      children: toRows(childIds),
+      siblings: siblingIds.flatMap((siblingId) => {
         const row = byId.get(siblingId);
-        return row ? [row] : [];
+        return row ? [{ ...row, half: halfSiblingIds.has(siblingId) }] : [];
       }),
+      stepParents: toRows(derived.stepParents),
+      stepSiblings: toRows(derived.stepSiblings),
+      stepChildren: toRows(derived.stepChildren),
+      parentsInLaw: toRows(derived.parentsInLaw),
+      siblingsInLaw: toRows(derived.siblingsInLaw),
+      childrenInLaw: toRows(derived.childrenInLaw),
+    };
+  }
+
+  /**
+   * Step- and in-law relations for `relatives`, as ids: each a hop or two
+   * along PARENT_OF and SPOUSE_OF edges from the direct relatives. Only the
+   * groups asked for are walked — each is a handful of graph queries per
+   * relative, which a page that doesn't show them shouldn't pay for.
+   */
+  private async derivedRelatives(
+    id: string,
+    options: RelativesOptions,
+    direct: { parentIds: string[]; spouseIds: string[]; childIds: string[]; siblingIds: string[] },
+  ) {
+    const seen = new Set([
+      id,
+      ...direct.parentIds,
+      ...direct.spouseIds,
+      ...direct.childIds,
+      ...direct.siblingIds,
+    ]);
+    // In order, so someone who is two things at once is listed as the first.
+    const claim = (candidates: string[]): string[] => {
+      const fresh = [...new Set(candidates)].filter((candidate) => !seen.has(candidate));
+      for (const candidate of fresh) seen.add(candidate);
+      return fresh;
+    };
+    const spousesOfAll = async (ids: string[]) =>
+      (await Promise.all(ids.map((personId) => spousesOf(this.pool, personId))))
+        .flat()
+        .map((node) => node.personId);
+    const childrenOfAll = async (ids: string[]) =>
+      (await Promise.all(ids.map((personId) => childrenOf(this.pool, personId))))
+        .flat()
+        .map((edge) => edge.personId);
+    const parentsOfAll = async (ids: string[]) =>
+      (await Promise.all(ids.map((personId) => parentsOf(this.pool, personId))))
+        .flat()
+        .map((edge) => edge.personId);
+
+    let stepParents: string[] = [];
+    let stepSiblings: string[] = [];
+    let stepChildren: string[] = [];
+    if (options.stepRelations) {
+      const [parentsSpouses, spousesChildren] = await Promise.all([
+        spousesOfAll(direct.parentIds),
+        childrenOfAll(direct.spouseIds),
+      ]);
+      stepParents = claim(parentsSpouses);
+      stepChildren = claim(spousesChildren);
+      stepSiblings = claim(await childrenOfAll(stepParents));
+    }
+
+    let parentsInLaw: string[] = [];
+    let siblingsInLaw: string[] = [];
+    let childrenInLaw: string[] = [];
+    if (options.inLaws) {
+      const [spousesParents, siblingsSpouses, childrensSpouses] = await Promise.all([
+        parentsOfAll(direct.spouseIds),
+        spousesOfAll(direct.siblingIds),
+        spousesOfAll(direct.childIds),
+      ]);
+      parentsInLaw = claim(spousesParents);
+      // From every parent of a spouse, not just those `claim` kept — one
+      // already listed as a step-parent still has the spouse's siblings.
+      const spousesSiblings = await childrenOfAll([...new Set(spousesParents)]);
+      siblingsInLaw = claim([...spousesSiblings, ...siblingsSpouses]);
+      childrenInLaw = claim(childrensSpouses);
+    }
+
+    return {
+      stepParents,
+      stepSiblings,
+      stepChildren,
+      parentsInLaw,
+      siblingsInLaw,
+      childrenInLaw,
+      all: [
+        ...stepParents,
+        ...stepSiblings,
+        ...stepChildren,
+        ...parentsInLaw,
+        ...siblingsInLaw,
+        ...childrenInLaw,
+      ],
     };
   }
 

@@ -8,6 +8,6 @@ import { IntegrityService } from "./integrity.service.js";
 @Module({
   imports: [ImmichModule, RecordModule],
   providers: [IntegrityService, IntegrityRouter],
-  exports: [IntegrityRouter],
+  exports: [IntegrityRouter, IntegrityService],
 })
 export class IntegrityModule {}

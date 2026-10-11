@@ -1,5 +1,6 @@
 import type {
   LastTreeView,
+  OverviewPreferences,
   PeopleListPreferences,
   PeopleListPreferencesChange,
   UpdateProfile,
@@ -7,6 +8,7 @@ import type {
 import {
   applyPeopleListPreferencesChange,
   lastTreeViewSchema,
+  parseOverviewPreferences,
   parsePeopleListPreferences,
 } from "@genealogy/core";
 import { userProfiles, type Database, type UserProfileRow } from "@genealogy/db";
@@ -159,6 +161,28 @@ export class ProfileService {
         set: { peopleListPreferences: preferences },
       });
     return preferences;
+  }
+
+  /** The Overview cards this member has hidden for themselves. */
+  async getOverviewPreferences(userId: string): Promise<OverviewPreferences> {
+    const [row] = await this.db
+      .select({ preferences: userProfiles.overviewPreferences })
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, userId))
+      .limit(1);
+    return parseOverviewPreferences(row?.preferences);
+  }
+
+  async saveOverviewPreferences(
+    userId: string,
+    preferences: OverviewPreferences,
+  ): Promise<OverviewPreferences> {
+    const saved = parseOverviewPreferences(preferences);
+    await this.db
+      .insert(userProfiles)
+      .values({ userId, overviewPreferences: saved })
+      .onConflictDoUpdate({ target: userProfiles.userId, set: { overviewPreferences: saved } });
+    return saved;
   }
 
   /**

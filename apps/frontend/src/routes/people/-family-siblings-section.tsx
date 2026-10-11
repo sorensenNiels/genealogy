@@ -1,4 +1,4 @@
-import { formatLifespan, formatPersonName, parentageSchema, type Parentage } from "@genealogy/core";
+import { formatLifespan, parentageSchema, type Parentage } from "@genealogy/core";
 import { AddButton } from "@genealogy/ui/components/add-button";
 import { Button } from "@genealogy/ui/components/button";
 import { Checkbox } from "@genealogy/ui/components/checkbox";
@@ -17,8 +17,9 @@ import { useTranslation } from "react-i18next";
 
 import { PersonPicker } from "../-person-picker";
 import { optionsFor } from "../../lib/person-display";
+import { usePersonName } from "../../lib/person-name";
 import { createPerson, linkParent } from "../../server/functions/person.functions";
-import type { ConfigurableOptionRow, ParentRow, PersonRow } from "./-types";
+import type { ConfigurableOptionRow, ParentRow, PersonRow, SiblingRow } from "./-types";
 
 /**
  * Siblings aren't a direct edge the way Parents/Spouses/Children each are —
@@ -35,13 +36,14 @@ export function SiblingsSection({
   options,
   onChanged,
 }: {
-  siblings: PersonRow[];
+  siblings: SiblingRow[];
   parents: ParentRow[];
   excludeIds: Set<string>;
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
@@ -66,9 +68,15 @@ export function SiblingsSection({
               params={{ personId: sibling.id }}
               className="block text-sm hover:underline"
             >
-              {formatPersonName(sibling)}
+              {formatName(sibling)}
               {formatLifespan(sibling) && (
                 <span className="ml-1 text-muted-foreground">({formatLifespan(sibling)})</span>
+              )}
+              {/* Only shown at all when Settings → Person page includes half-siblings. */}
+              {sibling.half && (
+                <span className="ml-1 text-xs text-muted-foreground">
+                  · {t("person.family.halfSibling")}
+                </span>
               )}
             </Link>
           ))}
@@ -101,6 +109,7 @@ function AddSibling({
   onChanged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const [mode, setMode] = useState<"search" | "create">("search");
   const [parentage, setParentage] = useState<Parentage>("unknown");
   const [selectedParentIds, setSelectedParentIds] = useState<Set<string>>(
@@ -149,7 +158,7 @@ function AddSibling({
             });
           }}
         >
-          {formatPersonName(parent)}
+          {formatName(parent)}
         </Checkbox>
       ))}
       {!canSubmit && (

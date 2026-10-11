@@ -1,5 +1,6 @@
 import {
   lastTreeViewSchema,
+  overviewPreferencesSchema,
   peopleListPreferencesChangeSchema,
   personIdSchema,
   updateProfileSchema,
@@ -63,3 +64,11 @@ export const updateProfile = createServerFn({ method: "POST" })
     }
     return result;
   });
+
+export const getOverviewPreferences = createServerFn({ method: "GET" }).handler(() =>
+  trpcProxy.profile.overviewPreferences.query(),
+);
+
+export const saveOverviewPreferences = createServerFn({ method: "POST" })
+  .validator(overviewPreferencesSchema)
+  .handler(({ data }) => trpcProxy.profile.saveOverviewPreferences.mutate(data));

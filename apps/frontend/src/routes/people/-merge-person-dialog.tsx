@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { formatPersonWithLifespan, PersonPicker } from "../-person-picker";
+import { usePersonName } from "../../lib/person-name";
 import { getDuplicatesForPerson } from "../../server/functions/duplicate.functions";
 import { getMergePreview, mergePerson } from "../../server/functions/person.functions";
 
@@ -115,6 +116,7 @@ function PickDuplicateStep({
   onPick: (id: string) => void;
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   // Likely duplicates first, so the usual case after an import is one click
   // rather than a search; the picker stays for anyone detection missed.
   const suggestions = useQuery({
@@ -137,7 +139,7 @@ function PickDuplicateStep({
                   onClick={() => onPick(candidate.b.id)}
                 >
                   <span className="block font-medium">
-                    {formatPersonWithLifespan(candidate.b) || t("tools.unnamed")}
+                    {formatPersonWithLifespan(candidate.b, formatName) || t("tools.unnamed")}
                   </span>
                   <DuplicateMatchSummary
                     confidence={candidate.confidence}

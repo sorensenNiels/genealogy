@@ -9,6 +9,11 @@ import {
   defaultRecordSettings,
   defaultTreeSettings,
   lastTreeViewSchema,
+  orderedPersonCards,
+  parseOverviewPreferences,
+  parseOverviewSettings,
+  visibleOverviewCards,
+  defaultOverviewSettings,
   parsePersonSettings,
   parseRecordSettings,
   parseTreeSettings,
@@ -72,11 +77,30 @@ describe("lastTreeViewSchema", () => {
 describe("parsePersonSettings", () => {
   it("defaults to the read view, family events on, and presumed deceased after 110 years", () => {
     expect(parsePersonSettings(undefined)).toEqual(defaultPersonSettings);
-    expect(defaultPersonSettings).toEqual({
+    expect(defaultPersonSettings).toMatchObject({
       openInEditMode: false,
       showFamilyEventsInTimeline: true,
       presumeDeceasedAfterYears: 110,
     });
+  });
+
+  it("shows everything as before by default: every card, full dates, ages, name only for Viewers", () => {
+    expect(defaultPersonSettings).toMatchObject({
+      hiddenCards: [],
+      nameFormat: "givenFirst",
+      dateDetail: "full",
+      showAges: true,
+      showHalfSiblings: true,
+      showStepRelations: false,
+      showInLaws: false,
+      viewerLivingDetail: "name",
+    });
+  });
+
+  it("drops an unknown card from a saved order", () => {
+    expect(parsePersonSettings({ cardOrder: ["details", "gallery"] }).cardOrder).toEqual(
+      defaultPersonSettings.cardOrder,
+    );
   });
 
   it("keeps valid fields and resets an out-of-range age", () => {
@@ -165,5 +189,119 @@ describe("applyPeopleListPreferencesChange", () => {
         { rowDetail: "compact", columns: null },
       ),
     ).toEqual({ view: "card", rowDetail: "compact" });
+  });
+});
+
+describe("orderedPersonCards", () => {
+  it("is every card in the default order by default", () => {
+    expect(orderedPersonCards(defaultPersonSettings)).toEqual([
+      "details",
+      "photos",
+      "lifeEvents",
+      "records",
+      "citations",
+      "associations",
+      "researchNotes",
+      "family",
+      "externalIds",
+    ]);
+  });
+
+  it("follows a saved order and appends a card the order doesn't mention", () => {
+    expect(
+      orderedPersonCards({ cardOrder: ["researchNotes", "details", "details"], hiddenCards: [] }),
+    ).toEqual([
+      "researchNotes",
+      "details",
+      "photos",
+      "lifeEvents",
+      "records",
+      "citations",
+      "associations",
+      "family",
+      "externalIds",
+    ]);
+  });
+
+  it("leaves out hidden cards, but never Personal details or Family", () => {
+    const cards = orderedPersonCards({
+      cardOrder: defaultPersonSettings.cardOrder,
+      hiddenCards: ["associations", "externalIds", "details", "family"],
+    });
+    expect(cards).not.toContain("associations");
+    expect(cards).not.toContain("externalIds");
+    expect(cards).toContain("details");
+    expect(cards).toContain("family");
+  });
+});
+
+describe("overview settings", () => {
+  it("shows every card by default to an admin, the family cards to a viewer", () => {
+    expect(parseOverviewSettings(undefined)).toEqual(defaultOverviewSettings);
+    expect(visibleOverviewCards(defaultOverviewSettings, { hiddenCards: [] }, "admin")).toEqual(
+      defaultOverviewSettings.cardOrder,
+    );
+    expect(visibleOverviewCards(defaultOverviewSettings, { hiddenCards: [] }, "viewer")).toEqual([
+      "yourPlace",
+      "continue",
+      "onThisDay",
+      "featuredAncestor",
+      "familyAtAGlance",
+      "topPlaces",
+    ]);
+    expect(
+      visibleOverviewCards(defaultOverviewSettings, { hiddenCards: [] }, "editor"),
+    ).not.toContain("thingsToLook");
+  });
+
+  it("drops an unknown card without losing the rest", () => {
+    expect(
+      parseOverviewSettings({ cardOrder: ["topPlaces", "gone", "yourPlace", "topPlaces"] })
+        .cardOrder,
+    ).toEqual(["topPlaces", "yourPlace"]);
+    expect(parseOverviewPreferences({ hiddenCards: ["system", 3] })).toEqual({
+      hiddenCards: ["system"],
+    });
+    expect(parseOverviewPreferences("nonsense")).toEqual({ hiddenCards: [] });
+  });
+
+  it("follows the site's order, appends new cards, and hides the site's and the member's", () => {
+    const cards = visibleOverviewCards(
+      { cardOrder: ["topPlaces", "yourPlace"], hiddenCards: ["system"] },
+      { hiddenCards: ["onThisDay"] },
+      "admin",
+    );
+    expect(cards.slice(0, 3)).toEqual(["topPlaces", "yourPlace", "continue"]);
+    expect(cards).not.toContain("system");
+    expect(cards).not.toContain("onThisDay");
+  });
+
+  it("puts the member's own order first, and the site's order after it for the rest", () => {
+    const cards = visibleOverviewCards(
+      { cardOrder: defaultOverviewSettings.cardOrder, hiddenCards: [] },
+      { hiddenCards: [], cardOrder: ["topPlaces", "onThisDay"] },
+      "viewer",
+    );
+    expect(cards).toEqual([
+      "topPlaces",
+      "onThisDay",
+      "yourPlace",
+      "continue",
+      "featuredAncestor",
+      "familyAtAGlance",
+    ]);
+    expect(parseOverviewPreferences({ hiddenCards: [], cardOrder: ["system", "nope"] })).toEqual({
+      hiddenCards: [],
+      cardOrder: ["system"],
+    });
+    expect(parseOverviewPreferences({ hiddenCards: [] })).toEqual({ hiddenCards: [] });
+  });
+
+  it("keeps the On this day choices, defaulting to every event and no living birthdays", () => {
+    expect(defaultOverviewSettings.onThisDayEvents).toEqual(["birth", "marriage", "death"]);
+    expect(defaultOverviewSettings.onThisDayLivingBirthdays).toBe(false);
+    expect(
+      parseOverviewSettings({ onThisDayEvents: ["death"], onThisDayLivingBirthdays: true }),
+    ).toMatchObject({ onThisDayEvents: ["death"], onThisDayLivingBirthdays: true });
   });
 });

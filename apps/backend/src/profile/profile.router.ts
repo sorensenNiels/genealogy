@@ -1,5 +1,6 @@
 import {
   lastTreeViewSchema,
+  overviewPreferencesSchema,
   peopleListPreferencesChangeSchema,
   personIdSchema,
   updateProfileSchema,
@@ -63,6 +64,17 @@ export class ProfileRouter {
         .input(peopleListPreferencesChangeSchema)
         .mutation(({ input, ctx }) =>
           this.profile.savePeopleListPreferences(ctx.session.user.id, input),
+        ),
+
+      // The Overview cards a member hides for themselves — any member, Viewers too.
+      overviewPreferences: protectedProcedure.query(({ ctx }) =>
+        this.profile.getOverviewPreferences(ctx.session.user.id),
+      ),
+
+      saveOverviewPreferences: protectedProcedure
+        .input(overviewPreferencesSchema)
+        .mutation(({ input, ctx }) =>
+          this.profile.saveOverviewPreferences(ctx.session.user.id, input),
         ),
     });
   }

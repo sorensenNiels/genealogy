@@ -1,4 +1,4 @@
-import { formatLifespan, formatPersonName } from "@genealogy/core";
+import { formatLifespan } from "@genealogy/core";
 import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Card, CardContent } from "@genealogy/ui/components/card";
@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 
 import { publicBackendUrl } from "../../lib/env";
 import { avatarColorClass, GenderIcon, genderLabel, initials } from "../../lib/person-display";
+import { usePersonName } from "../../lib/person-name";
 import type { listPersons } from "../../server/functions/person.functions";
 
 type PersonListItem = Awaited<ReturnType<typeof listPersons>>["items"][number];
@@ -43,6 +44,7 @@ export function PeopleCardView({
 
 function PersonCard({ person, family }: { person: PersonListItem; family: string | null }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const photoUrl = person.photoPath ? `${publicBackendUrl}/uploads/${person.photoPath}` : null;
   const lifespan = formatLifespan(person);
   const place = person.birthPlace ?? person.deathPlace;
@@ -70,7 +72,7 @@ function PersonCard({ person, family }: { person: PersonListItem; family: string
           </span>
         </div>
         <CardContent className="flex w-full flex-col items-center gap-1 px-4">
-          <p className="text-base font-semibold">{formatPersonName(person)}</p>
+          <p className="text-base font-semibold">{formatName(person)}</p>
           {lifespan && <p className="text-sm text-muted-foreground">{lifespan}</p>}
           {place && <p className="text-sm text-muted-foreground">{place}</p>}
           {family && (

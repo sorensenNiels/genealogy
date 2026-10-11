@@ -1,4 +1,3 @@
-import { formatPersonName } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
 import { Dialog, DialogFooter } from "@genealogy/ui/components/dialog";
 import { Input } from "@genealogy/ui/components/input";
@@ -7,6 +6,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { PersonPicker } from "../-person-picker";
+import { usePersonName } from "../../lib/person-name";
 import { linkImmichPerson, tagImmichFace } from "../../server/functions/immich.functions";
 import { ImmichPersonPicker } from "../people/-immich-person-picker";
 
@@ -60,6 +60,7 @@ export function TagFaceDialog({
 
 function TagFaceForm({ face, onDone }: { face: TagFaceTarget; onDone: () => Promise<void> }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const [personId, setPersonId] = useState<string | null>(null);
   const [personName, setPersonName] = useState("");
   const [mode, setMode] = useState<"existing" | "new">("existing");
@@ -123,7 +124,7 @@ function TagFaceForm({ face, onDone }: { face: TagFaceTarget; onDone: () => Prom
         placeholder={t("tagFace.whoseFaceIsThis")}
         onSelect={(person) => {
           setPersonId(person.id);
-          setPersonName(formatPersonName(person));
+          setPersonName(formatName(person));
         }}
       />
     );

@@ -5,7 +5,6 @@ import {
   estimatedBirthFromAge,
   findCensus,
   formatLifespan,
-  formatPersonName,
   joinHistoricalDateText,
   parseHistoricalDate,
   RECORD_TEMPLATES,
@@ -40,6 +39,7 @@ import { toSupportedLanguage, type SupportedLanguage } from "../../i18n/create-i
 import { formatDisplayDate, historicalDateFieldPreview } from "../../lib/format-date";
 import { usePermissions } from "../../lib/permissions";
 import { optionsFor } from "../../lib/person-display";
+import { usePersonName } from "../../lib/person-name";
 import { useRecordSettings } from "../../lib/record-settings";
 import { createPerson, listPersons } from "../../server/functions/person.functions";
 import {
@@ -159,6 +159,7 @@ export function RecordEditor({
   suggestions?: RelationshipCandidate[];
 }) {
   const { t, i18n } = useTranslation();
+  const { formatName } = usePersonName();
   const language = toSupportedLanguage(i18n.language);
   const { canEdit } = usePermissions();
   const navigate = useNavigate();
@@ -417,7 +418,7 @@ export function RecordEditor({
                           params={{ personId: row.person.id }}
                           className="truncate font-medium hover:underline"
                         >
-                          {formatPersonName(row.person)}
+                          {formatName(row.person)}
                         </Link>
                         {canEdit && (
                           <Button
@@ -425,7 +426,7 @@ export function RecordEditor({
                             variant="ghost"
                             size="icon"
                             className="size-6 shrink-0"
-                            aria-label={t("records.unlink", { name: formatPersonName(row.person) })}
+                            aria-label={t("records.unlink", { name: formatName(row.person) })}
                             onClick={() => updateRow(row.key, { person: null })}
                           >
                             <XIcon className="size-3.5" />
@@ -625,6 +626,7 @@ function Suggestions({
   people: EditorRow[];
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const queryClient = useQueryClient();
   const apply = useMutation({
     mutationFn: (link: RelationshipCandidate) =>
@@ -636,7 +638,7 @@ function Suggestions({
   });
   const nameOf = (id: string) => {
     const person = people.find((row) => row.person?.id === id)?.person;
-    return person ? formatPersonName(person) : "?";
+    return person ? formatName(person) : "?";
   };
 
   return (
@@ -783,6 +785,7 @@ function LinkPersonDialog({
   onLink: (person: { id: string; given: string; surname: string }) => void;
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const [query, setQuery] = useState(row.name);
   const trimmed = query.trim();
   const searchInput = { limit: 12, offset: 0, search: trimmed === "" ? null : trimmed };
@@ -831,7 +834,7 @@ function LinkPersonDialog({
                   onClick={() => onLink(candidate)}
                 >
                   <span className="min-w-0 truncate">
-                    {formatPersonName(candidate)}
+                    {formatName(candidate)}
                     {formatLifespan(candidate) ? (
                       <span className="text-muted-foreground"> ({formatLifespan(candidate)})</span>
                     ) : null}

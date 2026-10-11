@@ -17,16 +17,18 @@ export function familyLine(
   person: PersonListItem,
   settings: Pick<PeopleListSettings, "detailParents" | "detailSpouses">,
   t: TFunction,
+  /** `usePersonName`'s, for the site's name format; plain `formatPersonName` by default. */
+  formatName: (name: { given: string; surname: string }) => string = formatPersonName,
 ): string | null {
   if (!person.family) return null;
   const parts: string[] = [];
-  const parents = person.family.parents.map((parent) => formatPersonName(parent)).filter(Boolean);
+  const parents = person.family.parents.map((parent) => formatName(parent)).filter(Boolean);
   if (settings.detailParents && parents.length > 0) {
     parts.push(t(`people.childOf.${person.gender}`, { parents: parents.join(" & ") }));
   }
   if (settings.detailSpouses) {
     for (const spouse of person.family.spouses) {
-      const name = formatPersonName(spouse);
+      const name = formatName(spouse);
       if (!name) continue;
       const year = yearOf(spouse.married);
       parts.push(year ? `⚭ ${year} ${name}` : `⚭ ${name}`);

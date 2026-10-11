@@ -2,7 +2,6 @@ import {
   defaultTreeSettings,
   formatKinship,
   formatLifespan,
-  formatPersonName,
   kinshipsFrom,
   type Gender,
   treeChartKindSchema,
@@ -39,6 +38,7 @@ import { toSupportedLanguage } from "../i18n/create-i18n-instance";
 import { publicBackendUrl } from "../lib/env";
 import { formatDisplayDate } from "../lib/format-date";
 import { usePermissions } from "../lib/permissions";
+import { usePersonName } from "../lib/person-name";
 import { lastTreeQuery } from "../lib/queries";
 import {
   addOptions,
@@ -359,6 +359,7 @@ function FamilyTree({
   orientation: Orientation;
 }) {
   const { t, i18n } = useTranslation();
+  const { formatName } = usePersonName();
   const language = toSupportedLanguage(i18n.language);
   const treeSettings = useTreeSettings();
   const { canEdit } = usePermissions();
@@ -458,7 +459,7 @@ function FamilyTree({
         (merged?.people ?? []).map((person) => [
           person.id,
           treeCard(person, {
-            name: formatPersonName(person),
+            name: formatName(person),
             relation: (() => {
               const kinship = kinships?.get(person.id);
               return kinship ? formatKinship(kinship, person.gender, language) : null;
@@ -474,7 +475,7 @@ function FamilyTree({
           }),
         ]),
       ),
-    [merged, kinships, language, treeSettings.dateDetail, directLineIds, view],
+    [merged, kinships, language, treeSettings.dateDetail, directLineIds, view, formatName],
   );
 
   // Defaults to the root rather than nobody, so the detail panel is already
@@ -518,7 +519,7 @@ function FamilyTree({
     try {
       const file = await api.exportChart(format);
       const root = merged?.people.find((person) => person.id === rootId);
-      downloadFile(file, exportFilename(root ? formatPersonName(root) : "", format));
+      downloadFile(file, exportFilename(root ? formatName(root) : "", format));
       setExportState({ pending: false, error: null });
     } catch (error) {
       setExportState({
@@ -871,10 +872,11 @@ function CardMenu({
   onAddRelative: (subjectId: string, option: AddOption) => void;
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const { canEdit } = usePermissions();
   if (!person) return null;
   const id = person.id;
-  const name = formatPersonName(person);
+  const name = formatName(person);
   const options = addOptions(tree, id, card);
 
   return (
@@ -931,9 +933,10 @@ function AddRelativeMenu({
   onAddRelative: (subjectId: string, option: AddOption) => void;
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   if (!person) return null;
   const id = person.id;
-  const name = formatPersonName(person);
+  const name = formatName(person);
   const options = addOptions(tree, id, card);
   const isEmpty = options.add.length === 0 && options.load.length === 0;
 
@@ -976,14 +979,13 @@ function FindInTree({
   onFind: (personId: string) => void;
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const [query, setQuery] = useState("");
   const needle = foldForSearch(query.trim());
   const matches =
     needle === ""
       ? []
-      : people
-          .filter((person) => foldForSearch(formatPersonName(person)).includes(needle))
-          .slice(0, 12);
+      : people.filter((person) => foldForSearch(formatName(person)).includes(needle)).slice(0, 12);
 
   return (
     <div className="relative w-56 rounded-md bg-card shadow-sm">
@@ -997,8 +999,8 @@ function FindInTree({
         className="[&_input]:pl-6"
         items={matches}
         itemKey={(person) => person.id}
-        itemLabel={formatPersonName}
-        renderItem={formatPersonWithLifespan}
+        itemLabel={formatName}
+        renderItem={(person) => formatPersonWithLifespan(person, formatName)}
         inputValue={query}
         onInputValueChange={setQuery}
         onSelect={(person) => {
@@ -1037,7 +1039,8 @@ function RelativeRow({
   remove?: { relationLabel: string; onConfirm: () => void; isPending: boolean };
 }) {
   const { t } = useTranslation();
-  const name = formatPersonName(person);
+  const { formatName } = usePersonName();
+  const name = formatName(person);
   return (
     <div className="group flex items-center justify-between gap-2 text-sm">
       <div className="min-w-0">
@@ -1252,6 +1255,7 @@ function DetailPanel({
   expandingDirection: "up" | "down" | null | undefined;
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const queryClient = useQueryClient();
   const unlinkParentMutation = useMutation({ mutationFn: unlinkParent });
   const unlinkSpouseMutation = useMutation({ mutationFn: unlinkSpouse });
@@ -1360,7 +1364,7 @@ function DetailPanel({
           )}
         </div>
         <div className="min-w-0">
-          <p className="truncate font-semibold">{formatPersonName(person)}</p>
+          <p className="truncate font-semibold">{formatName(person)}</p>
           <p className="text-sm text-muted-foreground">{formatLifespan(person) ?? "—"}</p>
         </div>
       </div>

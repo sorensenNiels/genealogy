@@ -24,8 +24,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
-import { formatDisplayDate } from "../../lib/format-date";
 import { labelFor, optionsFor } from "../../lib/person-display";
+import { usePersonPageDate } from "../../lib/person-settings";
 import { addName, removeName, updateName } from "../../server/functions/person.functions";
 import { historicalDateFieldPreview } from "./-shared";
 import type { ConfigurableOptionRow, NameVariantRow } from "./-types";
@@ -116,8 +116,8 @@ function NameRow({
   onChanged: () => Promise<void>;
   onRemove: () => void;
 }) {
-  const { t, i18n } = useTranslation();
-  const language = toSupportedLanguage(i18n.language);
+  const { t } = useTranslation();
+  const formatDate = usePersonPageDate();
   return (
     <div className="flex items-center justify-between gap-2 text-sm">
       <div>
@@ -127,7 +127,7 @@ function NameRow({
         <span>{[name.given, name.surname].filter(Boolean).join(" ")}</span>
         {name.since && (
           <span className="ml-1 text-muted-foreground">
-            {t("person.namesGender.since", { date: formatDisplayDate(name.since, language) })}
+            {t("person.namesGender.since", { date: formatDate(name.since) })}
           </span>
         )}
         {name.notes && (

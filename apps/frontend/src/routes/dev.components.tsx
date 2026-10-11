@@ -55,6 +55,7 @@ import { SaveButton } from "@genealogy/ui/components/save-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
 import { Select } from "@genealogy/ui/components/select";
 import { Separator } from "@genealogy/ui/components/separator";
+import { SortableGrid } from "@genealogy/ui/components/sortable-grid";
 import { Switch } from "@genealogy/ui/components/switch";
 import {
   Table,
@@ -276,6 +277,35 @@ function ImageCropDialogDemo() {
         onCropped={() => setIsOpen(false)}
       />
     </>
+  );
+}
+
+function SortableGridDemo() {
+  const [items, setItems] = useState([
+    { id: "one", title: "First card", body: "Drag me anywhere, or use the grip." },
+    { id: "two", title: "Second card", body: "Links inside are inert while arranging." },
+    { id: "three", title: "Third card", body: "Keyboard: Enter on the grip, arrows, Enter." },
+  ]);
+  return (
+    <SortableGrid
+      aria-label="Sample cards"
+      items={items}
+      textValue={(item) => item.title}
+      dragLabel={(item) => `Move ${item.title}`}
+      onReorder={(orderedIds) => {
+        const byId = new Map(items.map((item) => [item.id, item]));
+        setItems(orderedIds.map((id) => byId.get(id)!));
+      }}
+      className="max-w-2xl sm:grid-cols-3"
+    >
+      {(item) => (
+        <SectionCard title={item.title}>
+          <p className="text-sm text-muted-foreground">
+            {item.body} <a href="#sortable">A link</a>
+          </p>
+        </SectionCard>
+      )}
+    </SortableGrid>
   );
 }
 
@@ -624,6 +654,10 @@ function ComponentsShowcase() {
 
       <Section title="Photo Grid">
         <PhotoGridDemo />
+      </Section>
+
+      <Section title="Sortable Grid">
+        <SortableGridDemo />
       </Section>
 
       <Section title="Photo Book">

@@ -135,21 +135,56 @@ export const updatePersonSchema = z.object({
 export type UpdatePerson = z.infer<typeof updatePersonSchema>;
 
 /**
+ * How a name reads: given name first ("Anders Jensen"), surname first in
+ * capitals ("JENSEN, Anders") as in many printed genealogies, or given name
+ * first with the surname in capitals ("Anders JENSEN"). A site-wide choice
+ * — the person settings' `nameFormat`.
+ */
+export const personNameFormatSchema = z.enum(["givenFirst", "surnameFirst", "surnameCapitals"]);
+export type PersonNameFormat = z.infer<typeof personNameFormatSchema>;
+
+function present(parts: (string | null | undefined)[]): string[] {
+  return parts.filter((part): part is string => typeof part === "string" && part.trim() !== "");
+}
+
+/**
  * `Anne Marie Sørensen`, or `Niels "Pete" Sørensen` when a nickname is set —
  * `Niels "Pete, Junior" Sørensen` when there's more than one — collapsing
- * whitespace where parts are missing.
+ * whitespace where parts are missing. `format` puts the surname first or in
+ * capitals (see `PersonNameFormat`): `SØRENSEN, Niels "Pete"`.
  */
-export function formatPersonName(name: PersonName & { nickname?: string[] | null }): string {
+export function formatPersonName(
+  name: PersonName & { nickname?: string[] | null },
+  format: PersonNameFormat = "givenFirst",
+): string {
+  return formatNameParts(name, format, null);
+}
+
+/**
+ * The shared body of `formatPersonName` and `formatFullPersonName`: a title
+ * belongs with the given name, which moves after the surname in
+ * "surnameFirst" — "SØRENSEN, Dr. Niels", not "Dr. SØRENSEN, Niels".
+ */
+function formatNameParts(
+  name: PersonName & { nickname?: string[] | null },
+  format: PersonNameFormat,
+  titlePrefix: string | null,
+): string {
   const nicknames = (name.nickname ?? []).map((n) => n.trim()).filter((n) => n !== "");
-  const parts = [
+  const givenPart = present([
+    titlePrefix,
     name.given,
     nicknames.length > 0 ? `"${nicknames.join(", ")}"` : null,
-    name.surname,
-  ];
-  const present = parts.filter(
-    (part): part is string => typeof part === "string" && part.trim() !== "",
-  );
-  return present.length > 0 ? present.join(" ") : "Unknown";
+  ]).join(" ");
+  const surname =
+    format === "givenFirst" ? name.surname.trim() : name.surname.trim().toLocaleUpperCase();
+  const parts =
+    format === "surnameFirst" && surname !== "" && givenPart !== ""
+      ? [`${surname},`, givenPart]
+      : format === "surnameFirst"
+        ? present([surname, givenPart])
+        : present([givenPart, surname]);
+  return parts.length > 0 ? parts.join(" ") : "Unknown";
 }
 
 /**
@@ -162,13 +197,11 @@ export function formatPersonName(name: PersonName & { nickname?: string[] | null
  */
 export function formatFullPersonName(
   person: PersonName & Pick<Person, "titlePrefix" | "suffix"> & { nickname?: string[] | null },
+  format: PersonNameFormat = "givenFirst",
 ): string {
-  const core = formatPersonName(person);
-  const withPrefix =
-    person.titlePrefix && person.titlePrefix.trim() !== "" ? `${person.titlePrefix} ${core}` : core;
-  return person.suffix && person.suffix.trim() !== ""
-    ? `${withPrefix}, ${person.suffix}`
-    : withPrefix;
+  const titlePrefix = person.titlePrefix?.trim() ? person.titlePrefix.trim() : null;
+  const core = formatNameParts(person, format, titlePrefix);
+  return person.suffix && person.suffix.trim() !== "" ? `${core}, ${person.suffix}` : core;
 }
 
 /**

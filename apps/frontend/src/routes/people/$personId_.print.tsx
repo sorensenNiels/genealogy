@@ -1,5 +1,5 @@
 import type { AppRouter } from "@genealogy/backend";
-import { formatAge, formatFullPersonName, formatLifespan, formatPersonName } from "@genealogy/core";
+import { formatAge, formatLifespan } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
 import { MarkdownContent } from "@genealogy/ui/components/markdown-content";
 import { useQuery } from "@tanstack/react-query";
@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { formatDisplayDate } from "../../lib/format-date";
 import { labelFor } from "../../lib/person-display";
+import { usePersonName } from "../../lib/person-name";
 import {
   getPersonById,
   getRelatives,
@@ -32,6 +33,7 @@ type ConfigurableOptionRow = RouterOutputs["settings"]["listOptions"][number];
 
 function PrintRoute() {
   const { t, i18n } = useTranslation();
+  const { formatFullName } = usePersonName();
   const language = toSupportedLanguage(i18n.language);
   const { personId } = Route.useParams();
 
@@ -105,7 +107,7 @@ function PrintRoute() {
 
       <div className="space-y-6">
         <header className="space-y-1 border-b pb-4">
-          <h1 className="text-2xl font-semibold">{formatFullPersonName(record)}</h1>
+          <h1 className="text-2xl font-semibold">{formatFullName(record)}</h1>
           {(formatLifespan(record) ?? formatAge(record)) && (
             <p className="text-muted-foreground">
               {[formatLifespan(record), formatAge(record)].filter(Boolean).join(" · ")}
@@ -250,6 +252,7 @@ function FamilyList({
   options: ConfigurableOptionRow[];
   t: TFunction;
 }) {
+  const { formatName } = usePersonName();
   return (
     <div>
       <h3 className="font-medium">{title}</h3>
@@ -261,7 +264,7 @@ function FamilyList({
             const union = unionFor?.(person.id);
             return (
               <li key={person.id}>
-                {formatPersonName(person)}
+                {formatName(person)}
                 {formatLifespan(person) ? ` (${formatLifespan(person)})` : ""}
                 {union ? ` — ${labelFor(options, "union_status", union.status)}` : ""}
               </li>

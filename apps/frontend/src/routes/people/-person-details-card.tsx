@@ -1,5 +1,4 @@
 import {
-  formatPersonName,
   genderSchema,
   isPresumedDeceased,
   joinHistoricalDateText,
@@ -24,11 +23,11 @@ import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { toSupportedLanguage, type SupportedLanguage } from "../../i18n/create-i18n-instance";
-import { formatDisplayDate } from "../../lib/format-date";
 import { lifeAtAGlance, type LifeMilestone } from "../../lib/life-summary";
 import { usePermissions } from "../../lib/permissions";
 import { genderLabel, labelFor } from "../../lib/person-display";
-import { usePersonSettings } from "../../lib/person-settings";
+import { usePersonName } from "../../lib/person-name";
+import { usePersonPageDate, usePersonSettings } from "../../lib/person-settings";
 import {
   listSuffixes,
   listTitlePrefixes,
@@ -487,8 +486,9 @@ function DetailsReadView({
   onEdit: (() => void) | null;
   onChanged: () => Promise<void>;
 }) {
-  const { t, i18n } = useTranslation();
-  const language = toSupportedLanguage(i18n.language);
+  const { t } = useTranslation();
+  const formatDate = usePersonPageDate();
+  const { formatName } = usePersonName();
   const markDeceased = useMutation({ mutationFn: updatePerson, onSuccess: onChanged });
 
   const { milestones, sentences } = lifeAtAGlance({
@@ -503,11 +503,11 @@ function DetailsReadView({
           startPlace: union.startPlace,
           status: union.status,
           partnerId: partner ? partnerId : null,
-          partnerName: partner ? formatPersonName(partner) : t("person.events.unknownSpouse"),
+          partnerName: partner ? formatName(partner) : t("person.events.unknownSpouse"),
         };
       }),
     childCount,
-    formatDate: (date) => formatDisplayDate(date, language),
+    formatDate: (date) => formatDate(date),
   });
 
   // What an editor could still fill in — each prompt opens the form.
@@ -603,8 +603,8 @@ function Milestones({
   person: PersonRow;
   options: ConfigurableOptionRow[];
 }) {
-  const { t, i18n } = useTranslation();
-  const language = toSupportedLanguage(i18n.language);
+  const { t } = useTranslation();
+  const formatDate = usePersonPageDate();
   // The connecting line runs between the first and last icon centres.
   const inset = `${50 / milestones.length}%`;
 
@@ -646,7 +646,7 @@ function Milestones({
               <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 {title(milestone)}
               </p>
-              <p className="font-semibold">{formatDisplayDate(milestone.date, language) ?? "—"}</p>
+              <p className="font-semibold">{formatDate(milestone.date) ?? "—"}</p>
               {milestone.place && (
                 <p className="text-sm text-muted-foreground">{milestone.place}</p>
               )}
@@ -665,7 +665,7 @@ function Milestones({
               {milestone.kind === "death" && (person.burial || person.burialPlace) && (
                 <p className="text-xs text-muted-foreground">
                   {t("person.lifeSummary.buried", {
-                    what: [formatDisplayDate(person.burial, language), person.burialPlace]
+                    what: [formatDate(person.burial), person.burialPlace]
                       .filter(Boolean)
                       .join(", "),
                   })}

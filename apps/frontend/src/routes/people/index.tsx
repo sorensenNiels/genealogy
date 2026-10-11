@@ -3,7 +3,6 @@ import {
   calculateAge,
   defaultPeopleListSettings,
   formatLifespan,
-  formatPersonName,
   peopleListColumnSchema,
   peopleListGroupingSchema,
   personListSortSchema,
@@ -83,6 +82,7 @@ import {
   labelFor,
   genderLabel,
 } from "../../lib/person-display";
+import { usePersonName } from "../../lib/person-name";
 import {
   listOptionsQuery,
   peopleListSettingsQuery,
@@ -285,6 +285,7 @@ const helper = createColumnHelper<typeof features, PersonListItem>();
 
 function People() {
   const { t, i18n } = useTranslation();
+  const { formatName } = usePersonName();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const search = Route.useSearch();
@@ -398,14 +399,15 @@ function People() {
     () =>
       buildColumns(options.data ?? EMPTY_OPTIONS, t, language, sortState, {
         dateDetail: settings.dateDetail,
-        familyLine: detailed ? (person) => familyLine(person, settings, t) : null,
+        formatName,
+        familyLine: detailed ? (person) => familyLine(person, settings, t, formatName) : null,
         placesUnderDates: detailed && settings.detailPlaces,
       }).filter(
         (column) => !column.id || !isChoosableColumn(column.id) || visibleColumns.has(column.id),
       ),
     // `sortState` is rebuilt every render; what it depends on is listed instead.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-    [options.data, t, language, sortBy, sortDir, settings, detailed, visibleColumns],
+    [options.data, t, language, sortBy, sortDir, settings, detailed, visibleColumns, formatName],
   );
 
   // The table needs a stable array; an inline `?? []` would be a new one each render.
@@ -764,7 +766,11 @@ function People() {
                       {!collapsed.has(group.id) && (
                         <PeopleCardView
                           people={group.people}
-                          familyLine={detailed ? (person) => familyLine(person, settings, t) : null}
+                          familyLine={
+                            detailed
+                              ? (person) => familyLine(person, settings, t, formatName)
+                              : null
+                          }
                         />
                       )}
                     </section>
@@ -773,7 +779,9 @@ function People() {
               ) : (
                 <PeopleCardView
                   people={rows}
-                  familyLine={detailed ? (person) => familyLine(person, settings, t) : null}
+                  familyLine={
+                    detailed ? (person) => familyLine(person, settings, t, formatName) : null
+                  }
                 />
               )}
             </div>
@@ -809,6 +817,8 @@ function People() {
 /** What the columns show beyond the data itself — from Settings → People list and the member's row choice. */
 interface ColumnDisplay {
   dateDetail: TreeDateDetail;
+  /** `usePersonName`'s — the site's name format. */
+  formatName: (person: PersonListItem) => string;
   /** The detailed row's second line under the name; null in compact rows. */
   familyLine: ((person: PersonListItem) => string | null) | null;
   /** Places under the Born/Died dates, and no Place column. */
@@ -881,7 +891,7 @@ function buildColumns(
         </span>
       ),
     }),
-    helper.accessor((row) => formatPersonName(row), {
+    helper.accessor((row) => display.formatName(row), {
       id: "name",
       header: sortable("name", t("people.columnPerson")),
       cell: (context) => {
@@ -1128,12 +1138,13 @@ function GroupHeader({
 
 function ViewInTreeAction({ person }: { person: PersonListItem }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   return (
     <Link
       to="/tree"
       search={{ personId: person.id }}
       className={buttonVariants({ variant: "ghost", size: "icon" })}
-      aria-label={t("people.viewInTree", { name: formatPersonName(person) })}
+      aria-label={t("people.viewInTree", { name: formatName(person) })}
     >
       <Network className="size-4 text-muted-foreground" />
     </Link>
@@ -1143,6 +1154,7 @@ function ViewInTreeAction({ person }: { person: PersonListItem }) {
 /** Hidden outright when `hasRelations` is set — the backend enforces the same rule in `remove`. */
 function DeletePersonAction({ person }: { person: PersonListItem }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const { isAdmin } = usePermissions();
   const queryClient = useQueryClient();
   const removePersonMutation = useMutation({
@@ -1160,8 +1172,8 @@ function DeletePersonAction({ person }: { person: PersonListItem }) {
   return (
     <div className="flex flex-col items-end gap-1">
       <RemoveButton
-        itemLabel={formatPersonName(person)}
-        title={t("people.deleteTitle", { name: formatPersonName(person) })}
+        itemLabel={formatName(person)}
+        title={t("people.deleteTitle", { name: formatName(person) })}
         description={t("people.deleteDescription")}
         actionLabel={t("common.delete")}
         onConfirm={() => removePersonMutation.mutate({ data: { id: person.id } })}
@@ -1169,7 +1181,7 @@ function DeletePersonAction({ person }: { person: PersonListItem }) {
           <Button
             variant="ghost"
             size="icon"
-            aria-label={t("people.deleteAriaLabel", { name: formatPersonName(person) })}
+            aria-label={t("people.deleteAriaLabel", { name: formatName(person) })}
             disabled={removePersonMutation.isPending}
           >
             <Trash2Icon className="size-4 text-destructive" />

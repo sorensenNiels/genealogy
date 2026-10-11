@@ -940,6 +940,9 @@ export const userProfiles = pgTable(
     // read through `parsePeopleListPreferences`, so another choice needs no
     // migration and a stale one is just dropped.
     peopleListPreferences: jsonb("people_list_preferences"),
+    // The Overview cards this member has hidden for themselves — one JSON
+    // value like the above, read through `parseOverviewPreferences`.
+    overviewPreferences: jsonb("overview_preferences"),
     // The people this member opened most recently, newest first, capped —
     // the Overview's "Continue where you left off". Ids only; a person
     // deleted since is just skipped when read.

@@ -7,12 +7,20 @@ import {
   configurableTopicSchema,
   type ConfigurableTopic,
   isAdmin,
+  onThisDayEventSchema,
+  OVERVIEW_CARD_ROLE,
+  overviewCardSchema,
+  type OverviewSettings,
   peopleListColumnSchema,
   peopleListGroupingSchema,
   type PeopleListSettings,
   personListSortSchema,
   treeChartKindSchema,
   treeOrientationSchema,
+  ALWAYS_SHOWN_PERSON_CARDS,
+  PERSON_SIDE_CARDS,
+  type PersonCard,
+  personCardSchema,
   type PersonSettings,
   recordTypeSchema,
   type RecordSettings,
@@ -41,9 +49,10 @@ import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { overviewCardLabel } from "../lib/overview-cards";
 import { optionsFor } from "../lib/person-display";
 import { personSettingsQueryKey, usePersonSettingsQuery } from "../lib/person-settings";
-import { peopleListSettingsQuery } from "../lib/queries";
+import { overviewSettingsQuery, peopleListSettingsQuery } from "../lib/queries";
 import { recordSettingsQueryKey, useRecordSettingsQuery } from "../lib/record-settings";
 import { treeSettingsQueryKey, useTreeSettingsQuery } from "../lib/tree-settings";
 import {
@@ -53,6 +62,7 @@ import {
   removeOption,
   updateOption,
   updatePeopleListSettings,
+  updateOverviewSettings,
   updatePersonSettings,
   updateRecordSettings,
   updateTreeSettings,
@@ -76,6 +86,7 @@ export const Route = createFileRoute("/settings")({
     search: Record<string, unknown>,
   ): { topic?: ConfigurableTopic; section?: SettingsSection } => {
     if (
+      search.section === "overview" ||
       search.section === "tree" ||
       search.section === "person" ||
       search.section === "peopleList" ||
@@ -95,7 +106,7 @@ type ConfigurableOptionRow = RouterOutputs["settings"]["listOptions"][number];
 
 const LIST_OPTIONS_KEY = ["settings", "listOptions"];
 
-type SettingsSection = "tree" | "person" | "peopleList" | "records" | "appearance";
+type SettingsSection = "overview" | "tree" | "person" | "peopleList" | "records" | "appearance";
 
 const NAV_LINK_CLASS =
   "rounded-md border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
@@ -131,6 +142,13 @@ function SettingsRoute() {
         <div className="flex h-fit flex-col gap-6">
           <SectionCard title={t("settings.display")} titleClassName="text-base">
             <nav className="flex flex-col gap-1">
+              <Link
+                to="/settings"
+                search={{ section: "overview" }}
+                className={cn(NAV_LINK_CLASS, section === "overview" && NAV_LINK_ACTIVE_CLASS)}
+              >
+                {t("settings.overview.title")}
+              </Link>
               <Link
                 to="/settings"
                 search={{ section: "tree" }}
@@ -186,7 +204,9 @@ function SettingsRoute() {
             </nav>
           </SectionCard>
         </div>
-        {section === "tree" ? (
+        {section === "overview" ? (
+          <OverviewSettingsPanel />
+        ) : section === "tree" ? (
           <TreeSettingsPanel />
         ) : section === "person" ? (
           <PersonSettingsPanel />
@@ -235,6 +255,9 @@ function PersonSettingsForm({ initial }: { initial: PersonSettings }) {
     onSubmit: async ({ value }) => {
       const saved = await updateMutation.mutateAsync({ data: value });
       queryClient.setQueryData(personSettingsQueryKey, saved);
+      // The Family card's scope and what Viewers see of the living change
+      // what the server returns for people, not just how it's shown.
+      await queryClient.invalidateQueries({ queryKey: ["person"] });
       form.reset(saved);
     },
   });
@@ -286,6 +309,358 @@ function PersonSettingsForm({ initial }: { initial: PersonSettings }) {
                 {t("settings.person.presumeDeceasedAfterYearsHelp")}
               </p>
             </div>
+          )}
+        </form.Field>
+      </SettingsGroup>
+
+      <SettingsGroup>
+        <div className="space-y-2">
+          <p className="text-sm font-medium">{t("settings.person.cards")}</p>
+          <form.Field name="cardOrder">
+            {(orderField) => (
+              <form.Field name="hiddenCards">
+                {(hiddenField) => (
+                  <CardOrderSetting
+                    order={orderField.state.value}
+                    hidden={hiddenField.state.value}
+                    onOrderChange={orderField.handleChange}
+                    onHiddenChange={hiddenField.handleChange}
+                  />
+                )}
+              </form.Field>
+            )}
+          </form.Field>
+          <p className="text-sm text-muted-foreground">{t("settings.person.cardsHelp")}</p>
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup>
+        <form.Field name="nameFormat">
+          {(field) => (
+            <ChoiceSetting
+              label={t("settings.person.nameFormat")}
+              help={t("settings.person.nameFormatHelp")}
+              value={field.state.value}
+              onChange={field.handleChange}
+              options={[
+                { value: "givenFirst", label: t("settings.person.nameFormatGivenFirst") },
+                { value: "surnameFirst", label: t("settings.person.nameFormatSurnameFirst") },
+                { value: "surnameCapitals", label: t("settings.person.nameFormatSurnameCapitals") },
+              ]}
+            />
+          )}
+        </form.Field>
+        <form.Field name="dateDetail">
+          {(field) => (
+            <ChoiceSetting
+              label={t("settings.person.dateDetail")}
+              help={t("settings.person.dateDetailHelp")}
+              value={field.state.value}
+              onChange={field.handleChange}
+              options={[
+                { value: "full", label: t("settings.tree.dateDetailFull") },
+                { value: "years", label: t("settings.tree.dateDetailYears") },
+              ]}
+            />
+          )}
+        </form.Field>
+        <form.Field name="showAges">
+          {(field) => (
+            <Switch
+              checked={field.state.value}
+              onCheckedChange={field.handleChange}
+              description={t("settings.person.showAgesHelp")}
+            >
+              {t("settings.person.showAges")}
+            </Switch>
+          )}
+        </form.Field>
+      </SettingsGroup>
+
+      <SettingsGroup>
+        <p className="text-sm font-medium">{t("settings.person.familyScope")}</p>
+        {(["showHalfSiblings", "showStepRelations", "showInLaws"] as const).map((name) => (
+          <form.Field key={name} name={name}>
+            {(field) => (
+              <Switch
+                checked={field.state.value}
+                onCheckedChange={field.handleChange}
+                description={t(`settings.person.${name}Help`)}
+              >
+                {t(`settings.person.${name}`)}
+              </Switch>
+            )}
+          </form.Field>
+        ))}
+      </SettingsGroup>
+
+      <SettingsGroup>
+        <form.Field name="viewerLivingDetail">
+          {(field) => (
+            <ChoiceSetting
+              label={t("settings.person.viewerLivingDetail")}
+              help={t("settings.person.viewerLivingDetailHelp")}
+              value={field.state.value}
+              onChange={field.handleChange}
+              options={[
+                { value: "name", label: t("settings.person.viewerLivingName") },
+                {
+                  value: "nameAndBirthYear",
+                  label: t("settings.person.viewerLivingNameAndBirthYear"),
+                },
+                { value: "hidden", label: t("settings.person.viewerLivingHidden") },
+              ]}
+            />
+          )}
+        </form.Field>
+      </SettingsGroup>
+
+      {updateMutation.isError && (
+        <p className="text-sm text-destructive">{updateMutation.error.message}</p>
+      )}
+      <SaveButton isDirty={isDirty} isPending={isSubmitting}>
+        {t("common.save")}
+      </SaveButton>
+    </form>
+  );
+}
+
+/**
+ * The person page's cards, a list per column: a box to show or hide each
+ * (not Personal details or Family) and arrows to move it within its
+ * column — the column a card sits in is fixed (`PERSON_SIDE_CARDS`).
+ */
+function CardOrderSetting({
+  order,
+  hidden,
+  onOrderChange,
+  onHiddenChange,
+}: {
+  order: PersonCard[];
+  hidden: PersonCard[];
+  onOrderChange: (next: PersonCard[]) => void;
+  onHiddenChange: (next: PersonCard[]) => void;
+}) {
+  const { t } = useTranslation();
+  // Every card, a card added since the order was saved included.
+  const full = [...new Set([...order, ...personCardSchema.options])];
+  const columns = [
+    { side: false, title: t("settings.person.mainColumn") },
+    { side: true, title: t("settings.person.sideColumn") },
+  ];
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      {columns.map(({ side, title }) => (
+        <div key={title} className="space-y-1">
+          <p className="text-xs text-muted-foreground">{title}</p>
+          <OrderedCardList
+            cards={full.filter((card) => PERSON_SIDE_CARDS.includes(card) === side)}
+            hidden={hidden}
+            alwaysShown={ALWAYS_SHOWN_PERSON_CARDS}
+            label={(card) => t(`settings.person.card.${card}`)}
+            onMove={(card, neighbour) => onOrderChange(swapped(full, card, neighbour))}
+            onHiddenChange={onHiddenChange}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** `list` with `a` and `b` changing places. */
+function swapped<T>(list: readonly T[], a: T, b: T): T[] {
+  return list.map((item) => (item === a ? b : item === b ? a : item));
+}
+
+/**
+ * Cards in order, each with a box to show or hide it and arrows to move
+ * it past its neighbour — the person page's and the Overview's card
+ * choosers. `onMove` gets the card and the one it trades places with.
+ */
+function OrderedCardList<T extends string>({
+  cards,
+  hidden,
+  alwaysShown = [],
+  label,
+  note,
+  onMove,
+  onHiddenChange,
+}: {
+  cards: T[];
+  hidden: T[];
+  alwaysShown?: readonly T[];
+  label: (card: T) => string;
+  /** A small aside after a card's name — who it's for, say. */
+  note?: (card: T) => string | null;
+  onMove: (card: T, neighbour: T) => void;
+  onHiddenChange: (next: T[]) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="space-y-1">
+      {cards.map((card, index) => {
+        const name = label(card);
+        const aside = note?.(card);
+        return (
+          <div key={card} className="flex items-center justify-between gap-2 text-sm">
+            {alwaysShown.includes(card) ? (
+              <span>
+                {name}
+                <span className="ml-2 text-xs text-muted-foreground">
+                  {t("settings.person.alwaysShown")}
+                </span>
+              </span>
+            ) : (
+              <Checkbox
+                checked={!hidden.includes(card)}
+                onCheckedChange={(checked) =>
+                  onHiddenChange(
+                    checked ? hidden.filter((other) => other !== card) : [...hidden, card],
+                  )
+                }
+              >
+                {name}
+                {aside && <span className="ml-2 text-xs text-muted-foreground">{aside}</span>}
+              </Checkbox>
+            )}
+            <div className="flex items-center">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t("settings.person.moveCardUp", { card: name })}
+                disabled={index === 0}
+                onClick={() => onMove(card, cards[index - 1]!)}
+              >
+                <ChevronUpIcon className="size-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t("settings.person.moveCardDown", { card: name })}
+                disabled={index === cards.length - 1}
+                onClick={() => onMove(card, cards[index + 1]!)}
+              >
+                <ChevronDownIcon className="size-4" />
+              </Button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function OverviewSettingsPanel() {
+  const { t } = useTranslation();
+  const settings = useQuery(overviewSettingsQuery());
+  return (
+    <SectionCard
+      title={t("settings.overview.title")}
+      description={t("settings.overview.description")}
+    >
+      {settings.isPending ? (
+        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+      ) : settings.isError ? (
+        <p className="text-sm text-destructive">{settings.error.message}</p>
+      ) : (
+        <OverviewSettingsForm initial={settings.data} />
+      )}
+    </SectionCard>
+  );
+}
+
+/** Which Overview cards show and in what order, for everyone; members can hide more for themselves. */
+function OverviewSettingsForm({ initial }: { initial: OverviewSettings }) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const updateMutation = useMutation({ mutationFn: updateOverviewSettings });
+
+  const form = useForm({
+    defaultValues: initial,
+    onSubmit: async ({ value }) => {
+      const saved = await updateMutation.mutateAsync({ data: value });
+      queryClient.setQueryData(overviewSettingsQuery().queryKey, saved);
+      form.reset(saved);
+    },
+  });
+  const { isDirty, isSubmitting } = useFormDirtyPending(form);
+
+  return (
+    <form
+      className="space-y-6"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <SettingsGroup>
+        <div className="space-y-2">
+          <p className="text-sm font-medium">{t("settings.overview.cards")}</p>
+          <form.Field name="cardOrder">
+            {(orderField) => (
+              <form.Field name="hiddenCards">
+                {(hiddenField) => {
+                  // Every card, one added since the order was saved included.
+                  const full = [
+                    ...new Set([...orderField.state.value, ...overviewCardSchema.options]),
+                  ];
+                  return (
+                    <div className="max-w-md">
+                      <OrderedCardList
+                        cards={full}
+                        hidden={hiddenField.state.value}
+                        label={(card) => overviewCardLabel(card, t)}
+                        note={(card) =>
+                          OVERVIEW_CARD_ROLE[card] === "member"
+                            ? null
+                            : t(`settings.overview.for.${OVERVIEW_CARD_ROLE[card]}`)
+                        }
+                        onMove={(card, neighbour) =>
+                          orderField.handleChange(swapped(full, card, neighbour))
+                        }
+                        onHiddenChange={hiddenField.handleChange}
+                      />
+                    </div>
+                  );
+                }}
+              </form.Field>
+            )}
+          </form.Field>
+          <p className="text-sm text-muted-foreground">{t("settings.overview.cardsHelp")}</p>
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup>
+        <form.Field name="onThisDayEvents">
+          {(field) => (
+            <CheckboxListSetting
+              label={t("settings.overview.onThisDayEvents")}
+              help={t("settings.overview.onThisDayEventsHelp")}
+              items={onThisDayEventSchema.options.map((event) => ({
+                value: event,
+                label: t(`settings.overview.onThisDayEvent.${event}`),
+              }))}
+              value={field.state.value}
+              onChange={(event, on) =>
+                // Kept in the options' own order, whatever order they're ticked in.
+                field.handleChange(
+                  onThisDayEventSchema.options.filter((option) =>
+                    option === event ? on : field.state.value.includes(option),
+                  ),
+                )
+              }
+            />
+          )}
+        </form.Field>
+        <form.Field name="onThisDayLivingBirthdays">
+          {(field) => (
+            <Switch
+              checked={field.state.value}
+              onCheckedChange={field.handleChange}
+              description={t("settings.overview.onThisDayLivingBirthdaysHelp")}
+            >
+              {t("settings.overview.onThisDayLivingBirthdays")}
+            </Switch>
           )}
         </form.Field>
       </SettingsGroup>

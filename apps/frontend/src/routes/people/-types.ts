@@ -10,7 +10,9 @@ import type { inferRouterOutputs } from "@trpc/server";
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 
 export type PersonRow = RouterOutputs["person"]["byId"];
-export type ParentRow = RouterOutputs["person"]["relatives"]["parents"][number];
+export type RelativesResult = RouterOutputs["person"]["relatives"];
+export type ParentRow = RelativesResult["parents"][number];
+export type SiblingRow = RelativesResult["siblings"][number];
 export type NameVariantRow = RouterOutputs["person"]["listNames"][number];
 export type PersonEventRow = RouterOutputs["person"]["listEvents"][number];
 export type UnionRow = RouterOutputs["person"]["listUnions"][number];

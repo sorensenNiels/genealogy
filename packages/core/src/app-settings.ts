@@ -1,13 +1,14 @@
 import { z } from "zod";
 
 import { BUILT_IN_CENSUS_COUNTRIES, censusDefinitionSchema } from "./census.js";
+import { canEdit, isAdmin, type MemberRole } from "./membership.js";
 import {
   peopleListColumnSchema,
   peopleListGroupingSchema,
   personListSortSchema,
   sortDirectionSchema,
 } from "./person-list.js";
-import { personIdSchema } from "./person.js";
+import { personIdSchema, personNameFormatSchema } from "./person.js";
 import { recordTypeSchema } from "./records.js";
 
 /**
@@ -108,6 +109,49 @@ function parseSettingsSection<T extends Record<string, unknown>>(
   return result as T;
 }
 
+/**
+ * The person page's cards. The column each sits in is fixed — Family and
+ * External IDs in the narrow one, the rest in the main one — so an order
+ * only says which comes first within a column.
+ */
+export const personCardSchema = z.enum([
+  "details",
+  "photos",
+  "lifeEvents",
+  "records",
+  "citations",
+  "associations",
+  "researchNotes",
+  "family",
+  "externalIds",
+]);
+export type PersonCard = z.infer<typeof personCardSchema>;
+
+/** Cards that can't be hidden: the person's own facts and their family are what the page is. */
+export const ALWAYS_SHOWN_PERSON_CARDS: readonly PersonCard[] = ["details", "family"];
+
+export const PERSON_SIDE_CARDS: readonly PersonCard[] = ["family", "externalIds"];
+
+/**
+ * The cards to show, in order: the saved order with duplicates dropped and
+ * any card it doesn't mention (one added since it was saved) appended where
+ * the default order has it last, minus the hidden ones.
+ */
+export function orderedPersonCards(
+  settings: Pick<PersonSettings, "cardOrder" | "hiddenCards">,
+): PersonCard[] {
+  const order = [...new Set([...settings.cardOrder, ...personCardSchema.options])];
+  const hidden = new Set(settings.hiddenCards);
+  return order.filter((card) => ALWAYS_SHOWN_PERSON_CARDS.includes(card) || !hidden.has(card));
+}
+
+/**
+ * How much of a living person a Viewer sees. Structural, not a configurable
+ * option: the redactor branches on each value.
+ */
+export const viewerLivingDetailSchema = z.enum(["name", "nameAndBirthYear", "hidden"]);
+export type ViewerLivingDetail = z.infer<typeof viewerLivingDetailSchema>;
+
 /** The person page's settings — the Settings page's "Person page" section. */
 export const personSettingsSchema = z.object({
   /**
@@ -125,6 +169,35 @@ export const personSettingsSchema = z.object({
    * it off. See `isPresumedDeceased`.
    */
   presumeDeceasedAfterYears: z.number().int().min(0).max(200).default(110),
+  /** The cards in the order the page stacks them, each within its own column — see `orderedPersonCards`. */
+  cardOrder: z.array(personCardSchema).default([...personCardSchema.options]),
+  /** Cards a family that doesn't use them can leave off. Personal details and Family are always shown. */
+  hiddenCards: z.array(personCardSchema).default([]),
+  /**
+   * How a person's name reads everywhere in the app, not just on this page
+   * ("Anders Jensen", "JENSEN, Anders", "Anders JENSEN") — `formatPersonName`
+   * takes it. It lives in this section because the person page is where a
+   * name is most at home; the static site and backend messages keep the
+   * plain form.
+   */
+  nameFormat: personNameFormatSchema.default("givenFirst"),
+  /** Dates on the person page — header, Life events, Family — in full or as years only. */
+  dateDetail: treeDateDetailSchema.default("full"),
+  /** The person's age at each life event, and the age in the header. */
+  showAges: z.boolean().default(true),
+  /** Siblings who share only one parent, marked "half". Off lists full siblings only. */
+  showHalfSiblings: z.boolean().default(true),
+  /** Step-parents (a parent's other spouses), step-siblings and step-children, worked out from marriages. */
+  showStepRelations: z.boolean().default(false),
+  /** Parents-in-law, brothers- and sisters-in-law, and children's spouses. */
+  showInLaws: z.boolean().default(false),
+  /**
+   * What a Viewer sees of someone living (see `isRedactedFor`): the name
+   * only, the name and birth year, or nothing — "Living person" in the
+   * tree and Family card, and left out of the People list. Enforced by
+   * `PersonRedactor` on the server.
+   */
+  viewerLivingDetail: viewerLivingDetailSchema.default("name"),
 });
 export type PersonSettings = z.infer<typeof personSettingsSchema>;
 
@@ -264,11 +337,161 @@ export function parsePeopleListPreferences(value: unknown): PeopleListPreference
   return result as PeopleListPreferences;
 }
 
+/**
+ * The Overview's cards — the landing page — in their default order: about
+ * the member first, then the family, then research (editors), then upkeep
+ * (admins). The People count, Backend and Photo library cards of the first
+ * version are folded into "The family at a glance" and "System status".
+ */
+export const overviewCardSchema = z.enum([
+  "yourPlace",
+  "continue",
+  "onThisDay",
+  "featuredAncestor",
+  "familyAtAGlance",
+  "topPlaces",
+  "researchTodo",
+  "censusGaps",
+  "recentChanges",
+  "thingsToLook",
+  "system",
+]);
+export type OverviewCard = z.infer<typeof overviewCardSchema>;
+
+/**
+ * Who each card is for: the family cards for everyone, the research cards
+ * for those who can edit, upkeep for admins. Their data is gated the same
+ * way on the server (`editorProcedure`/`adminProcedure`); this only keeps a
+ * card off a page whose member couldn't load it.
+ */
+export const OVERVIEW_CARD_ROLE: Record<OverviewCard, "member" | "editor" | "admin"> = {
+  yourPlace: "member",
+  continue: "member",
+  onThisDay: "member",
+  featuredAncestor: "member",
+  familyAtAGlance: "member",
+  topPlaces: "member",
+  researchTodo: "editor",
+  censusGaps: "editor",
+  recentChanges: "editor",
+  thingsToLook: "admin",
+  system: "admin",
+};
+
+export function overviewCardAllowed(card: OverviewCard, role: MemberRole): boolean {
+  const needs = OVERVIEW_CARD_ROLE[card];
+  return needs === "member" || (needs === "editor" ? canEdit(role) : isAdmin(role));
+}
+
+/** What "On this day" can list. */
+export const onThisDayEventSchema = z.enum(["birth", "marriage", "death"]);
+export type OnThisDayEvent = z.infer<typeof onThisDayEventSchema>;
+
+/**
+ * Card keys from stored JSON, one at a time: a card that no longer exists
+ * is dropped rather than throwing the whole list away, duplicates too.
+ */
+function parseCardList<T extends string>(schema: z.ZodEnum<Record<T, T>>, value: unknown): T[] {
+  if (!Array.isArray(value)) return [];
+  const cards = value.flatMap((item) => {
+    const card = schema.safeParse(item);
+    return card.success ? [card.data as T] : [];
+  });
+  return [...new Set(cards)];
+}
+
+/**
+ * The Overview — the Settings page's "Overview" section: which cards show
+ * and in what order, for every member. Each member can hide cards for
+ * themselves on top of this (`OverviewPreferences`), but not bring back one
+ * the site hides.
+ */
+export const overviewSettingsSchema = z.object({
+  cardOrder: z.array(overviewCardSchema).default([...overviewCardSchema.options]),
+  hiddenCards: z.array(overviewCardSchema).default([]),
+  /** Which events "On this day" lists — births include baptisms, deaths burials. */
+  onThisDayEvents: z.array(onThisDayEventSchema).default([...onThisDayEventSchema.options]),
+  /**
+   * Living people's birthdays too, for editors and admins. Never for a
+   * Viewer: a living person's birth date is exactly what redaction hides.
+   */
+  onThisDayLivingBirthdays: z.boolean().default(false),
+});
+export type OverviewSettings = z.infer<typeof overviewSettingsSchema>;
+
+export const defaultOverviewSettings: OverviewSettings = overviewSettingsSchema.parse({});
+
+export function parseOverviewSettings(value: unknown): OverviewSettings {
+  const stored =
+    typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  return {
+    cardOrder:
+      "cardOrder" in stored
+        ? parseCardList(overviewCardSchema, stored.cardOrder)
+        : defaultOverviewSettings.cardOrder,
+    hiddenCards: parseCardList(overviewCardSchema, stored.hiddenCards),
+    onThisDayEvents:
+      "onThisDayEvents" in stored
+        ? parseCardList(onThisDayEventSchema, stored.onThisDayEvents)
+        : defaultOverviewSettings.onThisDayEvents,
+    onThisDayLivingBirthdays:
+      typeof stored.onThisDayLivingBirthdays === "boolean"
+        ? stored.onThisDayLivingBirthdays
+        : defaultOverviewSettings.onThisDayLivingBirthdays,
+  };
+}
+
+/**
+ * A member's own Overview choices, saved on their profile
+ * (`user_profiles.overview_preferences`, one JSON value like the People
+ * list's): the cards they've hidden for themselves, and the order they've
+ * dragged them into — absent until they do, so they follow the site's.
+ */
+export const overviewPreferencesSchema = z.object({
+  hiddenCards: z.array(overviewCardSchema).default([]),
+  cardOrder: z.array(overviewCardSchema).optional(),
+});
+export type OverviewPreferences = z.infer<typeof overviewPreferencesSchema>;
+
+export function parseOverviewPreferences(value: unknown): OverviewPreferences {
+  const stored =
+    typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  return {
+    hiddenCards: parseCardList(overviewCardSchema, stored.hiddenCards),
+    ...(Array.isArray(stored.cardOrder)
+      ? { cardOrder: parseCardList(overviewCardSchema, stored.cardOrder) }
+      : {}),
+  };
+}
+
+/**
+ * The cards the Overview shows, in order: the member's own order if they've
+ * arranged them, else the site's — with any card that order doesn't mention
+ * (one their role only just got, or one added since) placed as the site's
+ * order has it, after the rest — minus what the site hides, what this
+ * member hides and what their role isn't for.
+ */
+export function visibleOverviewCards(
+  settings: Pick<OverviewSettings, "cardOrder" | "hiddenCards">,
+  preferences: OverviewPreferences,
+  role: MemberRole,
+): OverviewCard[] {
+  const hidden = new Set([...settings.hiddenCards, ...preferences.hiddenCards]);
+  return [
+    ...new Set([
+      ...(preferences.cardOrder ?? []),
+      ...settings.cardOrder,
+      ...overviewCardSchema.options,
+    ]),
+  ].filter((card) => !hidden.has(card) && overviewCardAllowed(card, role));
+}
+
 /** The `app_settings.key` of each section. */
 export const appSettingsKeys = {
   tree: "tree",
   person: "person",
   records: "records",
   peopleList: "peopleList",
+  overview: "overview",
   theme: "theme",
 } as const;

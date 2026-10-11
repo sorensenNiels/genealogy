@@ -1,7 +1,6 @@
 import {
   GEDCOM_IMPORT_MAX_CHARS,
   decodeGedcomBytes,
-  formatPersonName,
   type GedcomImportInput,
   type GedcomVersion,
   isAdmin,
@@ -35,6 +34,7 @@ import { toSupportedLanguage } from "../i18n/create-i18n-instance";
 import { formatDisplayDate } from "../lib/format-date";
 import { useImmichAvailable } from "../lib/immich-status";
 import { useIsLocalhost } from "../lib/localhost";
+import { usePersonName } from "../lib/person-name";
 import { createBackup } from "../server/functions/backup.functions";
 import {
   exportGedcom,
@@ -383,6 +383,7 @@ const SITE_LANGUAGES: { value: Language; label: string }[] = [
  */
 function FamilyWebsitePanel() {
   const { t, i18n } = useTranslation();
+  const { formatName } = usePersonName();
   const [title, setTitle] = useState(() => t("tools.familyWebsite.defaultTitle"));
   const [language, setLanguage] = useState<Language>(() => toSupportedLanguage(i18n.language));
   const [startPerson, setStartPerson] = useState<PersonListItem | null>(null);
@@ -416,7 +417,7 @@ function FamilyWebsitePanel() {
           <p className="text-sm text-muted-foreground">{t("tools.familyWebsite.startPerson")}</p>
           {startPerson ? (
             <div className="flex items-center gap-2 text-sm">
-              <span>{formatPersonWithLifespan(startPerson)}</span>
+              <span>{formatPersonWithLifespan(startPerson, formatName)}</span>
               <Button
                 variant="ghost"
                 size="icon"
@@ -483,6 +484,7 @@ function GedcomImportPanel() {
   // added as new people — likely duplicates of people already in the tree
   // are listed, not merged — see "GEDCOM import" in TECH_STACK.md.
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const queryClient = useQueryClient();
   const [file, setFile] = useState<{ name: string; input: GedcomImportInput } | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
@@ -638,13 +640,13 @@ function GedcomImportPanel() {
             >
               {preview.possibleDuplicates.map((duplicate) => (
                 <li key={duplicate.incoming.ref}>
-                  {formatPersonName(duplicate.incoming) || t("tools.unnamed")}
+                  {formatName(duplicate.incoming) || t("tools.unnamed")}
                   {duplicate.incoming.birth && ` (${duplicate.incoming.birth})`}
                   {" ↔ "}
                   {duplicate.existing.map((person, existingIndex) => (
                     <span key={person.id}>
                       {existingIndex > 0 && ", "}
-                      <PersonLink personId={person.id} name={formatPersonName(person)} />
+                      <PersonLink personId={person.id} name={formatName(person)} />
                       {person.birth && ` (${person.birth})`}
                     </span>
                   ))}
@@ -715,6 +717,7 @@ function PersonLink({ personId, name }: { personId: string; name: string }) {
  */
 function PresumedDeceasedPanel() {
   const { t, i18n } = useTranslation();
+  const { formatName } = usePersonName();
   const language = toSupportedLanguage(i18n.language);
   const queryClient = useQueryClient();
   const checkMutation = useMutation({ mutationFn: getPresumedDeceased });
@@ -770,7 +773,7 @@ function PresumedDeceasedPanel() {
                       params={{ personId: person.id }}
                       className="truncate hover:underline"
                     >
-                      {formatPersonName(person)}
+                      {formatName(person)}
                     </Link>
                     <span className="shrink-0 text-muted-foreground">
                       {formatDisplayDate(person.birth, language)}
@@ -803,6 +806,7 @@ function DataIntegrityPanel() {
   // every other tool here, and these checks touch every citation/person row
   // (plus one Immich call per link), not worth doing on every visit.
   const { t, i18n } = useTranslation();
+  const { formatName } = usePersonName();
   const language = toSupportedLanguage(i18n.language);
   const checkMutation = useMutation({ mutationFn: checkDataIntegrity });
   const report = checkMutation.data;
@@ -831,7 +835,7 @@ function DataIntegrityPanel() {
                 })}{" "}
                 <PersonLink
                   personId={citation.personId}
-                  name={formatPersonName({
+                  name={formatName({
                     given: citation.personGiven,
                     surname: citation.personSurname,
                   })}
@@ -849,7 +853,7 @@ function DataIntegrityPanel() {
                 <li key={link.linkId}>
                   <PersonLink
                     personId={link.personId}
-                    name={formatPersonName({
+                    name={formatName({
                       given: link.personGiven,
                       surname: link.personSurname,
                     })}
@@ -866,10 +870,7 @@ function DataIntegrityPanel() {
           >
             {report.recordAgeMismatches.map((mismatch) => (
               <li key={`${mismatch.recordId}:${mismatch.personId}`}>
-                <PersonLink
-                  personId={mismatch.personId}
-                  name={formatPersonName(mismatch.personName)}
-                />{" "}
+                <PersonLink personId={mismatch.personId} name={formatName(mismatch.personName)} />{" "}
                 {t("tools.recordAgeMismatchText", {
                   age: mismatch.age,
                   record: t(`records.type.${mismatch.recordType}`),
@@ -895,6 +896,7 @@ function DataIntegrityPanel() {
 
 function GraphConsistencyPanel() {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const checkMutation = useMutation({ mutationFn: checkGraphConsistency });
   const report = checkMutation.data;
 
@@ -916,7 +918,7 @@ function GraphConsistencyPanel() {
           >
             {report.personsMissingGraphNode.map((person) => (
               <li key={person.id}>
-                <PersonLink personId={person.id} name={formatPersonName(person)} />
+                <PersonLink personId={person.id} name={formatName(person)} />
               </li>
             ))}
           </ReportSection>

@@ -1,4 +1,3 @@
-import { formatPersonName } from "@genealogy/core";
 import { AddButton } from "@genealogy/ui/components/add-button";
 import { Badge } from "@genealogy/ui/components/badge";
 import { ButtonRadioGroup } from "@genealogy/ui/components/button-radio-group";
@@ -22,6 +21,7 @@ import { PersonPicker, type PersonListItem } from "../-person-picker";
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { formatDisplayDate } from "../../lib/format-date";
 import { labelFor, optionsFor } from "../../lib/person-display";
+import { usePersonName } from "../../lib/person-name";
 import { addAssociation, removeAssociation } from "../../server/functions/association.functions";
 import type {
   AssociationAppearanceRow,
@@ -78,6 +78,7 @@ export function AssociationsCard({
   onChanged: () => Promise<void>;
 }) {
   const { t, i18n } = useTranslation();
+  const { formatName } = usePersonName();
   const language = toSupportedLanguage(i18n.language);
   const removeMutation = useMutation({ mutationFn: removeAssociation });
 
@@ -93,7 +94,7 @@ export function AssociationsCard({
     }
     if (row.unionId) {
       const union = unions.find((candidate) => candidate.id === row.unionId);
-      return union ? unionContextLabel(union, personId, spouses, t) : null;
+      return union ? unionContextLabel(union, personId, spouses, t, formatName) : null;
     }
     return null;
   };
@@ -140,7 +141,7 @@ export function AssociationsCard({
                     params={{ personId: row.associatePersonId }}
                     className="text-primary hover:underline"
                   >
-                    {formatPersonName({
+                    {formatName({
                       given: row.associateGiven ?? "",
                       surname: row.associateSurname ?? "",
                     })}
@@ -175,7 +176,7 @@ export function AssociationsCard({
                   params={{ personId: row.personId }}
                   className="text-primary hover:underline"
                 >
-                  {formatPersonName({ given: row.ownerGiven, surname: row.ownerSurname })}
+                  {formatName({ given: row.ownerGiven, surname: row.ownerSurname })}
                 </Link>
               );
               const context = row.eventType
@@ -211,11 +212,12 @@ function unionContextLabel(
   personId: string,
   spouses: PersonRow[],
   t: TFunction,
+  formatName: (name: PersonRow) => string,
 ): string {
   const partnerId = union.personAId === personId ? union.personBId : union.personAId;
   const partner = spouses.find((candidate) => candidate.id === partnerId);
   return partner
-    ? t("person.associations.marriageTo", { name: formatPersonName(partner) })
+    ? t("person.associations.marriageTo", { name: formatName(partner) })
     : t("person.associations.marriage");
 }
 
@@ -238,6 +240,7 @@ function AssociationForm({
   onDone: () => Promise<void>;
 }) {
   const { t, i18n } = useTranslation();
+  const { formatName } = usePersonName();
   const language = toSupportedLanguage(i18n.language);
   const addMutation = useMutation({ mutationFn: addAssociation });
   const roleOptions = optionsFor(options, "association_role");
@@ -313,7 +316,7 @@ function AssociationForm({
             })),
             ...unions.map((union) => ({
               value: `union|${union.id}`,
-              label: unionContextLabel(union, personId, spouses, t),
+              label: unionContextLabel(union, personId, spouses, t, formatName),
             })),
           ]}
         />

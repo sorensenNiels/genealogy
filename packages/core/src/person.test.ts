@@ -41,10 +41,37 @@ describe("formatPersonName", () => {
 
   it("falls back rather than returning an empty string", () => {
     expect(formatPersonName({ given: "", surname: "  " })).toBe("Unknown");
+    expect(formatPersonName({ given: "", surname: "" }, "surnameFirst")).toBe("Unknown");
+  });
+
+  it("puts the surname first, in capitals, with a comma", () => {
+    expect(
+      formatPersonName({ given: "Niels", nickname: ["Pete"], surname: "Sørensen" }, "surnameFirst"),
+    ).toBe('SØRENSEN, Niels "Pete"');
+  });
+
+  it("drops the comma when there's only one part", () => {
+    expect(formatPersonName({ given: "", surname: "Sørensen" }, "surnameFirst")).toBe("SØRENSEN");
+    expect(formatPersonName({ given: "Niels", surname: "" }, "surnameFirst")).toBe("Niels");
+  });
+
+  it("capitalises the surname in place", () => {
+    expect(formatPersonName({ given: "Anne Marie", surname: "Sørensen" }, "surnameCapitals")).toBe(
+      "Anne Marie SØRENSEN",
+    );
   });
 });
 
 describe("formatFullPersonName", () => {
+  it("keeps the title with the given name when the surname comes first", () => {
+    expect(
+      formatFullPersonName(
+        { given: "Niels", surname: "Sørensen", titlePrefix: "Dr.", suffix: "Jr." },
+        "surnameFirst",
+      ),
+    ).toBe("SØRENSEN, Dr. Niels, Jr.");
+  });
+
   it("adds a title/prefix and a suffix around the formatted name", () => {
     expect(
       formatFullPersonName({

@@ -728,6 +728,35 @@ their death if recorded), comparing date ranges so a vague date that
 overlaps still shows. Children's marriages would need their unions and are
 left for later.
 
+**Cards, names, dates, family scope.** The rest of the section:
+
+- `cardOrder`/`hiddenCards` name cards by key (`personCardSchema`);
+  `orderedPersonCards` appends any card a saved order doesn't know and
+  never hides Personal details or Family. A card's column is fixed
+  (`PERSON_SIDE_CARDS`), so the order only applies within a column — a
+  card moved between columns would change the page's shape for every
+  person, which isn't what "order" was asked for.
+- `nameFormat` is app-wide, not just this page: `formatPersonName`/
+  `formatFullPersonName` take it, and every frontend call goes through
+  `usePersonName()` (`lib/person-name.ts`), which reads it from the person
+  settings. Helpers that can't call hooks (a table column, `familyLine`,
+  `formatPersonWithLifespan`) take `formatName` as a parameter. The root
+  loader prefetches the person settings, so server-rendered names are
+  already in the chosen format. Backend messages and the static site keep
+  the plain form.
+- `dateDetail`/`showAges` are display only (`usePersonPageDate` in
+  `lib/person-settings.ts`); an edit field always shows the date as typed,
+  and the print summary keeps full dates.
+- Family scope: `PersonService.relatives` marks a sibling `half` only when
+  each of the two has a recorded parent the other doesn't (one mother, two
+  different fathers). Sharing fewer parents isn't enough — a sibling linked
+  to just the mother is usually a gap in the data, not a half-sibling — and
+  the test is symmetric, so both pages agree. It works out step-
+  relations and in-laws (`derivedRelatives`) only when the setting is on —
+  each is a few graph hops per relative. Nobody is listed twice: the first
+  group that claims someone keeps them. They're read-only on the Family
+  card; they change when the marriages and parents behind them do.
+
 **Presumed deceased.** The GEDCOM import has always marked someone deceased
 when born too long ago to be alive; people added by hand default to living
 and usually get their birth date later, so they slipped through. One rule,
@@ -820,6 +849,62 @@ The landing page opens with two cards about the signed-in member
   person page records each visit, fire-and-forget, and a deleted person is
   just skipped on read. Both lists go through `PersonRedactor`, so a Viewer
   sees a living relative they opened by name only.
+
+### Overview cards: a site order, a member's hiding
+
+Settings → Overview (`app_settings` "overview", `overviewSettingsSchema`)
+holds the card order and the cards hidden for everyone; a member's own
+hidden cards are one JSON value on their profile
+(`user_profiles.overview_preferences`), like the People list's choices.
+`visibleOverviewCards` combines them: the site's order with any newer card
+appended, minus both hidden sets. A member can only hide — reordering is
+the site's — and can't bring back a card the site hides, so an admin can
+take a card away from everyone. Stored card lists are read item by item
+(`parseCardList`), so a card that's been removed drops out without
+resetting the rest. A member's own order (`OverviewPreferences.cardOrder`,
+set by dragging in "Arrange") comes first, then the site's order for any
+card it doesn't mention — so a card a member's role newly allows, or one
+added later, still turns up. The drag grid is `SortableGrid`
+(`packages/ui`), React Aria's `GridList` drag and drop like `PhotoGrid`:
+keyboard-operable and announced, which a hand-rolled one wouldn't be. The
+cards are `inert` while arranging, so dragging one full of links doesn't
+follow a link. Its drag isn't driven in the unit tests — React Aria's drop
+targets need layout and timers jsdom lacks, and the attempt was flaky — so
+`reorderIds`, the arithmetic of a drop, is tested on its own. Each card
+fetches its own data, so the page renders
+nothing until the settings are there (they're prefetched) rather than
+flashing a card that's about to disappear.
+
+**The cards** (`apps/backend/src/overview/`): `OverviewFamilyService`
+(everyone) and `OverviewResearchService` (editors' research, admins'
+upkeep), each card one procedure on the gate its role needs —
+`OVERVIEW_CARD_ROLE` in core keeps a card off the page of a member who
+couldn't load it. Notes:
+
+- "On this day" matches exact dates only (`isOnThisDay`: `earliest` =
+  `latest`); a vague date can't say which day. It takes the member's own
+  date as input, so it follows their calendar, not the server's. An entry
+  naming anyone living is dropped for a Viewer always, and for editors
+  unless `onThisDayLivingBirthdays` — so there's nothing in it to redact.
+- "Featured ancestor" is `pickOfTheDay`, a hash of the date over the
+  sorted candidate ids: the same person all day for everyone, someone else
+  tomorrow, no stored state. Candidates are deceased with a photo or both
+  dates; the member's own ancestors first. Kinship comes from
+  `kinshipsFrom` over the whole tree's edges, like the tree page's.
+- "Research to-do" counts with `PersonService.list`'s own `missing` filter,
+  so each number is exactly what its link opens.
+- "Census gaps" sums the person page's coverage grid: alive on the census
+  day by `censusesInLifetime`, minus census records and "searched, not
+  found" marks, for Settings → Records' coverage countries.
+- "Things to look at" runs the Tools reports (duplicates, data integrity,
+  presumed deceased, Immich clusters minus linked ones, pending
+  invitations) and keeps the counts in memory for ten minutes; "Check
+  again" refreshes. The likely-duplicate count is over the pairs the
+  duplicate report lists (its first `MAX_LISTED_PAIRS`).
+- The route loader prefetches the family cards only; the research and
+  upkeep cards read the whole tree and load on their own rather than hold
+  up the page. The People count, Backend and Photo library cards of the
+  first version became "The family at a glance" and "System status".
 
 ### People list: the URL holds the state
 
@@ -1901,7 +1986,14 @@ tree and photos. **Viewer**: reads, with living people redacted.
   dates, places, notes, photo, and their names/events/citations/roles/
   research notes/external ids/linked photos are withheld, and a marriage
   involving them loses its dates and places. A Viewer's own linked person
-  isn't redacted for them. Editors and admins see everything.
+  isn't redacted for them. Editors and admins see everything. How much is
+  left is the person setting `viewerLivingDetail`: the name (default), the
+  name and birth year (a year-only date), or nothing — the name blanked,
+  which `usePersonName` shows as "Living person", and the People list
+  leaves the living out entirely for that Viewer (`excludeLiving`), so a
+  name search or a surname group can't give one away. The tree keeps them
+  as nameless cards, since dropping them would break the lines between
+  their parents and children.
 - **Read-only UI** (`ReadOnlyProvider` in `packages/ui/src/lib/read-only.tsx`):
   inside it, inputs/selects/switches/date and markdown fields go read-only
   and `SaveButton`/`RemoveButton`/`FormDialog` don't render, so a whole page

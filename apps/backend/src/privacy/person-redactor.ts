@@ -1,9 +1,17 @@
-import { canEdit, isRedactedFor, type MemberRole } from "@genealogy/core";
+import {
+  canEdit,
+  isRedactedFor,
+  yearOf,
+  type HistoricalDate,
+  type MemberRole,
+  type ViewerLivingDetail,
+} from "@genealogy/core";
 import { persons, userProfiles, type Database } from "@genealogy/db";
 import { Inject, Injectable } from "@nestjs/common";
 import { eq, inArray } from "drizzle-orm";
 
 import { DRIZZLE } from "../database/database.module.js";
+import { SettingsService } from "../settings/settings.service.js";
 
 /** Who is reading — a router builds this from its tRPC context with `viewerOf`. */
 export interface Viewer {
@@ -29,6 +37,15 @@ const REDACTED_FIELDS = {
   redacted: true,
 } as const;
 
+/** "Living person" in place of the name — the frontend shows a redacted person with no name that way. */
+const HIDDEN_NAME_FIELDS = { given: "", surname: "", titlePrefix: null, suffix: null } as const;
+
+/** Just the year of a birth date, as a date of its own: "1954", 1 Jan to 31 Dec. */
+function birthYearOnly(birth: unknown): HistoricalDate | null {
+  const year = yearOf((birth as HistoricalDate | null | undefined) ?? null);
+  return year ? { original: year, earliest: `${year}-01-01`, latest: `${year}-12-31` } : null;
+}
+
 /**
  * "Name only" for a Viewer looking at someone living — see `isRedactedFor` in `@genealogy/core` for the rule.
  * Enforced here, server-side, on what each read returns; the frontend only
@@ -37,10 +54,23 @@ const REDACTED_FIELDS = {
  * redaction is visible at the procedure that returns the data.
  *
  * A Viewer's own linked person ("this is me") is never redacted for them.
+ *
+ * How much a redacted person keeps is the person settings'
+ * `viewerLivingDetail`: the name (the fields above stripped), the name and
+ * birth year, or not even the name.
  */
 @Injectable()
 export class PersonRedactor {
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly settings: SettingsService,
+  ) {}
+
+  /** How much of a living person this viewer sees — null for an editor or admin, who sees everyone in full. */
+  async livingDetail(viewer: Viewer): Promise<ViewerLivingDetail | null> {
+    if (canEdit(viewer.role)) return null;
+    return (await this.settings.getPersonSettings()).viewerLivingDetail;
+  }
 
   /** The ones among `personIds` this viewer may only see by name. */
   async hiddenIds(viewer: Viewer, personIds: readonly string[]): Promise<Set<string>> {
@@ -72,11 +102,17 @@ export class PersonRedactor {
       viewer,
       rows.map((row) => row.id),
     );
-    return rows.map((row) =>
-      hidden.has(row.id)
-        ? Object.assign({}, row, REDACTED_FIELDS)
-        : Object.assign({}, row, { redacted: false }),
-    );
+    if (hidden.size === 0) return rows.map((row) => Object.assign({}, row, { redacted: false }));
+    const detail = await this.livingDetail(viewer);
+    return rows.map((row) => {
+      if (!hidden.has(row.id)) return Object.assign({}, row, { redacted: false });
+      const redacted = Object.assign({}, row, REDACTED_FIELDS);
+      if (detail === "nameAndBirthYear" && "birth" in row) {
+        return Object.assign(redacted, { birth: birthYearOnly(row.birth) });
+      }
+      if (detail === "hidden") return Object.assign(redacted, HIDDEN_NAME_FIELDS);
+      return redacted;
+    });
   }
 
   async person<T extends { id: string; isLiving: boolean; restriction: string | null }>(

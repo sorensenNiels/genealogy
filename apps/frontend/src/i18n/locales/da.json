@@ -566,7 +566,46 @@
       "showFamilyEventsInTimeline": "Familiebegivenheder i tidslinjen",
       "showFamilyEventsInTimelineHelp": "Børns fødsler og dødsfald, en ægtefælles og forældrenes dødsfald, vist dæmpet i personens egne livsbegivenheder inden for deres levetid.",
       "presumeDeceasedAfterYears": "Formodes død efter (år)",
-      "presumeDeceasedAfterYearsHelp": "En person, der stadig står som levende, men er født for længere tid siden end dette, er det sandsynligvis ikke: GEDCOM-importen markerer dem som døde, Personoplysninger foreslår det, og Værktøjer kan anvende det på alle. 0 slår det fra."
+      "presumeDeceasedAfterYearsHelp": "En person, der stadig står som levende, men er født for længere tid siden end dette, er det sandsynligvis ikke: GEDCOM-importen markerer dem som døde, Personoplysninger foreslår det, og Værktøjer kan anvende det på alle. 0 slår det fra.",
+      "cards": "Kort",
+      "cardsHelp": "Hvilke kort en persons side viser, og deres rækkefølge i hver kolonne. Personoplysninger og Familie vises altid.",
+      "mainColumn": "Hovedkolonne",
+      "sideColumn": "Sidekolonne",
+      "alwaysShown": "Vises altid",
+      "moveCardUp": "Flyt {{card}} op",
+      "moveCardDown": "Flyt {{card}} ned",
+      "card": {
+        "details": "Personoplysninger",
+        "photos": "Fotos",
+        "lifeEvents": "Livsbegivenheder",
+        "records": "Kilder",
+        "citations": "Kilder & kildehenvisninger",
+        "associations": "Vidner og faddere",
+        "researchNotes": "Forskningsnoter",
+        "family": "Familie",
+        "externalIds": "Eksterne id'er"
+      },
+      "nameFormat": "Navnevisning",
+      "nameFormatHelp": "Hvordan navne skrives overalt i appen: lister, træet, søgning og alle sider.",
+      "nameFormatGivenFirst": "Anders Jensen",
+      "nameFormatSurnameFirst": "JENSEN, Anders",
+      "nameFormatSurnameCapitals": "Anders JENSEN",
+      "dateDetail": "Datoer",
+      "dateDetailHelp": "Datoer på en persons side (overskrift, livsbegivenheder, familie, personoplysninger) fuldt ud eller kun som årstal. Redigeringsfelterne viser altid datoen, som den er indtastet.",
+      "showAges": "Alder",
+      "showAgesHelp": "Alderen i overskriften og personens alder ved hver livsbegivenhed.",
+      "familyScope": "Familiekortet",
+      "showHalfSiblings": "Halvsøskende",
+      "showHalfSiblingsHelp": "Søskende, der kun har én forælder til fælles, markeret \"halv\". Fra: kun helsøskende.",
+      "showStepRelations": "Stedrelationer",
+      "showStepRelationsHelp": "Stedforældre (en forælders andre ægtefæller), stedsøskende og stedbørn, udledt af de registrerede ægteskaber.",
+      "showInLaws": "Svigerfamilie",
+      "showInLawsHelp": "Svigerforældre, svogre og svigerinder samt børnenes ægtefæller.",
+      "viewerLivingDetail": "Hvad læsere ser af levende",
+      "viewerLivingDetailHelp": "Læsere ser aldrig oplysninger om levende personer. Kun navn viser dem med navn; navn og fødselsår tilføjer året, de blev født; intet viser \"Levende person\" i træet og på familiekortet og udelader dem fra personlisten.",
+      "viewerLivingName": "Kun navn",
+      "viewerLivingNameAndBirthYear": "Navn og fødselsår",
+      "viewerLivingHidden": "Intet"
     },
     "records": {
       "title": "Kilder",
@@ -632,18 +671,33 @@
         "sources": "Kilder",
         "publicId": "ID"
       }
+    },
+    "overview": {
+      "title": "Oversigt",
+      "description": "Forsiden, for alle medlemmer.",
+      "cards": "Kort",
+      "cardsHelp": "Hvilke kort oversigten viser, og i hvilken rækkefølge. Hvert medlem kan også skjule kort for sig selv fra oversigtens Tilpas-menu, men kan ikke få et kort tilbage, der er skjult her.",
+      "for": {
+        "editor": "Redaktører",
+        "admin": "Administratorer"
+      },
+      "onThisDayEvents": "På denne dag viser",
+      "onThisDayEventsHelp": "Fødsler omfatter dåb, dødsfald omfatter begravelser. Kun nøjagtige datoer tæller.",
+      "onThisDayEvent": {
+        "birth": "Fødsler",
+        "marriage": "Vielser",
+        "death": "Dødsfald"
+      },
+      "onThisDayLivingBirthdays": "Også levende personer, for redaktører",
+      "onThisDayLivingBirthdaysHelp": "Fødselsdage og vielser for personer, der stadig lever, vist for redaktører og administratorer. Læsere ser dem aldrig."
     }
   },
   "overview": {
     "backendTitle": "Backend",
-    "backendDescription": "NestJS over tRPC, som taler med Postgres og Apache AGE.",
     "checking": "Kontrollerer…",
     "unreachable": "Ikke tilgængelig: {{message}}",
     "checkedAt": "{{status}} — kontrolleret kl. {{time}}",
-    "peopleTitle": "Personer",
-    "peopleDescription": "Personer registreret i dette slægtstræ.",
     "immichTitle": "Fotobibliotek",
-    "immichDescription": "Immich, på sin egen server. Fotos og albummer afhænger af den.",
     "line": {
       "title": "Din plads i træet",
       "description": "Dig selv, og hvor langt tilbage din linje kendes.",
@@ -672,7 +726,96 @@
       "backToTree": "Tilbage til træet",
       "treeAt": "{{chart}}, centreret på {{name}}",
       "recentPeople": "Senest åbnet"
-    }
+    },
+    "customize": "Tilpas",
+    "customizeTitle": "Kort på din oversigt",
+    "customizeReset": "Vis alle kort",
+    "allHidden": "Du har skjult alle kort. Brug Tilpas for at vise dem igen.",
+    "onThisDay": {
+      "title": "På denne dag",
+      "description": "Fødsler, vielser og dødsfald på dagens dato i årene, der gik.",
+      "empty": "Intet i træet skete på denne dag — i hvert fald med nøjagtige datoer.",
+      "whatWhere": "{{what}} i {{place}}",
+      "yearsAgo_one": "for {{count}} år siden",
+      "yearsAgo_other": "for {{count}} år siden",
+      "kind": {
+        "birth": "Født",
+        "christening": "Døbt",
+        "death": "Død",
+        "burial": "Begravet",
+        "cremation": "Kremeret",
+        "marriage": "Gift"
+      }
+    },
+    "featuredAncestor": {
+      "title": "Dagens slægtning",
+      "description": "En fra familien, en ny hver dag.",
+      "empty": "Ingen at vise endnu: der vælges en afdød med et foto eller med både fødsels- og dødsdato.",
+      "yourRelative": "Din {{kinship}}",
+      "openTree": "Vis i træet"
+    },
+    "familyAtAGlance": {
+      "title": "Familien i tal",
+      "description": "Træet i tal.",
+      "people": "Personer",
+      "surnames": "Efternavne",
+      "places": "Fødesteder",
+      "sources": "Kilder",
+      "photos": "Med foto",
+      "span": "Født",
+      "earliest": "Længst tilbage"
+    },
+    "topPlaces": {
+      "title": "Hvor familien kom fra",
+      "description": "De hyppigste fødesteder.",
+      "empty": "Ingen fødesteder registreret endnu."
+    },
+    "researchTodo": {
+      "title": "Forskningsopgaver",
+      "description": "Åbne forskningsnoter, og hvad træet stadig mangler.",
+      "openNotes_one": "{{count}} åben forskningsnote",
+      "openNotes_other": "{{count}} åbne forskningsnoter",
+      "noOpenNotes": "Ingen åbne forskningsnoter.",
+      "missing": "Personer uden…"
+    },
+    "censusGaps": {
+      "title": "Huller i folketællingerne",
+      "description": "Folketællinger med flest personer i live på det tidspunkt, som endnu ikke er fundet eller søgt efter.",
+      "empty": "Ingen huller — eller ingen fødselsdatoer at regne ud fra. Landene kommer fra Indstillinger → Kilder.",
+      "notSearched_one": "{{count}} endnu ikke søgt",
+      "notSearched_other": "{{count}} endnu ikke søgt",
+      "andMore_one": "og {{count}} mere",
+      "andMore_other": "og {{count}} flere"
+    },
+    "recentChanges": {
+      "title": "Senest tilføjet og ændret",
+      "description": "Fortsæt, hvor en anden slap.",
+      "added": "Tilføjet",
+      "changed": "Ændret",
+      "none": "Intet endnu."
+    },
+    "thingsToLook": {
+      "title": "Ting at se på",
+      "description": "Hvad Værktøjer-rapporterne har fundet.",
+      "allClear": "Intet kræver opmærksomhed.",
+      "likelyDuplicates": "Sandsynlige dubletter",
+      "possibleDuplicates": "Mulige dubletter",
+      "integrityFindings": "Fund i dataintegritetstjek",
+      "presumedDeceased": "Formodet døde",
+      "unlinkedFaces": "Ansigter på fotos uden tilknyttet person",
+      "pendingInvitations": "Ventende invitationer",
+      "checkedAt": "Tjekket kl. {{time}}"
+    },
+    "system": {
+      "title": "Systemstatus",
+      "description": "Backend og fotobiblioteket."
+    },
+    "arrange": "Arrangér",
+    "arrangeHelp": "Træk kortene i den rækkefølge, du vil have — eller brug håndtaget på hvert kort med tastaturet. Din rækkefølge gemmes kun for dig.",
+    "arrangeReset": "Brug sidens rækkefølge",
+    "arrangeDone": "Færdig",
+    "arrangeLabel": "Oversigtskort",
+    "moveCard": "Flyt {{card}}"
   },
   "notes": {
     "title": "Mine noter",
@@ -1008,7 +1151,14 @@
       "noSiblings": "Ingen søskende registreret endnu.",
       "addSibling": "Tilføj søskende",
       "sharedParents": "Fælles forælder(e)",
-      "selectAtLeastOneParent": "Vælg mindst én forælder."
+      "selectAtLeastOneParent": "Vælg mindst én forælder.",
+      "halfSibling": "halv",
+      "stepParents": "Stedforældre",
+      "stepSiblings": "Stedsøskende",
+      "stepChildren": "Stedbørn",
+      "parentsInLaw": "Svigerforældre",
+      "siblingsInLaw": "Svogre og svigerinder",
+      "childrenInLaw": "Svigerbørn"
     },
     "associations": {
       "title": "Vidner og faddere",
@@ -1173,7 +1323,8 @@
         "deathSource": "En kilde til dødsfaldet",
         "photo": "Foto"
       }
-    }
+    },
+    "livingPerson": "Levende person"
   },
   "members": {
     "title": "Medlemmer",

@@ -11,6 +11,7 @@ import { PersonService } from "./person.service.js";
   imports: [SettingsModule, RecordModule],
   controllers: [PersonPhotoController],
   providers: [PersonService, PersonMergeService, PersonRouter],
-  exports: [PersonRouter],
+  // PersonService for the Overview, which counts with the People list's own filters.
+  exports: [PersonRouter, PersonService],
 })
 export class PersonModule {}

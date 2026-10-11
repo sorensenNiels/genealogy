@@ -1,9 +1,4 @@
-import {
-  formatPersonName,
-  type CitationFactType,
-  type HistoricalDate,
-  type Gender,
-} from "@genealogy/core";
+import { type CitationFactType, type HistoricalDate, type Gender } from "@genealogy/core";
 import { AddButton } from "@genealogy/ui/components/add-button";
 import { Badge } from "@genealogy/ui/components/badge";
 import { Button } from "@genealogy/ui/components/button";
@@ -18,10 +13,10 @@ import type { TFunction } from "i18next";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
 import { familyEvents, type FamilyEvent } from "../../lib/family-events";
-import { formatDisplayDate } from "../../lib/format-date";
 import { labelFor, optionsFor } from "../../lib/person-display";
+import { usePersonName } from "../../lib/person-name";
+import { usePersonPageDate, usePersonSettings } from "../../lib/person-settings";
 import { removeEvent } from "../../server/functions/person.functions";
 import { eventDetailFields, EventForm } from "./-event-form";
 import type {
@@ -128,11 +123,10 @@ function parentageLine(
   gender: Gender,
   parents: { given: string; surname: string }[],
   t: TFunction,
+  formatName: (name: { given: string; surname: string }) => string,
 ): string | null {
   if (parents.length === 0) return null;
-  const names = parents
-    .map((parent) => formatPersonName(parent))
-    .join(` ${t("person.events.and")} `);
+  const names = parents.map((parent) => formatName(parent)).join(` ${t("person.events.and")} `);
   const key =
     gender === "M"
       ? "person.events.sonOf"
@@ -186,6 +180,7 @@ export function LifeEventsCard({
   onChanged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const removeEventMutation = useMutation({ mutationFn: removeEvent });
   const topKey = topConfidenceKey(options);
 
@@ -197,7 +192,7 @@ export function LifeEventsCard({
   const spouseName = (union: UnionRow): string => {
     const otherId = union.personAId === personId ? union.personBId : union.personAId;
     const spouse = spouses.find((candidate) => candidate.id === otherId);
-    return spouse ? formatPersonName(spouse) : t("person.events.unknownSpouse");
+    return spouse ? formatName(spouse) : t("person.events.unknownSpouse");
   };
 
   const entries: TimelineEntry[] = [
@@ -323,11 +318,13 @@ function TimelineLead({
   /** Instead of the confidence dot — a family event isn't this person's own sourced fact. */
   dot?: ReactNode;
 }) {
+  // Settings → Person page can turn ages off; the row then just has its date.
+  const { showAges } = usePersonSettings();
   return (
     <>
       <div className="text-xs">
         <p className="font-semibold text-foreground">{date ?? "—"}</p>
-        <p className="text-muted-foreground">{age ?? "—"}</p>
+        {showAges && <p className="text-muted-foreground">{age ?? "—"}</p>}
       </div>
       <div className="mt-0.5 flex justify-center">
         {dot ?? <ConfidenceDot tier={tier} className="relative z-10" />}
@@ -361,8 +358,9 @@ function EventTimelineRow({
   onChanged: () => Promise<void>;
   onRemove: () => void;
 }) {
-  const { t, i18n } = useTranslation();
-  const language = toSupportedLanguage(i18n.language);
+  const { t } = useTranslation();
+  const formatDate = usePersonPageDate();
+  const { formatName } = usePersonName();
   const eventCitations = citations.filter(
     (citation) => citation.factType === "event" && citation.factId === event.id,
   );
@@ -370,7 +368,7 @@ function EventTimelineRow({
   const age = event.eventType === "birth" ? null : formatEventAge(personBirth, event.date, t);
   const detailFieldsByType = eventDetailFields(t);
   const detailLine = [
-    event.eventType === "birth" ? parentageLine(personGender, parents, t) : null,
+    event.eventType === "birth" ? parentageLine(personGender, parents, t, formatName) : null,
     event.details && Object.keys(event.details).length > 0
       ? Object.entries(event.details)
           .map(([key, value]) => {
@@ -385,7 +383,7 @@ function EventTimelineRow({
 
   return (
     <div className={cn("group", TIMELINE_ROW)}>
-      <TimelineLead date={formatDisplayDate(event.date, language)} age={age} tier={tier} />
+      <TimelineLead date={formatDate(event.date)} age={age} tier={tier} />
       <div className="min-w-0">
         <p className="font-medium">
           {event.eventType === "other" && event.label
@@ -458,8 +456,8 @@ function UnionTimelineRow({
   options: ConfigurableOptionRow[];
   topKey: string | null;
 }) {
-  const { t, i18n } = useTranslation();
-  const language = toSupportedLanguage(i18n.language);
+  const { t } = useTranslation();
+  const formatDate = usePersonPageDate();
   const unionCitations = citations.filter(
     (citation) => citation.factType === "union" && citation.factId === union.id,
   );
@@ -472,7 +470,7 @@ function UnionTimelineRow({
 
   return (
     <div className={TIMELINE_ROW}>
-      <TimelineLead date={formatDisplayDate(union.startDate, language)} age={age} tier={tier} />
+      <TimelineLead date={formatDate(union.startDate)} age={age} tier={tier} />
       <div className="min-w-0">
         <p className="font-medium">{title}</p>
         {union.startPlace && <p className="text-muted-foreground">{union.startPlace}</p>}
@@ -514,13 +512,14 @@ function FamilyTimelineRow({
   familyEvent: FamilyEvent;
   personBirth: HistoricalDate | null;
 }) {
-  const { t, i18n } = useTranslation();
-  const language = toSupportedLanguage(i18n.language);
+  const { t } = useTranslation();
+  const formatDate = usePersonPageDate();
+  const { formatName } = usePersonName();
   const age = formatEventAge(personBirth, familyEvent.date, t);
   return (
     <div className={cn(TIMELINE_ROW, "text-muted-foreground")}>
       <TimelineLead
-        date={formatDisplayDate(familyEvent.date, language)}
+        date={formatDate(familyEvent.date)}
         age={age}
         tier="none"
         dot={
@@ -538,7 +537,7 @@ function FamilyTimelineRow({
             params={{ personId: familyEvent.relative.id }}
             className="text-foreground hover:underline"
           >
-            {formatPersonName(familyEvent.relative)}
+            {formatName(familyEvent.relative)}
           </Link>
         </p>
         {familyEvent.place && <p className="text-xs">{familyEvent.place}</p>}

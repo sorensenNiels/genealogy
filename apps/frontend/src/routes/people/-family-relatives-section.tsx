@@ -1,6 +1,5 @@
 import {
   formatLifespan,
-  formatPersonName,
   joinHistoricalDateText,
   parentageSchema,
   parseHistoricalDate,
@@ -33,8 +32,9 @@ import { useTranslation } from "react-i18next";
 
 import { PersonPicker } from "../-person-picker";
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
-import { formatDisplayDate } from "../../lib/format-date";
 import { labelFor, optionsFor } from "../../lib/person-display";
+import { usePersonName } from "../../lib/person-name";
+import { usePersonPageDate } from "../../lib/person-settings";
 import {
   addUnion,
   createPerson,
@@ -73,6 +73,7 @@ export function RelativesSection({
   unions?: UnionRow[];
 }) {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const unlinkParentMutation = useMutation({ mutationFn: unlinkParent });
   const unlinkSpouseMutation = useMutation({ mutationFn: unlinkSpouse });
 
@@ -137,7 +138,7 @@ export function RelativesSection({
                   params={{ personId: relative.id }}
                   className="hover:underline"
                 >
-                  {formatPersonName(relative)}
+                  {formatName(relative)}
                   {formatLifespan(relative) && (
                     <span className="ml-1 text-muted-foreground">({formatLifespan(relative)})</span>
                   )}
@@ -145,7 +146,7 @@ export function RelativesSection({
               </div>
               <RemoveButton
                 itemLabel={t("person.family.relationshipWith", {
-                  name: formatPersonName(relative),
+                  name: formatName(relative),
                 })}
                 onConfirm={() => void remove(relative.id)}
                 trigger={
@@ -194,8 +195,9 @@ function OrphanedUnionRow({
   options: ConfigurableOptionRow[];
   onChanged: () => Promise<void>;
 }) {
-  const { t, i18n } = useTranslation();
-  const language = toSupportedLanguage(i18n.language);
+  const { t } = useTranslation();
+  const formatDate = usePersonPageDate();
+  const { formatName } = usePersonName();
   const otherId = union.personAId === personId ? union.personBId : union.personAId;
   const other = useQuery({
     queryKey: ["person", "byId", otherId],
@@ -213,14 +215,14 @@ function OrphanedUnionRow({
       <div>
         {other.data ? (
           <Link to="/people/$personId" params={{ personId: otherId }} className="hover:underline">
-            {formatPersonName(other.data)}
+            {formatName(other.data)}
           </Link>
         ) : (
           <span className="text-muted-foreground">{t("person.family.unknownPerson")}</span>
         )}
         <p className="text-xs text-muted-foreground">
           {labelFor(options, "union_status", union.status)} · {t("person.family.noLongerLinked")}
-          {union.startDate ? ` · ${formatDisplayDate(union.startDate, language)}` : ""}
+          {union.startDate ? ` · ${formatDate(union.startDate)}` : ""}
           {union.startPlace ? ` ${t("person.family.inPlace", { place: union.startPlace })}` : ""}
         </p>
       </div>
@@ -250,13 +252,14 @@ function SpouseRow({
   onChanged: () => Promise<void>;
   onRemove: () => void;
 }) {
-  const { t, i18n } = useTranslation();
-  const language = toSupportedLanguage(i18n.language);
+  const { t } = useTranslation();
+  const formatDate = usePersonPageDate();
+  const { formatName } = usePersonName();
   return (
     <div className="flex items-center justify-between gap-2 text-sm">
       <div>
         <Link to="/people/$personId" params={{ personId: relative.id }} className="hover:underline">
-          {formatPersonName(relative)}
+          {formatName(relative)}
           {formatLifespan(relative) && (
             <span className="ml-1 text-muted-foreground">({formatLifespan(relative)})</span>
           )}
@@ -264,7 +267,7 @@ function SpouseRow({
         {union && (
           <p className="text-xs text-muted-foreground">
             {labelFor(options, "union_status", union.status)}
-            {union.startDate ? ` · ${formatDisplayDate(union.startDate, language)}` : ""}
+            {union.startDate ? ` · ${formatDate(union.startDate)}` : ""}
           </p>
         )}
         {union?.notes && (
@@ -299,7 +302,7 @@ function SpouseRow({
           </FormDialog>
         )}
         <RemoveButton
-          itemLabel={t("person.family.relationshipWith", { name: formatPersonName(relative) })}
+          itemLabel={t("person.family.relationshipWith", { name: formatName(relative) })}
           onConfirm={onRemove}
           trigger={
             <Button

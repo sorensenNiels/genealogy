@@ -566,7 +566,46 @@
       "showFamilyEventsInTimeline": "Family events in the timeline",
       "showFamilyEventsInTimelineHelp": "Children's births and deaths, a spouse's death and the parents' deaths, shown faintly in the person's own Life events, within their lifetime.",
       "presumeDeceasedAfterYears": "Presume deceased after (years)",
-      "presumeDeceasedAfterYearsHelp": "Someone still marked living who was born longer ago than this is probably not: the GEDCOM import marks them deceased, Personal details suggests it, and Tools can apply it to everyone. 0 turns it off."
+      "presumeDeceasedAfterYearsHelp": "Someone still marked living who was born longer ago than this is probably not: the GEDCOM import marks them deceased, Personal details suggests it, and Tools can apply it to everyone. 0 turns it off.",
+      "cards": "Cards",
+      "cardsHelp": "Which cards a person's page shows, and their order within each column. Personal details and Family are always shown.",
+      "mainColumn": "Main column",
+      "sideColumn": "Side column",
+      "alwaysShown": "Always shown",
+      "moveCardUp": "Move {{card}} up",
+      "moveCardDown": "Move {{card}} down",
+      "card": {
+        "details": "Personal details",
+        "photos": "Photos",
+        "lifeEvents": "Life events",
+        "records": "Records",
+        "citations": "Sources & citations",
+        "associations": "Witnesses & godparents",
+        "researchNotes": "Research notes",
+        "family": "Family",
+        "externalIds": "External IDs"
+      },
+      "nameFormat": "Name display",
+      "nameFormatHelp": "How names read everywhere in the app: lists, the tree, search and every page.",
+      "nameFormatGivenFirst": "Anders Jensen",
+      "nameFormatSurnameFirst": "JENSEN, Anders",
+      "nameFormatSurnameCapitals": "Anders JENSEN",
+      "dateDetail": "Dates",
+      "dateDetailHelp": "Dates on a person's page (header, Life events, Family, Personal details) in full or as years only. The edit fields always show the date as entered.",
+      "showAges": "Ages",
+      "showAgesHelp": "The age in the header and the person's age at each life event.",
+      "familyScope": "Family card",
+      "showHalfSiblings": "Half-siblings",
+      "showHalfSiblingsHelp": "Siblings who share only one parent, marked \"half\". Off: full siblings only.",
+      "showStepRelations": "Step-relations",
+      "showStepRelationsHelp": "Step-parents (a parent's other spouses), step-siblings and stepchildren, worked out from the marriages recorded.",
+      "showInLaws": "In-laws",
+      "showInLawsHelp": "Parents-in-law, brothers- and sisters-in-law, and children's spouses.",
+      "viewerLivingDetail": "What Viewers see of the living",
+      "viewerLivingDetailHelp": "Viewers never see the details of someone living. Name only shows them by name; name and birth year adds the year they were born; nothing shows \"Living person\" in the tree and Family card and leaves them out of the People list.",
+      "viewerLivingName": "Name only",
+      "viewerLivingNameAndBirthYear": "Name and birth year",
+      "viewerLivingHidden": "Nothing"
     },
     "records": {
       "title": "Records",
@@ -632,18 +671,33 @@
         "sources": "Sources",
         "publicId": "ID"
       }
+    },
+    "overview": {
+      "title": "Overview",
+      "description": "The landing page, for every member.",
+      "cards": "Cards",
+      "cardsHelp": "Which cards the Overview shows, and in what order. Each member can also hide cards for themselves from the Overview's Customize menu, but can't bring back a card hidden here.",
+      "for": {
+        "editor": "Editors",
+        "admin": "Admins"
+      },
+      "onThisDayEvents": "On this day lists",
+      "onThisDayEventsHelp": "Births include baptisms, deaths include burials. Only exact dates count.",
+      "onThisDayEvent": {
+        "birth": "Births",
+        "marriage": "Marriages",
+        "death": "Deaths"
+      },
+      "onThisDayLivingBirthdays": "Living people too, for editors",
+      "onThisDayLivingBirthdaysHelp": "Birthdays and marriages of people still living, shown to editors and admins. Viewers never see them."
     }
   },
   "overview": {
     "backendTitle": "Backend",
-    "backendDescription": "NestJS over tRPC, talking to Postgres and Apache AGE.",
     "checking": "Checking…",
     "unreachable": "Unreachable: {{message}}",
     "checkedAt": "{{status}} — checked at {{time}}",
-    "peopleTitle": "People",
-    "peopleDescription": "Individuals recorded in this tree.",
     "immichTitle": "Photo library",
-    "immichDescription": "Immich, on its own server. Photos and albums depend on it.",
     "line": {
       "title": "Your place in the tree",
       "description": "You, and how far back your line is known.",
@@ -672,7 +726,96 @@
       "backToTree": "Back to the tree",
       "treeAt": "{{chart}}, centred on {{name}}",
       "recentPeople": "Recently opened"
-    }
+    },
+    "customize": "Customize",
+    "customizeTitle": "Cards on your Overview",
+    "customizeReset": "Show all cards",
+    "allHidden": "You have hidden every card. Use Customize to show them again.",
+    "onThisDay": {
+      "title": "On this day",
+      "description": "Births, marriages and deaths on today's date in years gone by.",
+      "empty": "Nothing in the tree happened on this day — with exact dates, at least.",
+      "whatWhere": "{{what}} in {{place}}",
+      "yearsAgo_one": "{{count}} year ago",
+      "yearsAgo_other": "{{count}} years ago",
+      "kind": {
+        "birth": "Born",
+        "christening": "Baptised",
+        "death": "Died",
+        "burial": "Buried",
+        "cremation": "Cremated",
+        "marriage": "Married"
+      }
+    },
+    "featuredAncestor": {
+      "title": "Featured ancestor",
+      "description": "Someone from the family, a new one each day.",
+      "empty": "No one to feature yet: it picks someone deceased with a photo, or with both a birth and a death date.",
+      "yourRelative": "Your {{kinship}}",
+      "openTree": "Show in the tree"
+    },
+    "familyAtAGlance": {
+      "title": "The family at a glance",
+      "description": "The tree in figures.",
+      "people": "People",
+      "surnames": "Surnames",
+      "places": "Birthplaces",
+      "sources": "Sources",
+      "photos": "With a photo",
+      "span": "Born",
+      "earliest": "Furthest back"
+    },
+    "topPlaces": {
+      "title": "Where the family came from",
+      "description": "The most common birthplaces.",
+      "empty": "No birthplaces recorded yet."
+    },
+    "researchTodo": {
+      "title": "Research to-do",
+      "description": "Open research notes, and what the tree is still missing.",
+      "openNotes_one": "{{count}} open research note",
+      "openNotes_other": "{{count}} open research notes",
+      "noOpenNotes": "No open research notes.",
+      "missing": "People without…"
+    },
+    "censusGaps": {
+      "title": "Census gaps",
+      "description": "Censuses with the most people alive at the time, not yet found or searched.",
+      "empty": "No gaps — or no birth dates to work out who was alive. The countries come from Settings → Records.",
+      "notSearched_one": "{{count}} not yet searched",
+      "notSearched_other": "{{count}} not yet searched",
+      "andMore_one": "and {{count}} more",
+      "andMore_other": "and {{count}} more"
+    },
+    "recentChanges": {
+      "title": "Recently added and changed",
+      "description": "Pick up where someone else left off.",
+      "added": "Added",
+      "changed": "Changed",
+      "none": "Nothing yet."
+    },
+    "thingsToLook": {
+      "title": "Things to look at",
+      "description": "What the Tools reports have found.",
+      "allClear": "Nothing needs looking at.",
+      "likelyDuplicates": "Likely duplicates",
+      "possibleDuplicates": "Possible duplicates",
+      "integrityFindings": "Data integrity findings",
+      "presumedDeceased": "Presumed deceased",
+      "unlinkedFaces": "Photo faces not linked to anyone",
+      "pendingInvitations": "Pending invitations",
+      "checkedAt": "Checked at {{time}}"
+    },
+    "system": {
+      "title": "System status",
+      "description": "The backend and the photo library."
+    },
+    "arrange": "Arrange",
+    "arrangeHelp": "Drag the cards into the order you want — or use the grip on each card with the keyboard. Your order is saved for you only.",
+    "arrangeReset": "Use the site's order",
+    "arrangeDone": "Done",
+    "arrangeLabel": "Overview cards",
+    "moveCard": "Move {{card}}"
   },
   "notes": {
     "title": "My Notes",
@@ -1008,7 +1151,14 @@
       "noSiblings": "No siblings recorded yet.",
       "addSibling": "Add sibling",
       "sharedParents": "Shared parent(s)",
-      "selectAtLeastOneParent": "Select at least one parent."
+      "selectAtLeastOneParent": "Select at least one parent.",
+      "halfSibling": "half",
+      "stepParents": "Step-parents",
+      "stepSiblings": "Step-siblings",
+      "stepChildren": "Stepchildren",
+      "parentsInLaw": "Parents-in-law",
+      "siblingsInLaw": "Brothers- and sisters-in-law",
+      "childrenInLaw": "Sons- and daughters-in-law"
     },
     "associations": {
       "title": "Witnesses & godparents",
@@ -1173,7 +1323,8 @@
         "deathSource": "A source for the death",
         "photo": "Photo"
       }
-    }
+    },
+    "livingPerson": "Living person"
   },
   "members": {
     "title": "Members",

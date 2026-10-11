@@ -86,14 +86,16 @@ export class PersonRouter {
         return { ok: true } as const;
       }),
       list: protectedProcedure.input(listInput).query(async ({ input, ctx }) => {
+        const viewer = viewerOf(ctx);
+        const livingDetail = await this.redactor.livingDetail(viewer);
         const result = await this.persons.list({
           ...input,
           // Research notes are hidden from a Viewer on living people, so a
           // filter on them would tell a Viewer what they can't see.
           hasOpenResearchNote: canEdit(ctx.role) && input.hasOpenResearchNote,
           viewerUserId: ctx.session.user.id,
+          excludeLiving: livingDetail === "hidden",
         });
-        const viewer = viewerOf(ctx);
         const items = await this.redactor.people(viewer, result.items);
         // A marriage date is as private as a birth date: none for a couple
         // where either partner is shown to this viewer by name only. The
@@ -102,18 +104,27 @@ export class PersonRouter {
         const hidden = await this.redactor.hiddenIds(viewer, [
           ...items.map((item) => item.id),
           ...items.flatMap((item) => item.family?.spouses.map((spouse) => spouse.id) ?? []),
+          ...items.flatMap((item) => item.family?.parents.map((parent) => parent.id) ?? []),
         ]);
         // A redacted person's citations and alternate names are hidden, so
         // their summary and the name a search found them by are too.
+        // When Viewers see nothing of the living, a living parent or spouse
+        // named on a row loses their name too ("Living person").
+        const hideName = <T extends { id: string }>(relative: T): T =>
+          livingDetail === "hidden" && hidden.has(relative.id)
+            ? { ...relative, given: "", surname: "" }
+            : relative;
         return {
           ...result,
           items: items.map((item) => {
             const family = item.family && {
-              ...item.family,
+              parents: item.family.parents.map(hideName),
               spouses: item.family.spouses.map((spouse) =>
-                hidden.has(item.id) || hidden.has(spouse.id)
-                  ? { ...spouse, married: null }
-                  : spouse,
+                hideName(
+                  hidden.has(item.id) || hidden.has(spouse.id)
+                    ? { ...spouse, married: null }
+                    : spouse,
+                ),
               ),
             };
             return item.redacted
@@ -168,13 +179,56 @@ export class PersonRouter {
       relatives: protectedProcedure
         .input(z.object({ id: personIdSchema }))
         .query(async ({ input, ctx }) => {
-          const relatives = await this.persons.relatives(input.id);
+          // The Family card's scope (Settings → Person page): half-siblings
+          // are always worked out and just filtered, the derived relations
+          // only when they'll be shown.
+          const settings = await this.settings.getPersonSettings();
+          const relatives = await this.persons.relatives(input.id, {
+            stepRelations: settings.showStepRelations,
+            inLaws: settings.showInLaws,
+          });
           const viewer = viewerOf(ctx);
+          const redact = <T extends { id: string; isLiving: boolean; restriction: string | null }>(
+            rows: T[],
+          ) => this.redactor.people(viewer, rows);
+          const [
+            parents,
+            spouses,
+            children,
+            siblings,
+            stepParents,
+            stepSiblings,
+            stepChildren,
+            parentsInLaw,
+            siblingsInLaw,
+            childrenInLaw,
+          ] = await Promise.all([
+            redact(relatives.parents),
+            redact(relatives.spouses),
+            redact(relatives.children),
+            redact(
+              settings.showHalfSiblings
+                ? relatives.siblings
+                : relatives.siblings.filter((sibling) => !sibling.half),
+            ),
+            redact(relatives.stepParents),
+            redact(relatives.stepSiblings),
+            redact(relatives.stepChildren),
+            redact(relatives.parentsInLaw),
+            redact(relatives.siblingsInLaw),
+            redact(relatives.childrenInLaw),
+          ]);
           return {
-            parents: await this.redactor.people(viewer, relatives.parents),
-            spouses: await this.redactor.people(viewer, relatives.spouses),
-            children: await this.redactor.people(viewer, relatives.children),
-            siblings: await this.redactor.people(viewer, relatives.siblings),
+            parents,
+            spouses,
+            children,
+            siblings,
+            stepParents,
+            stepSiblings,
+            stepChildren,
+            parentsInLaw,
+            siblingsInLaw,
+            childrenInLaw,
           };
         }),
 

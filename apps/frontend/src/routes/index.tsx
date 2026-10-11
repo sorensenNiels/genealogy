@@ -1,29 +1,52 @@
-import { formatLifespan, formatPersonName } from "@genealogy/core";
-import { Avatar, AvatarFallback, AvatarImage } from "@genealogy/ui/components/avatar";
+import {
+  overviewCardSchema,
+  parseOverviewPreferences,
+  visibleOverviewCards,
+  type OverviewCard,
+  type OverviewPreferences,
+} from "@genealogy/core";
 import { Button, buttonVariants } from "@genealogy/ui/components/button";
+import { Checkbox } from "@genealogy/ui/components/checkbox";
+import { Popover } from "@genealogy/ui/components/popover";
 import { SectionCard } from "@genealogy/ui/components/section-card";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SortableGrid } from "@genealogy/ui/components/sortable-grid";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { NetworkIcon, UsersIcon } from "lucide-react";
+import { LayoutGridIcon, MoveIcon, NetworkIcon, UsersIcon } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { publicBackendUrl } from "../lib/env";
+import { useOptimisticMutation } from "../lib/optimistic";
+import { localToday, overviewCardLabel } from "../lib/overview-cards";
+import { usePermissions } from "../lib/permissions";
+import { usePersonName } from "../lib/person-name";
 import {
-  immichStatusQueryKey,
-  immichUnavailableMessage,
-  useImmichStatus,
-} from "../lib/immich-status";
-import { avatarColorClass, initials } from "../lib/person-display";
-import {
-  healthQuery,
+  familyAtAGlanceQuery,
+  featuredAncestorQuery,
   lastTreeQuery,
   myLineQuery,
-  PERSON_COUNT_INPUT,
-  personListQuery,
+  onThisDayQuery,
+  overviewPreferencesQuery,
+  overviewSettingsQuery,
   recentPeopleQuery,
+  topPlacesQuery,
 } from "../lib/queries";
-import { getImmichStatus } from "../server/functions/immich.functions";
 import type { getMyLine } from "../server/functions/overview.functions";
+import { saveOverviewPreferences } from "../server/functions/profile.functions";
+import {
+  FamilyAtAGlanceCard,
+  FeaturedAncestorCard,
+  OnThisDayCard,
+  TopPlacesCard,
+} from "./-overview-family-cards";
+import {
+  CensusGapsCard,
+  RecentChangesCard,
+  ResearchTodoCard,
+  SystemCard,
+  UpkeepCard,
+} from "./-overview-research-cards";
+import { PersonChip } from "./-person-chip";
 
 export const Route = createFileRoute("/")({
   // Prefetch what the page reads into the shared query cache, so it renders
@@ -31,164 +54,220 @@ export const Route = createFileRoute("/")({
   // (router.tsx), usually before the link is even clicked. `prefetchQuery`,
   // not `ensureQueryData`: it never throws, so a failed request still lands
   // in the page's own inline error state rather than an error route.
+  // The quick family cards only: the research and upkeep cards read the
+  // whole tree and would hold up the page, so they load on their own.
   loader: ({ context: { queryClient } }) =>
     Promise.all([
-      queryClient.prefetchQuery(healthQuery()),
-      queryClient.prefetchQuery(personListQuery(PERSON_COUNT_INPUT)),
+      queryClient.prefetchQuery(overviewSettingsQuery()),
+      queryClient.prefetchQuery(overviewPreferencesQuery()),
       queryClient.prefetchQuery(myLineQuery()),
       queryClient.prefetchQuery(lastTreeQuery()),
       queryClient.prefetchQuery(recentPeopleQuery()),
+      queryClient.prefetchQuery(onThisDayQuery(localToday())),
+      queryClient.prefetchQuery(featuredAncestorQuery(localToday())),
+      queryClient.prefetchQuery(familyAtAGlanceQuery()),
+      queryClient.prefetchQuery(topPlacesQuery()),
     ]),
   component: Overview,
 });
 
+/**
+ * The landing page: the cards Settings → Overview shows, in its order, minus
+ * any the member has hidden for themselves from "Customize" and any their
+ * role isn't for (`OVERVIEW_CARD_ROLE`: research for editors, upkeep for
+ * admins). The cards are independent — each fetches its own data — so
+ * order and visibility are just which ones render. "Arrange" lets the
+ * member drag them into their own order, saved on their profile.
+ */
 function Overview() {
   const { t } = useTranslation();
-  const health = useQuery(healthQuery());
-  const people = useQuery(personListQuery(PERSON_COUNT_INPUT));
+  const { role } = usePermissions();
+  const settings = useQuery(overviewSettingsQuery());
+  const preferences = useQuery(overviewPreferencesQuery());
+  // "Arrange": the cards become draggable, inert tiles until "Done".
+  const [arranging, setArranging] = useState(false);
+  const savePreferences = useOptimisticMutation({
+    mutationFn: saveOverviewPreferences,
+    queryKey: overviewPreferencesQuery().queryKey,
+    // The input's own type, where the server fills in defaults.
+    update: (
+      _previous: OverviewPreferences,
+      variables: {
+        data: {
+          hiddenCards?: OverviewCard[] | undefined;
+          cardOrder?: OverviewCard[] | undefined;
+        };
+      },
+    ): OverviewPreferences => parseOverviewPreferences(variables.data),
+  });
+
+  const memberHidden = preferences.data?.hiddenCards ?? [];
+  const memberOrder = preferences.data?.cardOrder;
+  const site = settings.data ?? { cardOrder: [], hiddenCards: [] };
+  const own = { hiddenCards: memberHidden, ...(memberOrder ? { cardOrder: memberOrder } : {}) };
+  const cards = visibleOverviewCards(site, own, role);
+  // What the site offers before this member hides any: what "Customize" lists.
+  const offered = visibleOverviewCards(site, { ...own, hiddenCards: [] }, role);
+  // A stable array for the drag grid, which resyncs whenever its items change.
+  const cardKey = cards.join(",");
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
+  const gridItems = useMemo(() => cards.map((card) => ({ id: card })), [cardKey]);
+
+  // Until the settings load (they're prefetched, so rarely), nothing rather
+  // than every card — a card the site hides shouldn't flash up first.
+  if (!settings.data) return null;
+
+  const save = (change: Partial<OverviewPreferences>) => {
+    const next = { ...own, ...change };
+    // `cardOrder: undefined` means "back to the site's order" — left out, not sent as null.
+    if (next.cardOrder === undefined) delete next.cardOrder;
+    savePreferences.mutate({ data: next });
+  };
 
   return (
-    // Full width (see `isFullWidthPath` in __root.tsx): more columns as the
-    // window widens, so the cards don't stretch into long thin strips.
-    <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-      <YourPlaceCard />
-      <ContinueCard />
-
-      <SectionCard
-        title={t("overview.backendTitle")}
-        description={t("overview.backendDescription")}
-      >
-        {health.isPending && (
-          <p className="text-sm text-muted-foreground">{t("overview.checking")}</p>
-        )}
-        {health.isError && (
-          <p className="text-sm text-destructive">
-            {t("overview.unreachable", { message: health.error.message })}
-          </p>
-        )}
-        {health.data && (
-          <p className="text-sm">
-            {t("overview.checkedAt", {
-              status: health.data.status,
-              time: health.data.checkedAt.toLocaleTimeString(),
-            })}
-          </p>
-        )}
-      </SectionCard>
-
-      <SectionCard title={t("overview.peopleTitle")} description={t("overview.peopleDescription")}>
-        <p className="text-3xl font-semibold tabular-nums">
-          {people.isPending ? "—" : (people.data?.total ?? 0)}
-        </p>
-      </SectionCard>
-
-      <ImmichCard />
+    <div className="space-y-4">
+      {arranging ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed p-3">
+          <p className="text-sm text-muted-foreground">{t("overview.arrangeHelp")}</p>
+          <div className="flex gap-2">
+            {memberOrder && (
+              <Button variant="ghost" size="sm" onClick={() => save({ cardOrder: undefined })}>
+                {t("overview.arrangeReset")}
+              </Button>
+            )}
+            <Button size="sm" onClick={() => setArranging(false)}>
+              {t("overview.arrangeDone")}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex justify-end gap-2">
+          {cards.length > 1 && (
+            <Button variant="outline" size="sm" onClick={() => setArranging(true)}>
+              <MoveIcon /> {t("overview.arrange")}
+            </Button>
+          )}
+          <CustomizeOverview
+            offered={offered}
+            hidden={memberHidden}
+            onChange={(hiddenCards) => save({ hiddenCards })}
+          />
+        </div>
+      )}
+      {cards.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t("overview.allHidden")}</p>
+      ) : arranging ? (
+        <SortableGrid
+          aria-label={t("overview.arrangeLabel")}
+          items={gridItems}
+          textValue={(item) => overviewCardLabel(item.id, t)}
+          dragLabel={(item) => t("overview.moveCard", { card: overviewCardLabel(item.id, t) })}
+          // The dragged order first; hidden cards keep their places after it.
+          onReorder={(ids) =>
+            save({
+              cardOrder: [
+                ...new Set([...(ids as OverviewCard[]), ...(memberOrder ?? []), ...offered]),
+              ],
+            })
+          }
+          className="md:grid-cols-2 2xl:grid-cols-3"
+        >
+          {(item) => <OverviewCardView card={item.id} />}
+        </SortableGrid>
+      ) : (
+        // Full width (see `isFullWidthPath` in __root.tsx): more columns as the
+        // window widens, so the cards don't stretch into long thin strips.
+        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+          {cards.map((card) => (
+            <OverviewCardView key={card} card={card} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-/**
- * Immich runs on its own server and is optional — this is where to see
- * whether photos and albums are on, and why not if they aren't.
- */
-function ImmichCard() {
-  const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const status = useImmichStatus();
-  // Bypasses the backend's 30s probe cache, then seeds the shared query so
-  // the nav link and every other gate pick up the new answer immediately.
-  const recheck = useMutation({
-    mutationFn: () => getImmichStatus({ data: { refresh: true } }),
-    onSuccess: (fresh) => queryClient.setQueryData(immichStatusQueryKey, fresh),
-  });
+function OverviewCardView({ card }: { card: OverviewCard }) {
+  switch (card) {
+    case "yourPlace":
+      return <YourPlaceCard />;
+    case "continue":
+      return <ContinueCard />;
+    case "onThisDay":
+      return <OnThisDayCard />;
+    case "featuredAncestor":
+      return <FeaturedAncestorCard />;
+    case "familyAtAGlance":
+      return <FamilyAtAGlanceCard />;
+    case "topPlaces":
+      return <TopPlacesCard />;
+    case "researchTodo":
+      return <ResearchTodoCard />;
+    case "censusGaps":
+      return <CensusGapsCard />;
+    case "recentChanges":
+      return <RecentChangesCard />;
+    case "thingsToLook":
+      return <UpkeepCard />;
+    case "system":
+      return <SystemCard />;
+  }
+}
 
+/**
+ * A member's own choice of cards: a checkbox for each card the site shows,
+ * saved on their profile at once. A card the site hides isn't offered —
+ * that's Settings → Overview's call.
+ */
+function CustomizeOverview({
+  offered,
+  hidden,
+  onChange,
+}: {
+  offered: OverviewCard[];
+  hidden: OverviewCard[];
+  onChange: (hidden: OverviewCard[]) => void;
+}) {
+  const { t } = useTranslation();
   return (
-    <SectionCard
-      title={t("overview.immichTitle")}
-      description={t("overview.immichDescription")}
-      action={
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={status.isPending || recheck.isPending}
-          onClick={() => recheck.mutate()}
-        >
-          {t("immich.checkAgain")}
+    <Popover
+      align="end"
+      title={t("overview.customizeTitle")}
+      trigger={
+        <Button variant="outline" size="sm">
+          <LayoutGridIcon /> {t("overview.customize")}
         </Button>
       }
     >
-      {status.isPending && (
-        <p className="text-sm text-muted-foreground">{t("overview.checking")}</p>
-      )}
-      {status.isError && (
-        <p className="text-sm text-destructive">
-          {t("overview.unreachable", { message: status.error.message })}
-        </p>
-      )}
-      {status.data && (
-        <div className="space-y-1 text-sm">
-          {status.data.available ? (
-            <p>{t("immich.connected", { version: status.data.version ?? "" })}</p>
-          ) : (
-            <>
-              <p className={status.data.configured ? "text-destructive" : undefined}>
-                {immichUnavailableMessage(t, status.data)}
-              </p>
-              <p className="text-muted-foreground">{t("immich.featuresOff")}</p>
-            </>
-          )}
-          <p className="text-muted-foreground">
-            {t("immich.checkedAt", { time: status.data.checkedAt.toLocaleTimeString() })}
-          </p>
-        </div>
-      )}
-    </SectionCard>
+      <div className="space-y-2">
+        {offered.map((card) => (
+          <Checkbox
+            key={card}
+            className="flex"
+            checked={!hidden.includes(card)}
+            onCheckedChange={(checked) =>
+              onChange(
+                // Kept in the cards' own order, whatever order they're ticked in.
+                overviewCardSchema.options.filter((option) =>
+                  option === card ? !checked : hidden.includes(option),
+                ),
+              )
+            }
+          >
+            {overviewCardLabel(card, t)}
+          </Checkbox>
+        ))}
+        {hidden.length > 0 && (
+          <Button variant="ghost" size="sm" className="mt-1" onClick={() => onChange([])}>
+            {t("overview.customizeReset")}
+          </Button>
+        )}
+      </div>
+    </Popover>
   );
 }
 
 type MyLine = NonNullable<Awaited<ReturnType<typeof getMyLine>>>;
-
-/** A person as a small row: avatar, name and lifespan, linking to their page. */
-function PersonChip({
-  person,
-  size = "sm",
-}: {
-  person: {
-    id: string;
-    given: string;
-    surname: string;
-    gender: "M" | "F" | "U";
-    photoPath: string | null;
-    birth: Parameters<typeof formatLifespan>[0]["birth"];
-    death: Parameters<typeof formatLifespan>[0]["death"];
-  };
-  size?: "sm" | "lg";
-}) {
-  const { t } = useTranslation();
-  const lifespan = formatLifespan(person);
-  return (
-    <Link
-      to="/people/$personId"
-      params={{ personId: person.id }}
-      className="flex min-w-0 items-center gap-3 rounded-md hover:underline"
-    >
-      <Avatar className={size === "lg" ? "size-14" : "size-8"}>
-        {person.photoPath && (
-          <AvatarImage src={`${publicBackendUrl}/uploads/${person.photoPath}`} alt="" />
-        )}
-        <AvatarFallback className={`text-xs ${avatarColorClass(person.gender)}`}>
-          {initials(person)}
-        </AvatarFallback>
-      </Avatar>
-      <span className="min-w-0">
-        <span className={size === "lg" ? "block text-lg font-semibold" : "block truncate text-sm"}>
-          {formatPersonName(person) || t("tools.unnamed")}
-        </span>
-        {lifespan && <span className="block text-xs text-muted-foreground">{lifespan}</span>}
-      </span>
-    </Link>
-  );
-}
 
 /**
  * "Your place in the tree": the member's own person (their "This is you"
@@ -288,6 +367,7 @@ function LineSummary({ line }: { line: MyLine }) {
  */
 function ContinueCard() {
   const { t } = useTranslation();
+  const { formatName } = usePersonName();
   const lastTree = useQuery(lastTreeQuery());
   const recent = useQuery(recentPeopleQuery());
   const nothingYet = lastTree.data === null && recent.data?.length === 0;
@@ -319,7 +399,7 @@ function ContinueCard() {
                 <span className="block font-medium">{t("overview.continue.backToTree")}</span>
                 <span className="block text-muted-foreground">
                   {t("overview.continue.treeAt", {
-                    name: formatPersonName(lastTree.data.person) || t("tools.unnamed"),
+                    name: formatName(lastTree.data.person) || t("tools.unnamed"),
                     chart: t(`tree.view.${lastTree.data.view}`),
                   })}
                 </span>
