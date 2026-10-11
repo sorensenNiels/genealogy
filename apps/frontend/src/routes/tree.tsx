@@ -3,7 +3,6 @@ import {
   formatKinship,
   formatLifespan,
   kinshipsFrom,
-  type Gender,
   treeChartKindSchema,
   type TreeOrientation,
   treeOrientationSchema,
@@ -38,6 +37,7 @@ import { toSupportedLanguage } from "../i18n/create-i18n-instance";
 import { publicBackendUrl } from "../lib/env";
 import { formatDisplayDate } from "../lib/format-date";
 import { usePermissions } from "../lib/permissions";
+import { avatarColorClass, GenderIcon } from "../lib/person-display";
 import { usePersonName } from "../lib/person-name";
 import { lastTreeQuery } from "../lib/queries";
 import {
@@ -187,12 +187,6 @@ function RootPicker() {
       />
     </div>
   );
-}
-
-function genderTextClasses(gender: Gender): string {
-  if (gender === "M") return "text-sky-600 dark:text-sky-400";
-  if (gender === "F") return "text-rose-600 dark:text-rose-400";
-  return "text-slate-500 dark:text-slate-400";
 }
 
 interface ExtraTreeData {
@@ -1048,9 +1042,10 @@ function RelativeRow({
         <Link
           to="/people/$personId"
           params={{ personId: person.id }}
-          className="truncate hover:underline"
+          className="flex items-center gap-1.5 hover:underline"
         >
-          {name}
+          <GenderIcon gender={person.gender} className="size-3.5" />
+          <span className="truncate">{name}</span>
         </Link>
       </div>
       <div className="flex shrink-0 items-center gap-1">
@@ -1350,7 +1345,7 @@ function DetailPanel({
         <div className="relative shrink-0">
           <Avatar className="size-10">
             {photoUrl && <AvatarImage src={photoUrl} alt="" />}
-            <AvatarFallback className={genderTextClasses(person.gender)}>
+            <AvatarFallback className={avatarColorClass(person.gender)}>
               <UserRound className="size-5" aria-hidden="true" />
             </AvatarFallback>
           </Avatar>
@@ -1364,7 +1359,10 @@ function DetailPanel({
           )}
         </div>
         <div className="min-w-0">
-          <p className="truncate font-semibold">{formatName(person)}</p>
+          <p className="flex items-center gap-1.5 font-semibold">
+            <GenderIcon gender={person.gender} className="size-4" />
+            <span className="truncate">{formatName(person)}</span>
+          </p>
           <p className="text-sm text-muted-foreground">{formatLifespan(person) ?? "—"}</p>
         </div>
       </div>

@@ -244,7 +244,8 @@ export class OverviewResearchService {
       integrityFindings:
         integrity.danglingCitations.length +
         (integrity.danglingImmichLinks?.length ?? 0) +
-        integrity.recordAgeMismatches.length,
+        integrity.recordAgeMismatches.length +
+        integrity.consistencyIssues.length,
       presumedDeceased: presumed.length,
       unlinkedFaces,
       pendingInvitations: pending?.value ?? 0,

@@ -496,7 +496,8 @@
       "clearStartPerson": "Clear start person",
       "export": "Export website",
       "queued": "Started — the notification bell will tell you when the website is ready to download."
-    }
+    },
+    "consistencyIssues": "Facts that can't all be true"
   },
   "settings": {
     "title": "Settings",
@@ -605,7 +606,12 @@
       "viewerLivingDetailHelp": "Viewers never see the details of someone living. Name only shows them by name; name and birth year adds the year they were born; nothing shows \"Living person\" in the tree and Family card and leaves them out of the People list.",
       "viewerLivingName": "Name only",
       "viewerLivingNameAndBirthYear": "Name and birth year",
-      "viewerLivingHidden": "Nothing"
+      "viewerLivingHidden": "Nothing",
+      "consistency": "Consistency warnings",
+      "minParentAge": "Youngest parent (years)",
+      "maxMotherAge": "Oldest mother (years)",
+      "minMarriageAge": "Youngest to marry (years)",
+      "consistencyHelp": "Facts outside these limits are flagged on the person page (for editors) and in Tools → Data integrity — a parent younger than this at a child's birth, a mother older, a marriage younger. Death before birth, events after a burial and a child born after the mother's death are always flagged. 0 turns a limit off."
     },
     "records": {
       "title": "Records",
@@ -1685,5 +1691,23 @@
       "record": "Record",
       "recordPerson": "Person in record"
     }
+  },
+  "consistency": {
+    "title_one": "{{count}} thing here can't all be true",
+    "title_other": "{{count}} things here can't all be true",
+    "help": "Usually a mistyped date or the wrong person linked. The limits are in Settings → Person.",
+    "deathBeforeBirth": "Died before being born.",
+    "burialBeforeDeath": "Buried before dying.",
+    "eventBeforeBirth": "{{event}} before being born.",
+    "eventAfterBurial": "{{event}} after being buried.",
+    "marriedTooYoung": "Married <person>{{name}}</person> at {{age}} at the most.",
+    "marriedTooYoungNoPartner": "Married at {{age}} at the most.",
+    "parentTooYoung": "Parent <person>{{name}}</person> was {{age}} at the most at this birth.",
+    "motherTooOld": "Mother <person>{{name}}</person> was at least {{age}} at this birth.",
+    "bornAfterMotherDied": "Born after mother <person>{{name}}</person> died.",
+    "bornLongAfterFatherDied": "Born more than a year after father <person>{{name}}</person> died.",
+    "childWhileTooYoung": "Was {{age}} at the most when <person>{{name}}</person> was born.",
+    "childWhileTooOld": "Was at least {{age}} when <person>{{name}}</person> was born.",
+    "childAfterDeath": "<person>{{name}}</person> was born after this death."
   }
 }

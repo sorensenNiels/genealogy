@@ -6,7 +6,7 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { publicBackendUrl } from "../../lib/env";
-import { avatarColorClass, GenderIcon, genderLabel, initials } from "../../lib/person-display";
+import { avatarColorClass, genderLabel, initials, WithGenderBadge } from "../../lib/person-display";
 import { usePersonName } from "../../lib/person-name";
 import type { listPersons } from "../../server/functions/person.functions";
 
@@ -56,21 +56,18 @@ function PersonCard({ person, family }: { person: PersonListItem; family: string
       className="block rounded-xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
       <Card className="h-full items-center gap-3 py-6 text-center transition-shadow hover:shadow-md">
-        {/* The gender badge sits on the avatar's edge, outside `Avatar` itself
-            (which clips its children): it keeps the centered name balanced,
-            and still says the gender once a photo hides the initials' color. */}
-        <div className="relative">
+        {/* The tree's gender badge on the avatar's corner: it keeps the
+            centered name balanced, and still says the gender once a photo
+            hides the initials' colour. */}
+        <WithGenderBadge gender={person.gender} badgeClassName="size-7 right-0.5 bottom-0.5">
           <Avatar className="size-24">
             {photoUrl && <AvatarImage src={photoUrl} alt="" />}
             <AvatarFallback className={`text-2xl ${avatarColorClass(person.gender)}`}>
               {initials(person)}
             </AvatarFallback>
           </Avatar>
-          <span className="absolute right-0 bottom-0 flex size-7 items-center justify-center rounded-full border bg-card shadow-sm">
-            <GenderIcon gender={person.gender} className="size-4" />
-            <span className="sr-only">{genderLabel(person.gender, t)}</span>
-          </span>
-        </div>
+        </WithGenderBadge>
+        <span className="sr-only">{genderLabel(person.gender, t)}</span>
         <CardContent className="flex w-full flex-col items-center gap-1 px-4">
           <p className="text-base font-semibold">{formatName(person)}</p>
           {lifespan && <p className="text-sm text-muted-foreground">{lifespan}</p>}

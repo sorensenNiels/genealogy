@@ -14,7 +14,7 @@ import { LabeledField } from "@genealogy/ui/components/labeled-field";
 import { RemoveButton } from "@genealogy/ui/components/remove-button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
 import { cn } from "@genealogy/ui/lib/utils";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect, useSearch } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import {
@@ -35,6 +35,7 @@ import { formatDisplayDate } from "../lib/format-date";
 import { useImmichAvailable } from "../lib/immich-status";
 import { useIsLocalhost } from "../lib/localhost";
 import { usePersonName } from "../lib/person-name";
+import { listOptionsQuery } from "../lib/queries";
 import { createBackup } from "../server/functions/backup.functions";
 import {
   exportGedcom,
@@ -45,6 +46,7 @@ import { enqueueAllAlbumsZip, rescanImmichFaces } from "../server/functions/immi
 import { checkDataIntegrity, checkGraphConsistency } from "../server/functions/integrity.functions";
 import { getPresumedDeceased, markPresumedDeceased } from "../server/functions/person.functions";
 import { createStaticSite } from "../server/functions/static-site.functions";
+import { ConsistencyIssueText } from "./-consistency-issue";
 import { DuplicatesPanel } from "./-duplicates-panel";
 import { formatPersonWithLifespan, PersonPicker, type PersonListItem } from "./-person-picker";
 
@@ -810,6 +812,7 @@ function DataIntegrityPanel() {
   const language = toSupportedLanguage(i18n.language);
   const checkMutation = useMutation({ mutationFn: checkDataIntegrity });
   const report = checkMutation.data;
+  const options = useQuery(listOptionsQuery());
 
   return (
     <SectionCard title={toolLabels(t)["data-integrity"]}>
@@ -863,6 +866,24 @@ function DataIntegrityPanel() {
               ))}
             </ReportSection>
           )}
+
+          <ReportSection
+            title={t("tools.consistencyIssues")}
+            isEmpty={report.consistencyIssues.length === 0}
+          >
+            {report.consistencyIssues.map(({ person, issues }) => (
+              <li key={person.id}>
+                <PersonLink personId={person.id} name={formatName(person)} />
+                <ul className="mt-0.5 list-disc pl-5 text-muted-foreground">
+                  {issues.map((issue, index) => (
+                    <li key={`${issue.kind}-${index}`}>
+                      <ConsistencyIssueText issue={issue} options={options.data ?? []} />
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ReportSection>
 
           <ReportSection
             title={t("tools.recordAgeMismatches")}

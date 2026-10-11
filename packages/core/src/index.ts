@@ -1,5 +1,6 @@
 export * from "./album-category.js";
 export * from "./app-settings.js";
+export * from "./consistency.js";
 export * from "./association.js";
 export * from "./census.js";
 export * from "./citation.js";

@@ -1,10 +1,19 @@
 import {
+  consistencyIssues,
+  isBirthParentage,
+  type ConsistencyIssue,
+  type ConsistencyPerson,
+  type HistoricalDate,
+} from "@genealogy/core";
+import {
+  allParentOfEdges,
   allPersonNodeIds,
   associations,
   citations,
   personEvents,
   personNames,
   persons,
+  personsWithVitals,
   sources,
   unions,
   type Database,
@@ -16,6 +25,13 @@ import type { Pool } from "pg";
 import { DRIZZLE, PG_POOL } from "../database/database.module.js";
 import { ImmichService } from "../immich/immich.service.js";
 import { RecordService, type RecordAgeMismatch } from "../records/record.service.js";
+import { SettingsService } from "../settings/settings.service.js";
+
+/** One person's consistency warnings — facts about them and their parents that can't all be true. */
+export interface PersonConsistencyIssues {
+  person: { id: string; given: string; surname: string };
+  issues: ConsistencyIssue[];
+}
 
 export interface DanglingCitation {
   citationId: string;
@@ -40,6 +56,8 @@ export interface DataIntegrityReport {
   danglingImmichLinks: DanglingImmichLink[] | null;
   /** People whose age in a record disagrees with their recorded birth by more than a couple of years. */
   recordAgeMismatches: RecordAgeMismatch[];
+  /** Facts that can't all be true (`consistencyIssues`), per person, under Settings → Person page's limits. */
+  consistencyIssues: PersonConsistencyIssues[];
 }
 
 export interface GraphConsistencyReport {
@@ -61,22 +79,103 @@ export class IntegrityService {
     @Inject(PG_POOL) private readonly pool: Pool,
     private readonly immich: ImmichService,
     private readonly records: RecordService,
+    private readonly settings: SettingsService,
   ) {}
 
   async checkData(): Promise<DataIntegrityReport> {
     // Possible duplicate people used to be listed here too, by exact name;
     // they're their own tool now (DuplicateService), which scores spelling
     // variants, dates and relatives instead.
-    const [danglingCitations, danglingImmichLinks, recordAgeMismatches] = await Promise.all([
-      this.findDanglingCitations(),
-      // `isAvailable`, not `isConfigured`: with Immich down, every lookup
-      // would throw and take the whole report with it.
-      this.immich
-        .isAvailable()
-        .then((available) => (available ? this.immich.listDanglingLinks() : null)),
-      this.records.ageMismatches(),
+    const [danglingCitations, danglingImmichLinks, recordAgeMismatches, consistency] =
+      await Promise.all([
+        this.findDanglingCitations(),
+        // `isAvailable`, not `isConfigured`: with Immich down, every lookup
+        // would throw and take the whole report with it.
+        this.immich
+          .isAvailable()
+          .then((available) => (available ? this.immich.listDanglingLinks() : null)),
+        this.records.ageMismatches(),
+        this.findConsistencyIssues(),
+      ]);
+    return {
+      danglingCitations,
+      danglingImmichLinks,
+      recordAgeMismatches,
+      consistencyIssues: consistency,
+    };
+  }
+
+  /**
+   * The consistency rules over the whole tree, in a handful of bulk reads.
+   * Each person is checked against their own facts and their birth parents
+   * — not their children too, which would report every parent/child pair
+   * twice (the person page shows both sides).
+   */
+  async findConsistencyIssues(): Promise<PersonConsistencyIssues[]> {
+    const [settings, people, events, unionRows, parentEdges] = await Promise.all([
+      this.settings.getPersonSettings(),
+      personsWithVitals(this.db),
+      this.db
+        .select({
+          personId: personEvents.personId,
+          eventType: personEvents.eventType,
+          date: personEvents.date,
+        })
+        .from(personEvents),
+      this.db
+        .select({
+          personAId: unions.personAId,
+          personBId: unions.personBId,
+          startDate: unions.startDate,
+        })
+        .from(unions),
+      allParentOfEdges(this.pool),
     ]);
-    return { danglingCitations, danglingImmichLinks, recordAgeMismatches };
+    const byId = new Map<string, ConsistencyPerson>(people.map((person) => [person.id, person]));
+    const eventsOf = new Map<string, { eventType: string; date: HistoricalDate | null }[]>();
+    for (const event of events) {
+      const list = eventsOf.get(event.personId) ?? [];
+      list.push(event);
+      eventsOf.set(event.personId, list);
+    }
+    const unionsOf = new Map<string, { startDate: HistoricalDate | null; partnerId: string }[]>();
+    for (const union of unionRows) {
+      for (const [self, partner] of [
+        [union.personAId, union.personBId],
+        [union.personBId, union.personAId],
+      ] as const) {
+        const list = unionsOf.get(self) ?? [];
+        list.push({ startDate: union.startDate, partnerId: partner });
+        unionsOf.set(self, list);
+      }
+    }
+    const parentsOf = new Map<string, ConsistencyPerson[]>();
+    for (const edge of parentEdges) {
+      const parent = byId.get(edge.parentId);
+      if (!parent || !isBirthParentage(edge.parentage)) continue;
+      const list = parentsOf.get(edge.childId) ?? [];
+      list.push(parent);
+      parentsOf.set(edge.childId, list);
+    }
+
+    return people.flatMap((person) => {
+      const issues = consistencyIssues(
+        {
+          person,
+          events: eventsOf.get(person.id) ?? [],
+          unions: (unionsOf.get(person.id) ?? []).map((union) => ({
+            startDate: union.startDate,
+            partner: byId.get(union.partnerId) ?? null,
+          })),
+          parents: parentsOf.get(person.id) ?? [],
+          children: [],
+        },
+        settings,
+      );
+      return issues.length > 0
+        ? [{ person: { id: person.id, given: person.given, surname: person.surname }, issues }]
+        : [];
+    });
   }
 
   async checkGraphConsistency(): Promise<GraphConsistencyReport> {

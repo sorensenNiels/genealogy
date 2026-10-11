@@ -1,3 +1,4 @@
+import type { Gender } from "@genealogy/core";
 import { Button } from "@genealogy/ui/components/button";
 import { SectionCard } from "@genealogy/ui/components/section-card";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,7 +11,7 @@ import {
   immichUnavailableMessage,
   useImmichStatus,
 } from "../lib/immich-status";
-import { labelFor } from "../lib/person-display";
+import { GenderIcon, labelFor } from "../lib/person-display";
 import { usePersonName } from "../lib/person-name";
 import {
   censusGapsQuery,
@@ -176,7 +177,7 @@ export function RecentChangesCard() {
     });
   const list = (
     title: string,
-    people: { id: string; given: string; surname: string; at: Date }[],
+    people: { id: string; given: string; surname: string; gender: Gender; at: Date }[],
   ) => (
     <div className="space-y-1">
       <p className="text-sm font-medium">{title}</p>
@@ -189,9 +190,10 @@ export function RecentChangesCard() {
               <Link
                 to="/people/$personId"
                 params={{ personId: person.id }}
-                className="truncate hover:underline"
+                className="flex min-w-0 items-center gap-1.5 hover:underline"
               >
-                {formatName(person) || t("tools.unnamed")}
+                <GenderIcon gender={person.gender} className="size-3.5" />
+                <span className="truncate">{formatName(person) || t("tools.unnamed")}</span>
               </Link>
               <span className="shrink-0 text-muted-foreground">{when(person.at)}</span>
             </li>

@@ -38,7 +38,7 @@ import {
   WrenchIcon,
   XIcon,
 } from "lucide-react";
-import { lazy, Suspense, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
 
 import { createI18nInstance, type SupportedLanguage } from "../i18n/create-i18n-instance";
@@ -280,6 +280,8 @@ function RootLayout() {
   });
   const isFullWidth = isFullWidthPath(pathname);
   const isNoScroll = isNoScrollPath(pathname);
+  const headerRef = useRef<HTMLElement>(null);
+  useHeaderHeightVariable(headerRef);
 
   return (
     <div
@@ -288,7 +290,9 @@ function RootLayout() {
         isNoScroll ? "flex h-screen flex-col overflow-hidden" : "min-h-screen",
       )}
     >
-      <header className="border-b bg-card print:hidden">
+      {/* Sticky, so the navigation stays in reach on a long page; z-40 keeps
+          it over page content but under dialogs and popovers (z-50). */}
+      <header ref={headerRef} className="sticky top-0 z-40 border-b bg-card print:hidden">
         <div className="h-0.75 bg-primary" aria-hidden="true" />
         <nav className="flex w-full items-center gap-6 px-6 py-4">
           <span className="font-semibold text-primary">{t("nav.brand")}</span>
@@ -332,6 +336,29 @@ function RootLayout() {
       </main>
     </div>
   );
+}
+
+/**
+ * Publishes the sticky header's height as `--app-header-height` on <html>,
+ * kept current as it changes (a narrow window, a longer language), for
+ * `scroll-padding-top` in styles.css: without it an anchor jump or a
+ * focused field scrolled into view lands behind the header. Measured in
+ * an effect — client-only, so SSR just has no padding until it runs.
+ */
+function useHeaderHeightVariable(ref: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const header = ref.current;
+    if (!header) return;
+    const root = document.documentElement;
+    const update = () => root.style.setProperty("--app-header-height", `${header.offsetHeight}px`);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--app-header-height");
+    };
+  }, [ref]);
 }
 
 const NOTIFICATIONS_KEY = ["notifications"];

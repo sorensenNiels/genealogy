@@ -311,6 +311,41 @@ function PersonSettingsForm({ initial }: { initial: PersonSettings }) {
             </div>
           )}
         </form.Field>
+
+        <div className="space-y-2">
+          <p className="text-sm font-medium">{t("settings.person.consistency")}</p>
+          <div className="flex flex-wrap gap-4">
+            {(
+              [
+                ["minParentAge", 30],
+                ["maxMotherAge", 80],
+                ["minMarriageAge", 30],
+              ] as const
+            ).map(([name, max]) => (
+              <form.Field key={name} name={name}>
+                {(field) => (
+                  <LabeledField label={t(`settings.person.${name}`)}>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={max}
+                      className="w-28"
+                      value={String(field.state.value)}
+                      onBlur={field.handleBlur}
+                      onChange={(event) => {
+                        const years = Number.parseInt(event.target.value, 10);
+                        field.handleChange(
+                          Number.isNaN(years) ? 0 : Math.min(max, Math.max(0, years)),
+                        );
+                      }}
+                    />
+                  </LabeledField>
+                )}
+              </form.Field>
+            ))}
+          </div>
+          <p className="text-sm text-muted-foreground">{t("settings.person.consistencyHelp")}</p>
+        </div>
       </SettingsGroup>
 
       <SettingsGroup>

@@ -1,6 +1,8 @@
 import type { Gender, RelationshipToRoot } from "@genealogy/core";
+import { cn } from "@genealogy/ui/lib/utils";
 import type { TFunction } from "i18next";
-import { CircleHelp, Mars, Venus } from "lucide-react";
+import { Mars, Venus } from "lucide-react";
+import type { ReactNode } from "react";
 
 // Stored values stay the M/F/U GEDCOM schema; only the displayed labels are
 // translated, via `common.gender.*` — a plain function rather than a hook
@@ -60,6 +62,14 @@ export function labelFor<T extends ConfigurableOptionLike>(
   return optionsFor(all, topic).find((option) => option.key === key)?.label ?? key;
 }
 
+/**
+ * The tree's gender badge (tree-chart.css's `.card-gender`): a white ♂ or ♀
+ * on a sky or rose disc — one look for gender everywhere in the app, so a
+ * person reads the same in the tree, the lists and their own page. Unknown
+ * is a slate disc with "?" (the tree draws no badge for it, but a list
+ * column needs something there). `className` sizes the disc; the icon
+ * scales with it. Decorative — pair it with `genderLabel` for words.
+ */
 export function GenderIcon({
   gender,
   className = "size-5",
@@ -67,13 +77,59 @@ export function GenderIcon({
   gender: Gender;
   className?: string;
 }) {
-  const props = {
-    className: `${className} shrink-0 text-muted-foreground`,
-    "aria-hidden": true,
-  } as const;
-  if (gender === "M") return <Mars {...props} />;
-  if (gender === "F") return <Venus {...props} />;
-  return <CircleHelp {...props} />;
+  const icon = "size-[62%]";
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-full text-white",
+        GENDER_DISC_CLASS[gender],
+        className,
+      )}
+    >
+      {gender === "M" ? (
+        <Mars className={icon} strokeWidth={3} />
+      ) : gender === "F" ? (
+        <Venus className={icon} strokeWidth={3} />
+      ) : (
+        <span className="text-[0.65em] leading-none font-bold">?</span>
+      )}
+    </span>
+  );
+}
+
+/** The tree's colours: `--tree-male`, `--tree-female`, `--tree-unknown`. */
+const GENDER_DISC_CLASS: Record<Gender, string> = {
+  M: "bg-sky-500",
+  F: "bg-rose-500",
+  U: "bg-slate-400",
+};
+
+/**
+ * An avatar with the gender badge over its bottom-right corner, ringed in
+ * the card colour so it reads as cut out of the photo — the tree card's
+ * badge, on the app's own avatars. Nothing for unknown, as on the tree.
+ */
+export function WithGenderBadge({
+  gender,
+  children,
+  badgeClassName = "size-4",
+}: {
+  gender: Gender;
+  children: ReactNode;
+  badgeClassName?: string;
+}) {
+  return (
+    <span className="relative inline-flex shrink-0">
+      {children}
+      {gender !== "U" && (
+        <GenderIcon
+          gender={gender}
+          className={cn("absolute -right-0.5 -bottom-0.5 ring-2 ring-card", badgeClassName)}
+        />
+      )}
+    </span>
+  );
 }
 
 export function initials(person: { given: string; surname: string }): string {
@@ -83,14 +139,13 @@ export function initials(person: { given: string; surname: string }): string {
 }
 
 /**
- * Background/text pair for the People list's avatar-initials fallback — the
- * one place in the app that colors by gender, so a row is scannable at a
- * glance without reading the Gender column. Plain Tailwind palette classes
- * rather than new theme tokens, since this is a single-purpose accent, not a
- * reusable design-system color.
+ * Background/text pair for an avatar's initials fallback, in the tree's
+ * gender colours (sky and rose, like `GenderIcon`), so a photo-less person
+ * is tinted the same in a list as on their tree card. Plain Tailwind
+ * palette classes rather than theme tokens, matching the tree's own.
  */
 export function avatarColorClass(gender: Gender): string {
-  if (gender === "M") return "bg-blue-100 text-blue-700";
-  if (gender === "F") return "bg-pink-100 text-pink-700";
+  if (gender === "M") return "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300";
+  if (gender === "F") return "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300";
   return "bg-muted text-muted-foreground";
 }

@@ -16,7 +16,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { PersonPicker } from "../-person-picker";
-import { optionsFor } from "../../lib/person-display";
+import { optionsFor, GenderIcon } from "../../lib/person-display";
 import { usePersonName } from "../../lib/person-name";
 import { createPerson, linkParent } from "../../server/functions/person.functions";
 import type { ConfigurableOptionRow, ParentRow, PersonRow, SiblingRow } from "./-types";
@@ -68,6 +68,7 @@ export function SiblingsSection({
               params={{ personId: sibling.id }}
               className="block text-sm hover:underline"
             >
+              <GenderIcon gender={sibling.gender} className="mr-1.5 size-4 align-[-3px]" />
               {formatName(sibling)}
               {formatLifespan(sibling) && (
                 <span className="ml-1 text-muted-foreground">({formatLifespan(sibling)})</span>

@@ -169,6 +169,14 @@ export const personSettingsSchema = z.object({
    * it off. See `isPresumedDeceased`.
    */
   presumeDeceasedAfterYears: z.number().int().min(0).max(200).default(110),
+  /**
+   * The consistency warnings' limits (`consistencyIssues`), each 0 to turn
+   * that check off: the youngest a parent can be at a child's birth, the
+   * oldest a mother can be, and the youngest anyone marries.
+   */
+  minParentAge: z.number().int().min(0).max(30).default(12),
+  maxMotherAge: z.number().int().min(0).max(80).default(55),
+  minMarriageAge: z.number().int().min(0).max(30).default(14),
   /** The cards in the order the page stacks them, each within its own column — see `orderedPersonCards`. */
   cardOrder: z.array(personCardSchema).default([...personCardSchema.options]),
   /** Cards a family that doesn't use them can leave off. Personal details and Family are always shown. */

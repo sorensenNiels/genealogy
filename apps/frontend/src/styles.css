@@ -25,3 +25,10 @@
 /* The shared component package is symlinked into node_modules, which Tailwind
    skips when scanning for class names, so point it there explicitly. */
 @source "../../../packages/ui/src/**/*.tsx";
+
+/* The header is sticky (__root.tsx), so scrolling something into view —
+   an anchor, a focused field — stops below it rather than behind it.
+   `--app-header-height` is measured and set by the root layout. */
+html {
+  scroll-padding-top: var(--app-header-height, 0px);
+}

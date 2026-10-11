@@ -219,7 +219,8 @@ export interface ListPersonsResult {
 export interface RelativesResult {
   parents: (PersonWithVitals & { parentage: Parentage })[];
   spouses: PersonWithVitals[];
-  children: PersonWithVitals[];
+  /** With the link's parentage — the consistency checks only read a birth child's dates against the parent's. */
+  children: (PersonWithVitals & { parentage: Parentage })[];
   /** Anyone sharing at least one of this person's own parents; `half` when each has a recorded parent the other doesn't. */
   siblings: (PersonWithVitals & { half: boolean })[];
   // The rest are worked out from marriages rather than recorded as edges —
@@ -1178,14 +1179,14 @@ export class PersonService {
     id: string,
     options: RelativesOptions = { stepRelations: false, inLaws: false },
   ): Promise<RelativesResult> {
-    const [parentEdges, spouseNodes, childNodes] = await Promise.all([
+    const [parentEdges, spouseNodes, childEdges] = await Promise.all([
       parentsOf(this.pool, id),
       spousesOf(this.pool, id),
-      descendantsOf(this.pool, id, 1),
+      childrenOf(this.pool, id),
     ]);
     const parentIds = parentEdges.map((edge) => edge.personId);
     const spouseIds = spouseNodes.map((node) => node.personId);
-    const childIds = childNodes.map((node) => node.personId);
+    const childIds = childEdges.map((edge) => edge.personId);
 
     // Siblings aren't a direct edge — they're anyone who shares at least one
     // of this person's own parents (half-siblings included), so this is a
@@ -1242,7 +1243,10 @@ export class PersonService {
         return row ? [{ ...row, parentage: edge.parentage }] : [];
       }),
       spouses: toRows(spouseIds),
-      children: toRows(childIds),
+      children: childEdges.flatMap((edge) => {
+        const row = byId.get(edge.personId);
+        return row ? [{ ...row, parentage: edge.parentage }] : [];
+      }),
       siblings: siblingIds.flatMap((siblingId) => {
         const row = byId.get(siblingId);
         return row ? [{ ...row, half: halfSiblingIds.has(siblingId) }] : [];

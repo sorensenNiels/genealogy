@@ -906,6 +906,32 @@ couldn't load it. Notes:
   up the page. The People count, Backend and Photo library cards of the
   first version became "The family at a glance" and "System status".
 
+### Consistency warnings: only the impossible
+
+`consistencyIssues` (`packages/core/src/consistency.ts`, tested) is pure
+and shared: the person page runs it on what it already loaded (no extra
+request), and `IntegrityService.findConsistencyIssues` runs it over the
+whole tree for Tools → Data integrity (and so the Overview's upkeep
+count). Decisions:
+
+- **Bounds, not guesses.** Each check compares the widest reading of the
+  dates — a parent's _oldest_ possible age at the birth against
+  `minParentAge`, a mother's _youngest_ possible age against
+  `maxMotherAge` — so a vague or ranged date only fires when no reading
+  works, and an unparsed one (no bounds) never does. False alarms on
+  "abt 1850" would bury the real typos.
+- **Birth links only** (`isBirthParentage`: "birth", and "unknown", which a
+  link made without saying is and nearly always means). An adoptive or step
+  parent's age says nothing about a birth; `person.relatives` now carries
+  the children's parentage too, for the same reason.
+- **The report checks each person as a child only.** Run from both sides,
+  every parent/child pair would be listed twice; the person page shows both
+  sides, so a parent sees "was 9 when X was born" on their own page.
+- **The limits are person settings** (`minParentAge`, `maxMotherAge`,
+  `minMarriageAge`, 0 = off), next to `presumeDeceasedAfterYears`, which
+  already covers "living but over 110" — not repeated as a warning.
+- A father's death gets a year's grace before a birth counts as after it.
+
 ### People list: the URL holds the state
 
 Search, filters, sort and page on `/people` are the route's search params

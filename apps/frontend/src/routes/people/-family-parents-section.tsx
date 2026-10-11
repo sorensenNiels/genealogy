@@ -17,7 +17,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { PersonPicker } from "../-person-picker";
-import { labelFor, optionsFor } from "../../lib/person-display";
+import { labelFor, optionsFor, GenderIcon } from "../../lib/person-display";
 import { usePersonName } from "../../lib/person-name";
 import { createPerson, linkParent, unlinkParent } from "../../server/functions/person.functions";
 import type { ConfigurableOptionRow, ParentRow, PersonRow } from "./-types";
@@ -98,6 +98,7 @@ export function ParentsSection({
                   params={{ personId: parent.id }}
                   className="hover:underline"
                 >
+                  <GenderIcon gender={parent.gender} className="mr-1.5 size-4 align-[-3px]" />
                   {formatName(parent)}
                   {formatLifespan(parent) && (
                     <span className="ml-1 text-muted-foreground">({formatLifespan(parent)})</span>
@@ -163,6 +164,7 @@ function ParentSlot({
       <div>
         <p className="text-xs text-muted-foreground">{label}</p>
         <Link to="/people/$personId" params={{ personId: parent.id }} className="hover:underline">
+          <GenderIcon gender={parent.gender} className="mr-1.5 size-4 align-[-3px]" />
           {formatName(parent)}
           {formatLifespan(parent) && (
             <span className="ml-1 text-muted-foreground">({formatLifespan(parent)})</span>

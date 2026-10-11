@@ -11,6 +11,7 @@ import { toSupportedLanguage } from "../i18n/create-i18n-instance";
 import { formatDisplayDate } from "../lib/format-date";
 import { lifeAtAGlance } from "../lib/life-summary";
 import { localToday } from "../lib/overview-cards";
+import { GenderIcon } from "../lib/person-display";
 import { usePersonName } from "../lib/person-name";
 import {
   familyAtAGlanceQuery,
@@ -75,6 +76,10 @@ export function OnThisDayCard() {
                         {entry.people.map((person, index) => (
                           <span key={person.id}>
                             {index > 0 && " & "}
+                            <GenderIcon
+                              gender={person.gender}
+                              className="mr-1 size-3.5 align-[-2px]"
+                            />
                             <Link
                               to="/people/$personId"
                               params={{ personId: person.id }}

@@ -32,7 +32,7 @@ import { useTranslation } from "react-i18next";
 
 import { PersonPicker } from "../-person-picker";
 import { toSupportedLanguage } from "../../i18n/create-i18n-instance";
-import { labelFor, optionsFor } from "../../lib/person-display";
+import { labelFor, optionsFor, GenderIcon } from "../../lib/person-display";
 import { usePersonName } from "../../lib/person-name";
 import { usePersonPageDate } from "../../lib/person-settings";
 import {
@@ -138,6 +138,7 @@ export function RelativesSection({
                   params={{ personId: relative.id }}
                   className="hover:underline"
                 >
+                  <GenderIcon gender={relative.gender} className="mr-1.5 size-4 align-[-3px]" />
                   {formatName(relative)}
                   {formatLifespan(relative) && (
                     <span className="ml-1 text-muted-foreground">({formatLifespan(relative)})</span>
@@ -259,6 +260,7 @@ function SpouseRow({
     <div className="flex items-center justify-between gap-2 text-sm">
       <div>
         <Link to="/people/$personId" params={{ personId: relative.id }} className="hover:underline">
+          <GenderIcon gender={relative.gender} className="mr-1.5 size-4 align-[-3px]" />
           {formatName(relative)}
           {formatLifespan(relative) && (
             <span className="ml-1 text-muted-foreground">({formatLifespan(relative)})</span>

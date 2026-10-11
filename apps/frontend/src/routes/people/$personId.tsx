@@ -25,6 +25,7 @@ import {
 import { recordPersonView } from "../../server/functions/profile.functions";
 import { AssociationsCard } from "./-associations-card";
 import { CitationsSection } from "./-citations-section";
+import { ConsistencyWarnings } from "./-consistency-warnings";
 import { ExternalIdsCard } from "./-external-ids-card";
 import { FamilyCard } from "./-family-card";
 import { PersonPhotosCard } from "./-immich-photos-card";
@@ -264,6 +265,17 @@ function PersonDetailRoute() {
           canDelete={canDelete}
           onDeleted={() => navigate({ to: "/people" })}
         />
+        {canEdit && (
+          <ConsistencyWarnings
+            person={person.data}
+            events={events.data ?? []}
+            unions={unionRows}
+            spouses={spouses}
+            parents={parents}
+            personChildren={children}
+            options={options.data ?? []}
+          />
+        )}
         <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
           <div className="space-y-6">{column(false)}</div>
           <div className="space-y-6">{column(true)}</div>

@@ -40,11 +40,6 @@ Picked on 2026-09-28 as the next two to scope, one from each focus area
 
 ## Research aids
 
-- 💡 🆕 **Consistency warnings.** Flag facts that can't all be true: a child born
-  before a parent was 12 or after a mother died, death before birth, marriage
-  before 14, a "living" person over 110, events after burial. Shown on the
-  person page and as a Tools-page report. _Builds on:_ the data integrity check
-  and parsed date bounds (`earliest`/`latest`).
 - 💡 🆕 **Conflicting evidence, side by side.** When sources disagree (two birth
   dates), keep both, show them together with their citations, and let the user
   mark one as preferred. GEDCOM import currently turns a second birth into an

@@ -18,7 +18,13 @@ import { useTranslation } from "react-i18next";
 import { publicBackendUrl } from "../../lib/env";
 import { useImmichAvailable } from "../../lib/immich-status";
 import { usePermissions } from "../../lib/permissions";
-import { genderLabel, initials, relationshipToRootLabel } from "../../lib/person-display";
+import {
+  avatarColorClass,
+  GenderIcon,
+  genderLabel,
+  initials,
+  relationshipToRootLabel,
+} from "../../lib/person-display";
 import { usePersonName } from "../../lib/person-name";
 import { usePersonPageDate, usePersonSettings } from "../../lib/person-settings";
 import { removePerson } from "../../server/functions/person.functions";
@@ -115,7 +121,10 @@ export function PersonHeaderCard({
               <Badge variant="outline">
                 <CopyableText value={person.publicId} className="font-mono text-foreground" />
               </Badge>
-              <Badge variant="outline">{genderLabel(person.gender, t)}</Badge>
+              <Badge variant="outline">
+                <GenderIcon gender={person.gender} className="size-3.5" />
+                {genderLabel(person.gender, t)}
+              </Badge>
               {person.redacted && (
                 <Badge variant="secondary" title={t("person.header.redactedHint")}>
                   {t("person.header.redacted")}
@@ -404,7 +413,9 @@ function PersonPhotoAvatar({
     <>
       <Avatar className={cn(dimensionClass, roundingClass)}>
         {photoUrl && <AvatarImage src={photoUrl} alt={formatName(person)} />}
-        <AvatarFallback className={size === "lg" ? "text-2xl" : "text-base"}>
+        <AvatarFallback
+          className={cn(size === "lg" ? "text-2xl" : "text-base", avatarColorClass(person.gender))}
+        >
           {initials(person)}
         </AvatarFallback>
       </Avatar>

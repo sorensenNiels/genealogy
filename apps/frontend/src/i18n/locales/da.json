@@ -496,7 +496,8 @@
       "clearStartPerson": "Ryd startperson",
       "export": "Eksportér websted",
       "queued": "Startet — notifikationsklokken fortæller, når webstedet er klar til download."
-    }
+    },
+    "consistencyIssues": "Oplysninger, der ikke alle kan være sande"
   },
   "settings": {
     "title": "Indstillinger",
@@ -605,7 +606,12 @@
       "viewerLivingDetailHelp": "Læsere ser aldrig oplysninger om levende personer. Kun navn viser dem med navn; navn og fødselsår tilføjer året, de blev født; intet viser \"Levende person\" i træet og på familiekortet og udelader dem fra personlisten.",
       "viewerLivingName": "Kun navn",
       "viewerLivingNameAndBirthYear": "Navn og fødselsår",
-      "viewerLivingHidden": "Intet"
+      "viewerLivingHidden": "Intet",
+      "consistency": "Advarsler om modstridende oplysninger",
+      "minParentAge": "Yngste forælder (år)",
+      "maxMotherAge": "Ældste mor (år)",
+      "minMarriageAge": "Yngste ved vielse (år)",
+      "consistencyHelp": "Oplysninger uden for disse grænser markeres på personsiden (for redaktører) og i Værktøjer → Dataintegritet — en forælder yngre end dette ved et barns fødsel, en mor ældre, en vielse yngre. Død før fødsel, begivenheder efter en begravelse og et barn født efter moderens død markeres altid. 0 slår en grænse fra."
     },
     "records": {
       "title": "Kilder",
@@ -1685,5 +1691,23 @@
       "record": "Kilde",
       "recordPerson": "Person i kilde"
     }
+  },
+  "consistency": {
+    "title_one": "{{count}} ting her kan ikke alle være sande",
+    "title_other": "{{count}} ting her kan ikke alle være sande",
+    "help": "Som regel en fejlindtastet dato eller en forkert tilknyttet person. Grænserne findes i Indstillinger → Person.",
+    "deathBeforeBirth": "Død før fødslen.",
+    "burialBeforeDeath": "Begravet før døden.",
+    "eventBeforeBirth": "{{event}} før fødslen.",
+    "eventAfterBurial": "{{event}} efter begravelsen.",
+    "marriedTooYoung": "Gift med <person>{{name}}</person> som højst {{age}}-årig.",
+    "marriedTooYoungNoPartner": "Gift som højst {{age}}-årig.",
+    "parentTooYoung": "Forælderen <person>{{name}}</person> var højst {{age}} år ved denne fødsel.",
+    "motherTooOld": "Moderen <person>{{name}}</person> var mindst {{age}} år ved denne fødsel.",
+    "bornAfterMotherDied": "Født efter moderen <person>{{name}}</person> døde.",
+    "bornLongAfterFatherDied": "Født mere end et år efter faderen <person>{{name}}</person> døde.",
+    "childWhileTooYoung": "Var højst {{age}} år, da <person>{{name}}</person> blev født.",
+    "childWhileTooOld": "Var mindst {{age}} år, da <person>{{name}}</person> blev født.",
+    "childAfterDeath": "<person>{{name}}</person> blev født efter dette dødsfald."
   }
 }

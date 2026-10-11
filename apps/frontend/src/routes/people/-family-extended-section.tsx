@@ -2,6 +2,7 @@ import { formatLifespan } from "@genealogy/core";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
+import { GenderIcon } from "../../lib/person-display";
 import { usePersonName } from "../../lib/person-name";
 import type { PersonRow, RelativesResult } from "./-types";
 
@@ -51,6 +52,7 @@ function RelativeLink({ person }: { person: PersonRow }) {
       params={{ personId: person.id }}
       className="block text-sm hover:underline"
     >
+      <GenderIcon gender={person.gender} className="mr-1.5 size-4 align-[-3px]" />
       {formatName(person)}
       {lifespan && <span className="ml-1 text-muted-foreground">({lifespan})</span>}
     </Link>
