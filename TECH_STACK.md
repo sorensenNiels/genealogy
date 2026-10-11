@@ -2025,11 +2025,20 @@ tree and photos. **Viewer**: reads, with living people redacted.
   and `SaveButton`/`RemoveButton`/`FormDialog` don't render, so a whole page
   of inline forms becomes read-only by wrapping it once. Plain buttons and
   drag handlers it can't recognise are gated with `usePermissions()`.
+- **What's hidden can't steer a list either.** Redacting the rows isn't
+  enough if the query still filters and orders by the hidden values —
+  "born after 1990 in Brande" would name a living relative by elimination.
+  So for a Viewer, `PersonService.list` (`concealLiving`): leaves concealed
+  people (living, not their own person — `concealedFrom`) out of the place,
+  birth-range and "Missing" filters; reads their birth, death, age and
+  place as unknown when sorting or grouping (`factReader`), so they sort
+  among the undated; and keys their group as unknown — except the century,
+  in "name and birth year", where the year is shown. The Overview's family
+  figures leave the living out of the birth span and birthplace count for a
+  Viewer, and "Where the family came from" already did.
 - **Known limits.** Album browsing isn't redacted — an album is a set of
-  photos, not a person, and its faces show names only. The people list's
-  birth-date filters and sort still order redacted people by their hidden
-  dates. better-
-  auth's own sign-in/sign-up error texts stay English.
+  photos, not a person, and its faces show names only. better-auth's own
+  sign-in/sign-up error texts stay English.
 
 ### Merging people: one transaction, nothing overwritten
 

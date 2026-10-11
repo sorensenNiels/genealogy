@@ -124,6 +124,8 @@ export class OverviewResearchService {
             withFamily: false,
             viewerUserId,
             excludeLiving: false,
+            // Editors only, who see everything.
+            concealLiving: null,
           });
           return { key, count: result.total };
         }),

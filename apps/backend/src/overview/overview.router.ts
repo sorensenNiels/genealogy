@@ -65,10 +65,10 @@ export class OverviewRouter {
         .input(todayInput)
         .query(({ input, ctx }) => this.family.featuredAncestor(ctx.session.user.id, input.today)),
 
-      // Counts only, and the earliest-born person, who is long dead — but
-      // through the redactor anyway, should a tree start with someone living.
+      // Counts, and the earliest-born person. A Viewer's figures leave the
+      // living out of the birth span and birthplaces (see the service).
       familyAtAGlance: protectedProcedure.query(async ({ ctx }) => {
-        const glance = await this.family.familyAtAGlance();
+        const glance = await this.family.familyAtAGlance(!canEdit(ctx.role));
         return {
           ...glance,
           earliest: glance.earliest && (await this.redactor.person(viewerOf(ctx), glance.earliest)),

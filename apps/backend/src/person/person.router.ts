@@ -95,6 +95,14 @@ export class PersonRouter {
           hasOpenResearchNote: canEdit(ctx.role) && input.hasOpenResearchNote,
           viewerUserId: ctx.session.user.id,
           excludeLiving: livingDetail === "hidden",
+          // What a Viewer isn't shown of the living mustn't steer the list
+          // either; in "name and birth year" they do see the year.
+          concealLiving:
+            livingDetail === null
+              ? null
+              : livingDetail === "nameAndBirthYear"
+                ? "exceptBirthYear"
+                : "all",
         });
         const items = await this.redactor.people(viewer, result.items);
         // A marriage date is as private as a birth date: none for a couple

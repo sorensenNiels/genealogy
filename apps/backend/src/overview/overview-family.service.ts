@@ -304,9 +304,17 @@ export class OverviewFamilyService {
     );
   }
 
-  /** The family's figures, each a count over the whole tree — nothing in them identifies anyone. */
-  async familyAtAGlance(): Promise<FamilyAtAGlance> {
+  /**
+   * The family's figures, each a count over the whole tree. `excludeLiving`
+   * for a Viewer: the birth span and birthplace count are read from the
+   * deceased only — the latest birth year would otherwise be the youngest
+   * living relative's, which a Viewer isn't shown.
+   */
+  async familyAtAGlance(excludeLiving: boolean): Promise<FamilyAtAGlance> {
     const birthYear = sql<number>`substr(${personEvents.date}->>'earliest', 1, 4)::int`;
+    const deceasedOnly = excludeLiving
+      ? sql`exists (select 1 from ${persons} where ${persons.id} = ${personEvents.personId} and not ${persons.isLiving})`
+      : undefined;
     const [[people], [births], [surnames], [places], [sourceCount], [photos], [earliestRow]] =
       await Promise.all([
         this.db.select({ value: count() }).from(persons),
@@ -320,6 +328,7 @@ export class OverviewFamilyService {
             and(
               eq(personEvents.eventType, "birth"),
               isNotNull(sql`${personEvents.date}->>'earliest'`),
+              deceasedOnly,
             ),
           ),
         this.db
@@ -328,7 +337,7 @@ export class OverviewFamilyService {
         this.db
           .select({ value: countDistinct(sql`nullif(trim(${personEvents.place}), '')`) })
           .from(personEvents)
-          .where(eq(personEvents.eventType, "birth")),
+          .where(and(eq(personEvents.eventType, "birth"), deceasedOnly)),
         this.db.select({ value: count() }).from(sources),
         this.db.select({ value: count() }).from(persons).where(isNotNull(persons.photoPath)),
         this.db
@@ -338,6 +347,7 @@ export class OverviewFamilyService {
             and(
               eq(personEvents.eventType, "birth"),
               isNotNull(sql`${personEvents.date}->>'earliest'`),
+              deceasedOnly,
             ),
           )
           .orderBy(sql`${personEvents.date}->>'earliest' asc`)

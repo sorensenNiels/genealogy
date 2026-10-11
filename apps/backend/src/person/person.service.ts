@@ -172,6 +172,17 @@ export interface ListPersonsInput {
    * header gives one away.
    */
   excludeLiving: boolean;
+  /**
+   * For a Viewer: what they can't see of a living person (anyone living but
+   * their own linked person — `PersonRedactor`'s rule) mustn't decide
+   * what the list shows either. "all": the filters on dates, places and
+   * missing facts leave them out (they can't match on what's hidden), and
+   * sorting or grouping by birth, death, age or place treats those facts
+   * as unknown. "exceptBirthYear": the same, but grouping by century still
+   * uses their birth year, which a Viewer is shown in that mode. Null for
+   * an editor, who sees everything.
+   */
+  concealLiving: "all" | "exceptBirthYear" | null;
 }
 
 /** A relative named on a detailed People list row. */
@@ -312,18 +323,51 @@ function listedParents(edges: { parentId: string; parentage: string }[]): string
 }
 
 /**
+ * Someone whose dates and places this viewer isn't shown: living, and not
+ * their own linked person — `isRedactedFor` plus `PersonRedactor`'s
+ * "never your own person", in SQL.
+ */
+function concealedFrom(viewerUserId: string): SQL {
+  return sql`(${persons.isLiving} and ${persons.id} is distinct from (select ${userProfiles.personId} from ${userProfiles} where ${userProfiles.userId} = ${viewerUserId}))`;
+}
+
+/**
+ * How the list reads a fact a viewer may not see: as-is for an editor; for
+ * a Viewer, unknown (null) on someone `concealedFrom` them — so a sort or a
+ * group by it places them with the undated, not by the hidden value. `kind`
+ * "birthYear" stays visible in `concealLiving` "exceptBirthYear".
+ */
+type FactReader = (expression: SQL, kind?: "fact" | "birthYear") => SQL;
+
+function factReader(input: Pick<ListPersonsInput, "concealLiving" | "viewerUserId">): FactReader {
+  if (!input.concealLiving) return (expression) => expression;
+  const concealed = concealedFrom(input.viewerUserId);
+  return (expression, kind = "fact") =>
+    kind === "birthYear" && input.concealLiving === "exceptBirthYear"
+      ? expression
+      : sql`(case when ${concealed} then null else ${expression} end)`;
+}
+
+/**
  * A group's key in SQL — the twin of `personGroupKey` in core, which the
  * page uses to put rows under headers; the two must agree exactly (lower
  * case, trimmed, the birthplace's first part, the century as a number).
+ * `fact` hides a Viewer's living relatives' birth from it.
  */
-function groupExpression(grouping: Exclude<PeopleListGrouping, "none">): SQL {
+function groupExpression(
+  grouping: Exclude<PeopleListGrouping, "none">,
+  fact: FactReader = (expression) => expression,
+): SQL {
   switch (grouping) {
     case "surname":
       return sql`nullif(lower(trim(${persons.surname})), '')`;
     case "century":
-      return sql`floor(substr(coalesce(${birthEvents.date}->>'earliest', ${birthEvents.date}->>'latest'), 1, 4)::int / 100.0)::int`;
+      return fact(
+        sql`floor(substr(coalesce(${birthEvents.date}->>'earliest', ${birthEvents.date}->>'latest'), 1, 4)::int / 100.0)::int`,
+        "birthYear",
+      );
     case "birthplace":
-      return sql`nullif(lower(trim(split_part(${birthEvents.place}, ',', 1))), '')`;
+      return fact(sql`nullif(lower(trim(split_part(${birthEvents.place}, ',', 1))), '')`);
   }
 }
 
@@ -366,14 +410,15 @@ export class PersonService {
       return { items: [], total: 0, groupCounts: [] };
     }
     const where = this.listFilter(input, ancestorIds, withBothParents, similarIds);
+    const fact = factReader(input);
 
     const items = await personsWithVitals(this.db)
       .where(where)
       .orderBy(
         ...(input.grouping === "none"
           ? []
-          : [sql`${groupExpression(input.grouping)} asc nulls last`]),
-        ...this.sortColumns(input.sortBy, input.sortDir),
+          : [sql`${groupExpression(input.grouping, fact)} asc nulls last`]),
+        ...this.sortColumns(input.sortBy, input.sortDir, fact),
       )
       .limit(input.limit)
       .offset(input.offset);
@@ -404,7 +449,7 @@ export class PersonService {
         this.citationRollup(ids),
         this.alternateNameMatches(items, words, input.similarSpellings),
         input.withFamily ? this.familiesOf(ids) : new Map<string, ListFamily>(),
-        this.groupCounts(items, input.grouping, where),
+        this.groupCounts(items, input, where, fact),
       ]);
     const unionPersonIds = new Set(unionRows.flatMap((row) => [row.personAId, row.personBId]));
 
@@ -427,31 +472,51 @@ export class PersonService {
   /** The size of each group on this page, across the whole filtered list — see `groupCounts`. */
   private async groupCounts(
     items: PersonWithVitals[],
-    grouping: PeopleListGrouping,
+    input: ListPersonsInput,
     where: SQL | undefined,
+    fact: FactReader,
   ): Promise<{ key: string | null; count: number }[]> {
+    const { grouping } = input;
     if (grouping === "none" || items.length === 0) return [];
-    const keys = [...new Set(items.map((item) => personGroupKey(item, grouping)))];
+    // The keys as the viewer's own rows give them: a concealed person's
+    // hidden birth groups them nowhere (the page sees it redacted too).
+    const ownId = input.concealLiving ? await this.ownPersonId(input.viewerUserId) : null;
+    const hidesKey =
+      grouping === "birthplace" || (grouping === "century" && input.concealLiving === "all");
+    const keys = [
+      ...new Set(
+        items.map((item) =>
+          input.concealLiving && hidesKey && item.isLiving && item.id !== ownId
+            ? null
+            : personGroupKey(item, grouping),
+        ),
+      ),
+    ];
     const named = keys.filter((key): key is string => key !== null);
-    const expression = groupExpression(grouping);
+    const expression = groupExpression(grouping, fact);
     const key = sql<string | null>`(${expression})::text`;
     const inPage = or(
       ...(named.length > 0 ? [inArray(key, named)] : []),
       ...(keys.includes(null) ? [sql`${expression} is null`] : []),
     );
-    return this.db
-      .select({ key, count: count() })
-      .from(persons)
-      .leftJoin(
-        birthEvents,
-        and(eq(birthEvents.personId, persons.id), eq(birthEvents.eventType, "birth")),
-      )
-      .leftJoin(
-        deathEvents,
-        and(eq(deathEvents.personId, persons.id), eq(deathEvents.eventType, "death")),
-      )
-      .where(and(where, inPage))
-      .groupBy(key);
+    return (
+      this.db
+        .select({ key, count: count() })
+        .from(persons)
+        .leftJoin(
+          birthEvents,
+          and(eq(birthEvents.personId, persons.id), eq(birthEvents.eventType, "birth")),
+        )
+        .leftJoin(
+          deathEvents,
+          and(eq(deathEvents.personId, persons.id), eq(deathEvents.eventType, "death")),
+        )
+        .where(and(where, inPage))
+        // By position, not by repeating `key`: with a Viewer's concealment in
+        // it, the key carries a bound parameter, and Postgres doesn't see two
+        // copies with separate parameters as the same expression.
+        .groupBy(sql`1`)
+    );
   }
 
   /**
@@ -574,13 +639,18 @@ export class PersonService {
   }
 
   /** Ids of every ancestor of whoever `viewerUserId` has identified as themselves; empty if they haven't. */
-  private async ancestorIdsFor(viewerUserId: string): Promise<Set<string>> {
+  /** The person this member has said is them ("This is you" on their profile), if any. */
+  private async ownPersonId(viewerUserId: string): Promise<string | null> {
     const [profile] = await this.db
       .select({ personId: userProfiles.personId })
       .from(userProfiles)
       .where(eq(userProfiles.userId, viewerUserId))
       .limit(1);
-    const rootId = profile?.personId;
+    return profile?.personId ?? null;
+  }
+
+  private async ancestorIdsFor(viewerUserId: string): Promise<Set<string>> {
+    const rootId = await this.ownPersonId(viewerUserId);
     if (!rootId) return new Set();
     const ancestors = await ancestorsOf(this.pool, rootId);
     return new Set(ancestors.map((node) => node.personId));
@@ -700,13 +770,16 @@ export class PersonService {
     if (ancestorIds !== null) {
       clauses.push(inArray(persons.id, [...ancestorIds]));
     }
-    if (input.excludeLiving) {
-      clauses.push(
-        or(
-          eq(persons.isLiving, false),
-          sql`${persons.id} = (select ${userProfiles.personId} from ${userProfiles} where ${userProfiles.userId} = ${input.viewerUserId})`,
-        )!,
-      );
+    // A Viewer's living relatives can't match a filter on the dates, places
+    // or facts they're not shown — or the result would say what's hidden
+    // ("born after 1990 in Brande"). `excludeLiving` leaves them out always.
+    const filtersOnHiddenFacts =
+      (input.place !== null && input.place.trim() !== "") ||
+      input.bornAfter !== null ||
+      input.bornBefore !== null ||
+      input.missing !== null;
+    if (input.excludeLiving || (input.concealLiving && filtersOnHiddenFacts)) {
+      clauses.push(sql`not ${concealedFrom(input.viewerUserId)}`);
     }
 
     return clauses.length > 0 ? and(...clauses) : undefined;
@@ -718,7 +791,11 @@ export class PersonService {
    * everything else keep one order across pages instead of swapping
    * between them.
    */
-  private sortColumns(sortBy: PersonListSort, dir: SortDirection) {
+  private sortColumns(
+    sortBy: PersonListSort,
+    dir: SortDirection,
+    fact: FactReader = (expression) => expression,
+  ) {
     const direction = dir === "desc" ? sql`desc` : sql`asc`;
     const by = (expression: SQL) => sql`${expression} ${direction} nulls last`;
     const byName = [asc(persons.surname), asc(persons.given), asc(persons.id)];
@@ -726,14 +803,14 @@ export class PersonService {
       case "given":
         return [by(sql`${persons.given}`), asc(persons.surname), asc(persons.id)];
       case "birth":
-        return [by(sql`${birthEvents.date}->>'earliest'`), ...byName];
+        return [by(fact(sql`${birthEvents.date}->>'earliest'`)), ...byName];
       case "death":
-        return [by(sql`${deathEvents.date}->>'earliest'`), ...byName];
+        return [by(fact(sql`${deathEvents.date}->>'earliest'`)), ...byName];
       case "age":
-        return [by(ageExpression()), ...byName];
+        return [by(fact(ageExpression())), ...byName];
       case "place":
         return [
-          by(sql`nullif(trim(coalesce(${birthEvents.place}, ${deathEvents.place})), '')`),
+          by(fact(sql`nullif(trim(coalesce(${birthEvents.place}, ${deathEvents.place})), '')`)),
           ...byName,
         ];
       case "surname":
