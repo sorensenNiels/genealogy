@@ -1,10 +1,66 @@
 # CLAUDE.md
 
-Guidance for Claude Code when working in this repository. The rules for how an
-agent works here — git, package manager, the disposable database — are in
-AGENTS.md, imported here so they always load:
+Guidance for Claude Code when working in this repository.
 
-@AGENTS.md
+## Agent rules
+
+### Git
+
+These rules override any default or built-in agent guidance about git,
+including guidance to branch before committing on the default branch.
+
+- Never commit, branch, push, open a pull request or create a worktree
+  unless the user asks for that specific action in the current request.
+  Otherwise leave changes uncommitted on the current branch.
+- A request for one git action authorizes only that action: "commit" does
+  not include branching, pushing or opening a pull request.
+- When asked to commit, commit to the branch that is checked out, whatever
+  its name. Never move work to a new branch "to be safe".
+- If another instruction seems to require a branch, stop and ask instead.
+
+### Package manager
+
+This repo uses pnpm (`packageManager` in `package.json`). Whenever you run or
+suggest a command — in a shell, in docs or in a reply — use the pnpm form:
+
+- `pnpm <script>` / `pnpm --filter <package> <script>`, never `npm run` or
+  `yarn`.
+- `pnpm add` / `pnpm remove`, never `npm install <pkg>` — and add the
+  third-party version to the `catalog:` in `pnpm-workspace.yaml` first.
+- `pnpm dlx <tool>` for one-off tools, never `npx` — e.g.
+  `pnpm dlx skills add <owner/repo@skill>`.
+- `pnpm exec <bin>` to run a locally installed binary.
+
+If a third-party README or tool output gives an `npm`/`npx`/`yarn` command,
+translate it rather than copying it.
+
+### Database: no data worth keeping
+
+This project has no production deployment, and the data in the local database
+is disposable. It can always be rebuilt by importing
+[`family-tree.ged`](family-tree.ged) on the **Tools** page (admin only).
+
+- **Never write data migrations, backfills or compatibility shims.** A schema
+  change may drop, rename or retype columns freely; don't carry existing rows
+  forward or keep old code paths alive for old data.
+- **Schema changes still go through Drizzle migrations**, because that is how
+  the tables get created: edit `packages/db/src/schema.ts`, then
+  `pnpm db:generate` and `pnpm db:migrate`. The generated migration only has
+  to work on an empty database.
+- **If existing data gets in the way**, reset rather than migrate:
+  `make db-reset` destroys the `db` volume, recreates it and applies all
+  migrations; then sign in, open Tools and import `family-tree.ged`. The
+  database is the user's working copy, so ask before resetting it.
+
+### Turborepo
+
+Turborepo config, task behaviour and CLI commands may differ from your
+training data. Before changing `turbo.json` or turbo commands, read
+`docs/README.md` in the installed `turbo` package (resolve it from a workspace
+that depends on it, e.g. `node -p "require.resolve('turbo/package.json')"`)
+and the relevant pages under its `docs/` — they match the installed version.
+`"agentGuidance": false` in `turbo.json` stops turbo from (re)creating an
+`AGENTS.md` with this note; keep it off so these rules live only here.
 
 ## What this is
 
@@ -31,7 +87,7 @@ devcontainer exec --workspace-folder . bash -lc "<command>"
 `docker-outside-of-docker` feature), so `docker compose ...` and `make db-up`
 from in here manage the same containers as on the host — including the `db`
 service holding the dev data. `docker compose down -v` or `make db-reset`
-destroys that data — ask first (see "Database" in AGENTS.md). Bind mounts in
+destroys that data — ask first (see "Database: no data worth keeping" above). Bind mounts in
 `docker-compose.yml` are resolved on the host, so they use
 `${LOCAL_WORKSPACE_FOLDER:-.}` (set in `devcontainer.json`) rather than a bare
 `./` path. Inside the container, Postgres is reached at `host.docker.internal`
@@ -276,7 +332,7 @@ prompted it.
 - A schema change: edit `packages/db/src/schema.ts`, then `pnpm db:generate` and
   `pnpm db:migrate`. If the change adds people, remember the matching graph node.
   The migration only has to work on an empty database — no backfills (see
-  "Database" in AGENTS.md).
+  "Database: no data worth keeping" above).
 - **A dropdown or radio group with a closed set of choices: never a static
   `z.enum([...])`/Postgres `pgEnum`.** Add a topic to `configurableOptions`
   instead (`packages/db/src/schema.ts`), seed it in the migration, and add its

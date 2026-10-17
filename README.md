@@ -62,5 +62,6 @@ stops the services when you're done.
 - [TECH_STACK.md](TECH_STACK.md) — what the stack is and why each piece was
   chosen.
 - [FEATURES.md](FEATURES.md) — what's built.
-- [IDEAS.md](IDEAS.md) — what's planned, and ideas not yet decided.
+- [ROADMAP.md](ROADMAP.md) — what's planned, and ideas not yet decided.
+- [CHANGELOG.md](CHANGELOG.md) — what shipped, and when.
 - [CLAUDE.md](CLAUDE.md) — working agreements for Claude Code in this repository.

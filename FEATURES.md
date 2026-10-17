@@ -1,6 +1,6 @@
 # Features
 
-What the genealogy app can do today (✅). Planned work (🚧) and undecided ideas (💡) are in [IDEAS.md](IDEAS.md). Entries are kept short by design — the _why_ behind a non-obvious decision lives in [TECH_STACK.md](TECH_STACK.md), not here; this file is a scannable "what exists" list.
+What the genealogy app can do today (✅). When each feature shipped is in [CHANGELOG.md](CHANGELOG.md); planned work (🚧) and undecided ideas (💡) are in [ROADMAP.md](ROADMAP.md). Entries are kept short by design — the _why_ behind a non-obvious decision lives in [TECH_STACK.md](TECH_STACK.md), not here; this file is a scannable "what exists" list.
 
 ## Core record-keeping
 
@@ -22,6 +22,8 @@ What the genealogy app can do today (✅). Planned work (🚧) and undecided ide
 - ✅ Merge a duplicate into a person ("Merge with…"): a preview of what moves, everything moved in one transaction, nothing on the kept person overwritten, identical facts not doubled; refused for people related to each other.
 - ✅ Duplicate person detection (Tools → Possible duplicates): pairs that look like one person recorded twice, rated Likely/Possible/Name only with the reasons (name, dates, places, parents, spouse). Danish names compare by sound — Søren/Sören, Christensen/Kristensen, Petersen/Pedersen, Sørensen/Sørensdatter — and alternate names count. Merge a pair from there (choosing which to keep), or mark it "Not the same person" so it isn't suggested again. "Merge with…" on the person page lists that person's likely duplicates first. See "Duplicate detection" in TECH_STACK.md.
 - ✅ Research notes per person: open questions to chase down later (a "brick wall"), each with a type and a resolved flag.
+- ✅ Notes in markdown everywhere: every notes field (people, names, events, citations, records, research notes) is edited in a rich markdown editor and shown formatted.
+- ✅ Personal notes (`/notes`): each member's own markdown notes, with an optional title, private to them.
 - ✅ Single-person printable report ("family group sheet") at `/people/$personId/print`.
 
 ## Person page
@@ -67,6 +69,8 @@ What the genealogy app can do today (✅). Planned work (🚧) and undecided ide
 
 - ✅ Sign-in by email/password or Google; joining is by invitation only (the very first account on a new install becomes admin).
 - ✅ Members & roles: Admin (members, Settings, Tools, merge/delete), Editor (edits the tree and photos), Viewer (read-only). A Members page to change roles, remove members, and manage invitations.
+- ✅ Profile page: display name, phone number, password, light/dark/system mode, theme, and the person in the tree who is you (used by the Overview, "My ancestors" and the Featured ancestor).
+- ✅ Notifications: a bell in the header tells you when a background job (backup, restore, album download, face re-scan, family website) has finished, with its download link; mark read or delete one or all.
 - ✅ Invite family members by email: a link valid 14 days, with role, an optional "this is you" person and a personal message; sent in the inviting admin's language, and always shown to copy in case email isn't set up.
 - ✅ Living people are shown to Viewers by name only — dates, places, notes, photos and records hidden; the deceased are never restricted; a Viewer's own person is never hidden from them. Settings → Person page can show the birth year too, or nothing: "Living person" in the tree and Family card, and left out of the People list. What a Viewer isn't shown doesn't steer what they do see either: the People list's date, place and "Missing" filters leave living people out, and sorting or grouping by birth, death, age or place treats their hidden facts as unknown.
 - ✅ Static family website: Tools → Family website exports the whole tree as a zip of plain pages — everyone A–Z with a filter box and surname index, a page per person (names, vitals, family links, life events, notes, footnoted sources), a sources page, and the interactive tree (the app's own chart: pan/zoom, minimap, keyboard, chart and direction switcher). Opens offline from `index.html` or on any web server; English or Danish; the family site's theme, light and dark. Living people are name only — the Viewer rule, the exporting admin included. Profile photos only. See "Static family website" in TECH_STACK.md.
@@ -78,6 +82,7 @@ An admin utility page (`/tools`).
 - ✅ Backup the database (background job, notified when ready) and restore from a backup file (locked against overlap, typed confirmation). Alongside it, "Download all albums" queues a zip of every photo in every album the same way — one notification per file if the library needs more than one archive.
 - ✅ Re-scan for faces (Immich), GEDCOM export and import.
 - ✅ Data integrity checks (dangling citations, dangling Immich links, record ages that disagree with a birth) and a two-store consistency check (Postgres vs. the Apache AGE graph).
+- ✅ Settings → Dropdown options: the choices offered in dropdowns (life event types, alternate name types, citation confidence levels, union statuses, parentage types, research note types, witness and godparent roles, census household positions) are edited by admins — add, rename, reorder or remove; built-in choices the app relies on are protected.
 - ✅ Development tools, shown only when the app runs on localhost: the component showcase (every shared UI component in both themes).
 
 ## Platform
@@ -96,4 +101,4 @@ An admin utility page (`/tools`).
 
 ## What's next
 
-Planned work and undecided ideas live in [IDEAS.md](IDEAS.md).
+Planned work and undecided ideas live in [ROADMAP.md](ROADMAP.md); what shipped when is in [CHANGELOG.md](CHANGELOG.md).

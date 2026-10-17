@@ -224,7 +224,7 @@ Uploaded files are written to `UPLOADS_DIR` (default `./data/uploads`, a plain
 filesystem path, not object storage) and served back at `/uploads/<filename>`
 via `app.useStaticAssets`. This fits the self-hosted single-server deployment
 model, at the cost of needing `UPLOADS_DIR` on a persistent volume once
-deployment packaging exists (🚧, see [IDEAS.md](IDEAS.md)).
+deployment packaging exists (🚧, see [ROADMAP.md](ROADMAP.md)).
 
 The `persons.photo_path` column stores just the filename, never a URL — the
 frontend joins it with the backend's own origin (`publicBackendUrl` from
@@ -786,7 +786,7 @@ type, which roles become associations (godparent, witness, informant,
 officiant), and which columns the editor shows. The record type list is a
 Zod enum, not a configurable option, on purpose: the backend branches on
 it. Which types are offered is a setting. A further record type (probate,
-confirmation — see IDEAS.md) is a template plus i18n, and backend code
+confirmation — see ROADMAP.md) is a template plus i18n, and backend code
 only if it creates something new.
 
 **Censuses are data.** `census.ts` holds built-in definitions for Denmark
