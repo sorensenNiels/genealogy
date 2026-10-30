@@ -31,7 +31,7 @@ lint: ## Lint with oxlint, applying automatic fixes
 	pnpm lint:fix
 
 update:
-	pnpm update --interactive --latest
+	pnpm update --interactive --latest -r
 
 typecheck: ## Typecheck every package
 	pnpm typecheck
